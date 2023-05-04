@@ -10,7 +10,7 @@ tmp_file_urls = ['https://www.dropbox.com/s/mnzrchcffctxpkq/config_default.fits?
 def run():
     if os.getenv('suncet_data') == None:
         os.environ['suncet_data'] = './'
-    synthetic_path = Path(os.getenv('suncet_data'), '/synthetic/level0_raw/fits/')
+    synthetic_path = Path(os.getenv('suncet_data') + '/synthetic/level0_raw/fits/')
     synthetic_path.mkdir(parents=True, exist_ok=True)
 
     ssl._create_default_https_context = ssl._create_unverified_context
