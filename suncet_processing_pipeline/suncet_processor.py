@@ -5,7 +5,7 @@ import os
 from glob import glob
 import astropy.units as u
 import sunpy.map
-from suncet_processing_pipeline import config_parser
+from suncet_processing_pipeline import config_parser, make_level0_5, make_level1, make_level2, make_level3, make_level4
 
 class Processor:
     def __init__(self, config_filename=os.getcwd() + '/suncet_processing_pipeline/config_files/config_default.ini'):
