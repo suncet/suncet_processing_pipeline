@@ -23,12 +23,18 @@ class Processor:
         return config_parser.Config(config_filename)
     
 
-    def __load_metadata_definition(self, single_point_values_path_filename=None):
-        metadata = pd.read_csv(os.getenv('suncet_data') + '/metadata/' + self.config.base_metadata_filename)
-        if single_point_values_path_filename is not None: 
-            df = pd.read_csv(single_point_values_path_filename)
-            metadata = pd.concat([metadata, df], ignore_index=True)  #TODO: Figure out if there can ever be redundancy here -- if so, figure out how to deal with it
-        return metadata
+    def __load_metadata_definition(self):
+        return pd.read_csv(os.getenv('suncet_data') + '/metadata/' + self.config.base_metadata_filename)
+    
+    
+    def save_metadata(self, filename=None):
+        if filename is None: 
+            filename = self.config.base_metadata_filename
+            base, extension = os.path.splitext(filename)
+            filename = f"{base}{'_no_new_filename_specified'}{extension}"
+
+        path = os.getenv('suncet_data') + '/metadata/'
+        self.metadata.to_csv(path + filename, index=False)
 
 
     def run(self, version='1.0.0'):
@@ -37,6 +43,7 @@ class Processor:
         #level0_5 = Level0_5.make()
         level1 = Level1(config=self.config)
         level1.make(version=version, path=data_path)
+        self.save_metadata()
         pass
 
 
