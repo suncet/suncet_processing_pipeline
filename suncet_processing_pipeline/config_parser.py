@@ -20,6 +20,9 @@ class Config:
         # limits
         self.example_limit = json.loads(config.get('limits', 'example_limit')) * u.Angstrom
 
+        # structure
+        self.base_metadata_filename = config['structure']['base_metadata_filename']
+
 
 
 if __name__ == "__main__":
