@@ -32,7 +32,7 @@ class Level1:
         # return sunpy.map.MapSequence(map_list)
     
         # Hack to get synthetic  image
-        filename = os.getenv('suncet_data') + '/synthetic/level0_raw/fits/config_default.fits'
+        filename = os.getenv('suncet_data') + '/synthetic/level0_raw/fits/config_default_OBS_2023-02-14T17:00:00.000.fits'
         map = sunpy.map.Map(filename)
         return sunpy.map.MapSequence(map)
 
