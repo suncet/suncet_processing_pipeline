@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 ## [Unreleased]
 
 ### Added
-* Nothing yet
+* Basic conversion from binary telemetry to engineering units -- but for example data from CTIM, until we get our first example data from SunCET. Only for beacon packet for now. 
 
 ### Changed
 * Nothing yet
