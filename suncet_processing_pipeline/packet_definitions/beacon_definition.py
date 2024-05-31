@@ -1,3 +1,7 @@
+# Copyright 2017, 2018, 2019, 2020 Daniel Estevez <daniel@destevez.net>
+# Copyright 2022 The Regents of the University of Colorado
+# Adapted by James Mason in 2024
+
 from satellites.telemetry.ax25 import Header
 from satellites.ccsds import space_packet as ccsds_space_packet
 from satellites.adapters import PolynomialAdapter
