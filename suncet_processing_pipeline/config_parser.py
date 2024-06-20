@@ -15,12 +15,17 @@ class Config:
             raise Exception('Config file does not exist or path is incorrect.')
 
         # behavior
-        self.example_behavior = config['behavior'].getboolean('example_behavior')
+        self.make_level0_5 = config['behavior'].getboolean('make_level0_5')
+        self.make_level1 = config['behavior'].getboolean('make_level1')
+        self.make_level2 = config['behavior'].getboolean('make_level2')
+        self.make_level3 = config['behavior'].getboolean('make_level3')
+        self.make_level4 = config['behavior'].getboolean('make_level4')
 
         # limits
         self.example_limit = json.loads(config.get('limits', 'example_limit')) * u.Angstrom
 
         # structure
+        self.version = config['structure']['version']
         self.base_metadata_filename = config['structure']['base_metadata_filename']
         self.data_root_path = config['structure']['data_root_path']
 

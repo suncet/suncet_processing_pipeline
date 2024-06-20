@@ -10,33 +10,38 @@ import numpy as np
 import sunpy.map
 from scipy import ndimage, interpolate
 from suncet_processing_pipeline import config_parser
-from suncet_processing_pipeline.suncet_processor import Processor
 
 
-class Level1(Processor):
-    def __init__(self, config_filename=os.getcwd() + '/suncet_processing_pipeline/config_files/config_default.ini'):
-        super().__init__()
-        self.config = self.__read_config(config_filename)
-
+class Level1:
+    def __init__(self, config):
+        self.config = config
         # self.metadata = self.__load_metadata_from_level0_5()
 
     
     def __load_metadata_from_level0_5(self):
          pass
 
-    def __read_config(self, config_filename):
-        return config_parser.Config(config_filename)
 
-    def make(self, version='1.0.0', path=None, filenames=None): 
-        if path is not None: 
-            filenames = glob(path + '/*.fits')
-        if filenames is None: 
-            raise ValueError('Need to provide either path to files or filenames that you want to process.')
-        filenames = os.getenv('suncet_data') + '/synthetic/level0_raw/fits/config_default_OBS_2023-02-14T17:00:00.000.fits' # Hack to get synthetic  image
+    def make(self, level0_5_to_process=None): 
+        if level0_5_to_process is None: 
+        #    raise ValueError('Need to provide either path to files (string) or list of filenames that you want to process.') # FIXME: uncomment this once we don't need the hack to get a synthetic image
+            pass
+        if isinstance(level0_5_to_process, list):
+            filenames = level0_5_to_process
+        elif isinstance(level0_5_to_process, str):
+            filenames = glob(os.path.join(level0_5_to_process, '*.fits'))
+        else: 
+            raise TypeError('Need to provide either path to files (string) or list of filenames that you want to process.')
+        
+        filenames = os.getenv('suncet_data') + '/synthetic/level0_raw/fits/config_default_OBS_2023-02-14T17:00:00.000_300.fits' # Hack to get synthetic image 
+        print("make_level1 is going to process the following input files:")
+        for file in filenames:
+            print(f"- {file}")
+
         level0_5 = self.__load_level0_5(filenames)
         
-        meta_filename = self.__make_metadata_filename(filenames, version)
-        self.save_metadata(filename=meta_filename)
+        meta_filename = self.__make_metadata_filename(filenames, self.config.version)
+        #self.save_metadata(filename=meta_filename)
 
         pass
 
