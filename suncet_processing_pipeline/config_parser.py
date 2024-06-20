@@ -27,7 +27,6 @@ class Config:
         # structure
         self.version = config['structure']['version']
         self.base_metadata_filename = config['structure']['base_metadata_filename']
-        self.data_root_path = config['structure']['data_root_path']
 
         # calibration
         self.calibration_path = config['calibration']['calibration_path']
