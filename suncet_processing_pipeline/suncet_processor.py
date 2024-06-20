@@ -8,12 +8,16 @@ import astropy.units as u
 import sunpy.map
 from astropy.io import fits
 from suncet_processing_pipeline import config_parser
+from suncet_processing_pipeline.make_level0_5 import Level0_5
+from suncet_processing_pipeline.make_level1 import Level1
 
 class Processor:
-    def __init__(self, config_filename=os.getcwd() + '/suncet_processing_pipeline/config_files/config_default.ini'):
-        self.config_filename = config_filename
+    def __init__(self, config_filename=None):
+        if config_filename is None: 
+            raise ValueError('It is important that you specify a path/filename to the config file you want to run with. That is your main method of interacting with the procesing.')
         self.config = self.__read_config(config_filename)
         self.metadata = self.__load_metadata_definition()
+
 
     def __read_config(self, config_filename):   
         return config_parser.Config(config_filename)
@@ -33,6 +37,17 @@ class Processor:
         self.metadata.to_csv(path + filename, index=False)
 
 
+    def run(self):
+        if self.config.make_level0_5:
+            level0_5 = Level0_5(self.config)
+            level0_5.run()
+
+        if self.config.make_level1:
+            level1 = Level1(self.config)
+            level1.make(level0_5_to_process=os.getenv('suncet_data') + 'level0_5/')
+        pass
+
+
 if __name__ == "__main__":
-    processor = Processor()
-    processor.run(version='1.0.0')
+    processor = Processor(config_filename=os.getcwd() + '/suncet_processing_pipeline/config_files/config_default.ini')
+    processor.run()

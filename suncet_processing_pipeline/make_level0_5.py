@@ -11,13 +11,9 @@ from suncet_processing_pipeline.packet_definitions import beacon_definition
 
 
 class Level0_5:
-    def __init__(self, config_filename=os.getcwd() + '/suncet_processing_pipeline/config_files/config_default.ini'):
-        self.config_filename = config_filename
-        self.config = self.__read_config(config_filename)
+    def __init__(self, config):
+        self.config = config
         self.level0 = self.__load_level0()
-
-    def __read_config(self, config_filename):   
-        return config_parser.Config(config_filename)
     
 
     def __load_level0(filename):
