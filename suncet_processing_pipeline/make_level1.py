@@ -190,7 +190,7 @@ class Level1:
 
     def __coarse_rotate(self, data, telemetry):
         """
-        A rotation by a factor of 90 degrees to ensure solar north is in the top quadrant.
+        A rotation by a factor of 90 degrees to ensure solar north is in the top quadrant. TODO: break apart angle calculation and rotation - move angle rotate into common space
         Updates the rotation metadata
 
         Parameters:
@@ -242,7 +242,7 @@ class Level1:
         # Convert angle from radians to degrees
         angle_deg = np.degrees(angle_rad)
 
-        # Determining the number of 90 deg rotations to keep solar north approximatly on the top of the matrix
+        # Determining the number of 90 deg rotations to keep solar north approximately on the top of the matrix
         k = np.round(angle_deg / 90)
 
         # TODO: update self.metadata rotation to indicate the number of rotations
