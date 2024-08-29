@@ -6,9 +6,12 @@ from glob import glob
 from pathlib import Path
 import astropy.units as u
 from astropy.io import fits
+from astropy.coordinates import ICRS, GCRS, Angle, get_sun
+from astropy.time import Time
 import numpy as np
 import sunpy.map
 from scipy import ndimage, interpolate
+from scipy.spatial.transform import Rotation as R
 from suncet_processing_pipeline import config_parser
 
 
@@ -17,10 +20,8 @@ class Level1:
         self.config = config
         # self.metadata = self.__load_metadata_from_level0_5()
 
-    
     def __load_metadata_from_level0_5(self):
          pass
-
 
     def make(self, level0_5_to_process=None): 
         if level0_5_to_process is None: 
@@ -45,7 +46,6 @@ class Level1:
 
         pass
 
-
     def __load_level0_5(self, filenames):
         # map_list = []
         # for file in filenames:
@@ -55,12 +55,10 @@ class Level1:
         level05_map = sunpy.map.Map(filenames)
         return level05_map
 
-
     def __make_metadata_filename(self, filename, version):
         filename_with_extension = os.path.basename(filename)
         base, extension = os.path.splitext(filename_with_extension)
         return f"{base}{'_metadata_v'}{version}{'.csv'}"
-
 
     def run(self):
         pass
@@ -165,7 +163,7 @@ class Level1:
 
     def detect_outliers(self, data, threshold=500):
         """
-        Detects pixels in the input 2D array that deviate significantly from their 8 nearest neighbors.
+        Detects pixels in the input 2D array that deviate significantly from their 8 nearest neighbors. TODO: may be worth moving to a more general library of tools"
 
         Parameters:
             data (numpy.ndarray): Input 2D array (image) containing pixel values.
@@ -189,6 +187,67 @@ class Level1:
         outlier_mask = deviation > threshold
 
         return outlier_mask
+
+    def __coarse_rotate_angle(self, data, telemetry):
+        """
+        A rotation by a factor of 90 degrees to ensure solar north is in the top quadrant.
+        Updates the rotation metadata
+
+        Parameters:
+            data (numpy.ndarray): Input 2D array (image) containing pixel values.
+            telemetry (dict): a dictionary of single point values from SunCET
+
+       Returns:
+           numpy.ndarray: 2D array (image) containing pixel values rotated to keep solar north in the top quadrant
+        """
+
+        # Define the observation time
+        observation_time = Time(telemetry['obs_time'], scale='utc')
+
+        # Calculate T (Julian centuries since J2000.0)
+        julian_centuries = (observation_time.jd - 2451545.0) / 36525
+
+        # Solar north's approximate RA and Dec in ICRS
+        ra_north = Angle(286.13 + 0.00694 * julian_centuries, unit=u.deg)
+        dec_north = Angle(63.87 - 0.00272 * julian_centuries, unit=u.deg)
+
+        # Create the solar north vector in ICRS coordinates
+        solar_north_icrs = ICRS(ra=ra_north, dec=dec_north)
+
+        # Convert this to the GCRS frame, which aligns closely with J2000 ECI
+        solar_north_gcrs = solar_north_icrs.transform_to(GCRS(obstime=observation_time))
+
+        solar_north_eci = np.array(solar_north_gcrs.cartesian.get_xyz())
+
+        # Quaternion spacecraft body vector
+        q_body_wrt_eci = [telemetry['adcs_att_det_q_body_wrt_eci1'], telemetry['adcs_att_det_q_body_wrt_eci2'],
+                          telemetry['adcs_att_det_q_body_wrt_eci3'], telemetry['adcs_att_det_q_body_wrt_eci4']]
+
+        # Convert the quaternion to a rotation matrix
+        q_body_rotation_matrix = R.from_quat(q_body_wrt_eci).as_matrix()
+
+        # Transform the solar north vector to the CubeSat body frame
+        solar_north_body = q_body_rotation_matrix @ solar_north_eci
+
+        # if the radiator is on -Y for cooling issues
+        if telemetry['plus_y_is_up']:
+            detector_north = np.array([0, 1, 0])  # y-axis in body frame
+        else:
+            detector_north = np.array([0, -1, 0])  # -y-axis in body frame
+
+        # Calculate the dot product and angle
+        dot_product = np.dot(solar_north_body, detector_north)
+        angle_rad = np.arccos(dot_product / (np.linalg.norm(solar_north_body) * np.linalg.norm(detector_north)))
+
+        # Convert angle from radians to degrees
+        angle_deg = np.degrees(angle_rad)
+
+        # Determining the number of 90 deg rotations to keep solar north approximatly on the top of the matrix
+        k = np.round(angle_deg / 90)
+
+        # TODO: update self.metadata rotation to indicate the number of rotations
+
+        return np.rot90(data, k)
 
 
 if __name__ == "__main__":
