@@ -188,7 +188,7 @@ class Level1:
 
         return outlier_mask
 
-    def __coarse_rotate_angle(self, data, telemetry):
+    def __coarse_rotate(self, data, telemetry):
         """
         A rotation by a factor of 90 degrees to ensure solar north is in the top quadrant.
         Updates the rotation metadata
