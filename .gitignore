@@ -1,3 +1,6 @@
+# Local working directories
+processing_runs/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
