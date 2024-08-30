@@ -23,7 +23,7 @@ $ python make_run.py --run-name MYRUN                   # this makes a directory
 
 $ cp TELEMEATARY_PATH/*.bin procesing_runs/MYRUN/input  # add input files
 
-$ python suncet_processing.py --run-name MYRUN          # begins processing the run and writes to sunset_data=processing_runs/NAME_OF_RUN/level{1,2,3}_output 
+$ python suncet_processing.py --run-name MYRUN          # begins processing the run and writes output
 
 $ cp processing_runs/MYRUN/level3/* /ftp/public/level3  # copy output data to export directory
 ```
