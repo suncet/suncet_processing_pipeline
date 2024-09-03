@@ -21,7 +21,7 @@ The code uses a lightweight run management system. First, a new run is created w
 ```
 $ python make_run.py --run-name MYRUN                   # this makes a directory processing_runs/MYRUN
 
-$ cp TELEMEATARY_PATH/*.bin procesing_runs/MYRUN/input  # add input files
+$ cp TELEMETRY_PATH/*.bin procesing_runs/MYRUN/input  # add input files
 
 $ python suncet_processor.py --run-name MYRUN          # begins processing the run and writes output
 
