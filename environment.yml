@@ -6,7 +6,6 @@ channels:
 dependencies:
   - pip >=22.1
   - python=3.10
-  - pytest=7.1
   - pytest-cov=3.0
   - numpy=1.22
   - matplotlib=3.5

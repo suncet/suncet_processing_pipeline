@@ -1,7 +1,7 @@
 # SunCET Data Processing Pipeline
 
 ## Instructions
-The SunCET Data Processing Pipeline is written in Python. To use the software, the first step is to clone the repository and install the dependencies. The dependencies may be installed through one of two routes. First, one may use the `environment.yml` file with [Anaconda](https://www.anaconda.com/) or a compatible replacement (such as [Miniconda](https://docs.anaconda.com/miniconda/), [Mamba](https://mamba.readthedocs.io/en/latest/) or [Micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html)). The `environment.yml` route only uses the free channels (conda-forge), which do not require a paid account. Alternatively, one can use the `requirements.txt` file directly with `pip`.
+The SunCET Data Processing Pipeline is written in Python. To use the software, the first step is to clone the repository and install the dependencies. The dependencies may be installed through one of two routes. First, one may use the `environment.yml` file with [Anaconda](https://www.anaconda.com/) or a compatible replacement (such as [Miniconda](https://docs.anaconda.com/miniconda/), [Mamba](https://mamba.readthedocs.io/en/latest/) or [Micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html)). The `environment.yml` route only uses the free channels (conda-forge), which do not require a paid account. Alternatively, one can use the `requirements.txt` file directly with `pip` (Python 3.9 and 3.10 only).
 
 To use the `environment.yml` route, run the following line. The `conda` command can be replaced with `mamba` or `micromamba` as needed.
 
