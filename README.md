@@ -34,6 +34,13 @@ To delete a run from disk, all thats needed is to delete its directory:
 $ rm -r processing_runs/MYRUN`
 ```
 
+## Running the tests
+To run the tests, run the following command from the top-level directory:
+
+```
+$ pytest -v
+```
+
 ## Discussion: Input
 * To get to Level 0b: Raw binary files downlinked from the spacecraft
 * To get to Level 0c, 1, and 2: the output of the preceding level
