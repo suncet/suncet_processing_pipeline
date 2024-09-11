@@ -9,7 +9,7 @@ The SunCET Data Processing Pipeline is written in Python. To use the software, t
 To use the `environment.yml` route, run the following line. The `conda` command can be replaced with `mamba` or `micromamba` as needed.
 
 ```
-$ conda env create -f environment.yml`
+$ conda env create -f environment.yml
 $ conda activate suncet
 ```
 	
