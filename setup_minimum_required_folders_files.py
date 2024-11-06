@@ -6,6 +6,7 @@ import urllib.request
 from urllib.parse import urlparse
 import ssl
 import sys
+import re
 from termcolor import cprint
 
 # URL to synthetic level 1 fits file on dropbox
@@ -40,16 +41,26 @@ def run():
     # Save SunCET Metatadata
     if args.live_metadata:
         url = SUNCET_METADATA_LIVE_URL
+        metadata_version = 'live'
         print("Using 'live' version of metadata from Google Drive")
     else:
         url = SUNCET_METADATA_FROZEN_URL
+        metadata_version = find_metadata_version(url)
         print("Using 'frozen' version of metadata from Dropbox")
 
+
+    # Setup output paths
     metadata_path = Path(run_dir) / 'suncet_metadata_definition.csv'
+    metadata_ver_path = Path(run_dir) / 'suncet_metadata_definition_version.csv'
+    
     metadata_path.parent.mkdir(parents=True, exist_ok=True)    
-
+        
     download_file(url, metadata_path)
-
+    with open(metadata_ver_path, 'w') as fh:
+        cprint('Writing metadata version: ', 'green', end='')
+        print(metadata_version)
+        fh.write(metadata_version)
+    
     # Print message tht all completed successfully
     print("All Downloads completed successfully")
 
@@ -68,8 +79,8 @@ def download_file(url, out_path):
 
     with open(out_path, "wb") as fh:
         cprint(f'downloading file:', 'green')
-        cprint(f'  url = {url}', 'green')
-        cprint(f'  writing = {out_path}', 'green')
+        print(f'  url = {url}')
+        print(f'  output path = {out_path}')
         fh.write(data)
 
         
@@ -100,5 +111,35 @@ def get_parser():
     return parser
 
 
+def find_metadata_version(url):
+    """Determine the Metadata Version from the filename in a URL.
+
+    If cannot determine, prints an error message and returns "unknown".    
+
+    Args
+      url: URL to file, e.g. on dropbox
+    Returns
+      string version such as "v1.1.0" or "unknown" if could not determine.
+    """
+    # Expects URLs like https://www.dropbox.com/scl/fi/rbe7vm3sha9mbloek1iio/suncet_metadata_
+    # definition_v1.0.0.csv?rlkey=mswa2lvdrvbb9o1rer1z60p2x&dl=1
+    match = re.search(r'_v(.*)\.csv', url)
+
+    if match:
+        # e.g. 1.1.0 
+        version = (
+            match
+            .group(0)
+            .replace('_v', '')
+            .replace('.csv', '')
+        )
+    else:
+        cprint('Could not determine version of metadata from URL; setting as "unknown"', 'red')
+        version = 'unknown'
+
+    return version
+
+
 if __name__ == "__main__":
     run()
+
