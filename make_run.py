@@ -31,13 +31,16 @@ def main():
     for subdir in subdirs:
         subdir_path = os.path.join(run_dir, subdir)
         os.mkdir(subdir_path)
-        cprint(f"  Sub-directory {subdir_path} created", "green")
+        print(f"  Sub-directory ", end="")
+        cprint(subdir_path, "yellow", end=" ")
+        print("created")
 
     # Copy the default config.ini
     config_path = os.path.join(run_dir, 'config.ini')
     
     shutil.copy('suncet_processing_pipeline/config_files/config_default.ini', config_path)
-    cprint(f"Copied {config_path}", "green")
+    print(f"Copied ", end="")
+    cprint(config_path, "yellow")
 
     # Print final message stating success
     print("Run creation completed successfully")
