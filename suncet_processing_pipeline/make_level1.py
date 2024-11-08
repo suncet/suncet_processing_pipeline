@@ -19,7 +19,7 @@ class Level1:
     def __init__(self, config):
         self.config = config
         # self.metadata = self.__load_metadata_from_level0_5()
-        self.cosmic_rays = np.array()
+        self.cosmic_rays = np.array([]) #TODO: figure out how to save removed cosmic rays.
 
     def __load_metadata_from_level0_5(self):
          pass
