@@ -3,12 +3,14 @@ This is the code to make the Level 1 data product.
 """
 import os
 from glob import glob
+import copy
 from pathlib import Path
 import astropy.units as u
 from astropy.io import fits
 import numpy as np
 import sunpy.map
 from scipy import ndimage, interpolate
+from pykdtree.kdtree import KDTree
 from suncet_processing_pipeline import suncet_utility as utilities
 from suncet_processing_pipeline import config_parser
 
@@ -17,6 +19,7 @@ class Level1:
     def __init__(self, config):
         self.config = config
         # self.metadata = self.__load_metadata_from_level0_5()
+        self.cosmic_rays = np.array()
 
     def __load_metadata_from_level0_5(self):
          pass
@@ -127,7 +130,7 @@ class Level1:
 
     def __cosmic_ray_removal(self, input_map):
         """
-        Interpolates over bad pixels in the input image using bicubic interpolation if the config file has
+        Interpolates over bad pixels in the input image using linear interpolation if the config file has
         cosmic_ray_removal set to True.
 
         Parameters:
@@ -138,7 +141,7 @@ class Level1:
         """
         if self.config.cosmic_ray_removal:
 
-            outlier_mask = utilities.detect_outliers(input_map.data, 500)
+            outlier_mask = utilities.detect_outliers(input_map.data, 20)
 
             # Create coordinate grid for good pixels
             y, x = np.indices(input_map.data.shape)
@@ -150,16 +153,33 @@ class Level1:
             # Coordinates of bad pixels
             bad_pixel_coords = np.column_stack((y[outlier_mask], x[outlier_mask]))
 
-            # Perform bicubic interpolation over bad pixels
-            interpolated_values = interpolate.griddata(good_pixel_coords, good_pixel_values, bad_pixel_coords, method='cubic')
+            # Build the kdTree
+            tree = KDTree(good_pixel_coords)
+
+            # Query the nearest neighbors for the bad pixel coordinates
+            distances, indices = tree.query(bad_pixel_coords, k=4)  # k=4 nearest neighbors
+
+            # Retrieve the coordinates and values of the 4 nearest neighbors
+            neighbor_coords = good_pixel_coords[indices]
+            neighbor_values = good_pixel_values[indices]
+
+            # Compute bilinear weights based on the inverse of the distances
+            weights = 1 / (distances + 1e-12)  # Avoid division by zero
+            weights /= np.sum(weights, axis=1, keepdims=True)
+
+            # Compute the linear interpolated values as a weighted sums
+            interpolated_values = np.sum(weights * neighbor_values, axis=1)
+
+            # A slow cubic interpolation at the `bad_pixel_coords` points
+            # interpolated_values = interpolate.griddata(good_pixel_coords, good_pixel_values, bad_pixel_coords, method='cubic')
 
             # Replace bad pixel values with interpolated values
-            cosmic_ray_corrected_map = input_map
-            cosmic_ray_corrected_map.data[outlier_mask] = interpolated_values
+            cosmic_ray_corrected_data = copy.deepcopy(input_map.data)
+            cosmic_ray_corrected_data[bad_pixel_coords[:, 0], bad_pixel_coords[:, 1]] = interpolated_values
         else:
-            cosmic_ray_corrected_map = input_map
+            cosmic_ray_corrected_data = input_map.data.copy()
 
-        return cosmic_ray_corrected_map
+        return sunpy.map.Map(cosmic_ray_corrected_data, input_map.meta.copy())
 
     def __coarse_rotate(self, data, telemetry):
         """
