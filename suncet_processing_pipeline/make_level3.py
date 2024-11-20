@@ -9,8 +9,8 @@ import h5netcdf
 import numpy as np
 from termcolor import cprint
 
-import configparser
-import metadata_mgr 
+from . import config_parser
+from . import metadata_mgr 
 
 
 class Level3:
@@ -134,7 +134,7 @@ def main():
 
     # Load config
     config_filename = Path('processing_runs') / args.run_name / 'config.ini'
-    config = configparser.ConfigParser()
+    config = config_parser.ConfigParser()
     config.read(config_filename)
 
     # Call run() method on Level3 class
