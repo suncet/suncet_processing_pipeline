@@ -9,13 +9,13 @@ from scipy import ndimage
 from scipy.spatial.transform import Rotation as R
 
 
-def detect_outliers(data, threshold=500):
+def detect_outliers(data, threshold=2):
     """
     Detects pixels in the input 2D array that deviate significantly from their 8 nearest neighbors.
 
     Parameters:
         data (numpy.ndarray): Input 2D array (image) containing pixel values.
-        threshold (float): Threshold for deviation from neighbors. Pixels deviating
+        threshold (float): Relative Threshold for deviation from neighbors. Pixels deviating
                           more than this threshold are considered outliers.
 
     Returns:
@@ -28,8 +28,9 @@ def detect_outliers(data, threshold=500):
     # Use a median filter to calculate median value of neighbors
     median = ndimage.median_filter(data, footprint=kernel, mode='reflect')
 
-    # Calculate absolute deviation of each pixel from its 8 neighbors' median
-    deviation = np.abs(data - median)
+    # Calculate relative deviation of each pixel from its 8 neighbors' median
+    # Avoid division by zero by replacing zero median with a small value
+    deviation = np.abs((data - median)/(median + 1e-12))
 
     # Create a boolean mask for pixels deviating more than the threshold
     outlier_mask = deviation > threshold
