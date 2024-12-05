@@ -9,8 +9,13 @@ import netCDF4
 import numpy as np
 from termcolor import cprint
 
-import config_parser
-import metadata_mgr 
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+
+from suncet_processing_pipeline import (
+    config_parser, metadata_mgr
+)
 
 
 class Level3:
