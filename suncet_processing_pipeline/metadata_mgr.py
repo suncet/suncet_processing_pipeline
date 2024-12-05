@@ -55,7 +55,8 @@ class MetadataManager:
         # Ensure variable is in the metadata dictionary
         if internal_name not in self._metadata_dict:
             raise RuntimeError(
-                f"Could not find metadata for variable with internal name '{internal_name}'"
+                f"Could not find metadata for variable with "
+                f"internal name '{internal_name}'"
             )
 
         # Get the variable name, raising Exception if its not filled out in the
@@ -64,12 +65,37 @@ class MetadataManager:
 
         if not var_name:
             raise RuntimeError(
-                'Needed NetCDF variable name for internal name "{internal_name}", but missing'
+                f"Needed NetCDF variable name for internal name "
+                f"{internal_name}\", but missing"
             )
 
         # Return good result
         return var_name
+
+    def get_netcdf4_dimension_names(self, internal_name):
+        """Get tuple of dimension names for the given variable.
         
+        Args
+          internal_name: Internal name of variable (within code)
+        Returns
+          tuple of dimension names
+        """
+        # Ensure variable is in the metadata dictionary
+        if internal_name not in self._metadata_dict:
+            raise RuntimeError(
+                f"Could not find metadata for variable with internal name "
+                f"'{internal_name}'."
+            )
+        # Load variable dict and return subset of keys that are relevant        
+        var_dict = self._metadata_dict[internal_name]
+        dim_csv = var_dict['netCDF dimensions']
+        
+        if dim_csv:        
+            return tuple(dim_csv.split(','))
+        else:
+            return tuple()  # empty tuple
+    
+    
     def get_netcdf4_attrs(self, internal_name):
         """Get dictionary of static NetCDF4 attributes for a given variable.
 
