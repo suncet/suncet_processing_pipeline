@@ -38,9 +38,22 @@ class Level3:
         """Main method to process the level2 -> level3 stage."""
         # Load metadata
         metadata = metadata_mgr.MetadataManager(self.run_dir)
-
-        # Start NetCDF File
+        
+        # Write NetCDF output
         nc_output_path = self.run_dir / 'level3' / 'suncet_level3.nc'
+        self._write_nc_file(nc_output_path, metadata)
+
+        # Write Zarr output in zip file using NetCDF library. This requires
+        # a custom file:// string
+        zarr_output_path = 'file://' + str(
+            self.run_dir / 'level3' / 'suncet_level3.zarr#mode=nczarr,zip'
+        )
+        self._write_nc_file(zarr_output_path, metadata)
+        
+    def _write_nc_file(self, nc_output_path, metadata):
+        print(f'Writing {nc_output_path}')
+        
+        # Start NetCDF File
         nc = Level3NetCDFWriter(nc_output_path, metadata)
 
         # placeholder, TODO check real image size    
