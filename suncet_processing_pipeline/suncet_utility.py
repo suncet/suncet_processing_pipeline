@@ -95,3 +95,18 @@ def detector_angle(telemetry, degrees=True):
         suncet_angle = angle_rad
 
     return suncet_angle
+
+def CROTA_2_WCSrotation_matrix(crota2, decimals=6):
+    """
+    converts from the Rotation of the horizontal and vertical axes in the xy-plane to WCS coordinate rotation matrix.
+    :param crota2: degree rotation of the xy coordinate plane
+    :param decimals: Number of decimals to keep for finite precision
+    :return: pc1_1, pc1_2, pc2_1, pc2_2
+    """
+
+    pc1_1 = np.round(np.cos(np.deg2rad(crota2)), decimals=decimals)
+    pc1_2 = np.round(-1 * np.sin(np.deg2rad(crota2)), decimals=decimals)
+    pc2_1 = np.round(np.sin(np.deg2rad(crota2)), decimals=decimals)
+    pc2_2 = np.round(np.cos(np.deg2rad(crota2)), decimals=decimals)
+
+    return pc1_1, pc1_2, pc2_1, pc2_2
