@@ -181,6 +181,7 @@ class Level1:
             corrected_values = cosmic_ray_corrected_data[row_indices, col_indices]
             index_1d_ravel = np.ravel_multi_index((row_indices, col_indices), input_map.data.shape)
 
+            # Set cosmic ray output file (1d location, removed spike value, interpolated spike value)
             self.cosmic_rays = np.column_stack((index_1d_ravel, removed_values, corrected_values))
         else:
             cosmic_ray_corrected_data = input_map.data.copy()
@@ -205,6 +206,7 @@ class Level1:
         # Determining the number of 90 deg rotations to keep solar north approximately on the top of the matrix
         k = np.round(angle_deg / 90)
 
+        # Update metadata dictionary
         self.metadata.coord_sys_rotation = k * 90.
         self.metadata.wcs_rot_pc11, self.metadata.wcs_rot_pc12, self.metadata.wcs_rot_pc21, self.metadata.wcs_rot_pc22 = \
             (utilities.CROTA_2_WCSrotation_matrix(k * 90.))
