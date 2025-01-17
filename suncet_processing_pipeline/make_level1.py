@@ -199,7 +199,9 @@ class Level1:
         # Determining the number of 90 deg rotations to keep solar north approximately on the top of the matrix
         k = np.round(angle_deg / 90)
 
-        # TODO: update self.metadata rotation to indicate the number of rotations
+        self.metadata.coord_sys_rotation = k * 90.
+        self.metadata.wcs_rot_pc11, self.metadata.wcs_rot_pc12, self.metadata.wcs_rot_pc21, self.metadata.wcs_rot_pc22 = \
+            (utilities.CROTA_2_WCSrotation_matrix(k * 90.))
 
         return np.rot90(data, k)
 
