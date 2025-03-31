@@ -80,7 +80,15 @@ class FitsMetadataManager:
         """        
         self._metadata_values.update(metadata_values)
 
-    def generate_fits_header(self, fits_file):        
+    def generate_fits_header(self, fits_file):
+        """Add a FITS header to an open fits file using metadata values
+        which have been supplied.
+
+        Args
+           fits_file: object returned by fits.open()
+        See also:
+           load_from_dict() to add metadata values
+        """
         # Build list of things to write, organized by the groups they are
         # in with care to preserve their order
         vars_with_values = set(self._metadata_values.keys())
@@ -92,9 +100,11 @@ class FitsMetadataManager:
             if len(set(group_variables) & vars_with_values) == 0:
                 continue
 
+            # Add group line for this block
             to_write.append((counter, 'COMMENT', group_name.center(72, '-')))
             counter += 1
-            
+
+            # Add variables under this group
             for group_var in group_variables:
                 if group_var in vars_with_values:
                     name = self._metadata_dict[group_var]['FITS variable name']
