@@ -16,7 +16,9 @@ SYNTHETIC_LEVEL1_URL = 'https://www.dropbox.com/scl/fi/udcemchdku67mjhawfa7b/con
 SUNCET_METADATA_FROZEN_URL = 'https://www.dropbox.com/scl/fi/rbe7vm3sha9mbloek1iio/suncet_metadata_definition_v1.0.0.csv?rlkey=mswa2lvdrvbb9o1rer1z60p2x&dl=1'
 
 # URL to live SunCET metadata file, or development
-SUNCET_METADATA_LIVE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSBYimlrLlhl04mQ-mYZnu6j9aK6sbEzEEMqPuFhK_Qavy3skMpmv9mmzGyGf-msVxARAmIjI-tc8Mh/pub?output=csv'
+SUNCET_METADATA_FITS_LIVE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSBYimlrLlhl04mQ-mYZnu6j9aK6sbEzEEMqPuFhK_Qavy3skMpmv9mmzGyGf-msVxARAmIjI-tc8Mh/pub?gid=0&single=true&output=csv'
+
+SUNCET_METADATA_NETCDF_ZARR_LIVE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSBYimlrLlhl04mQ-mYZnu6j9aK6sbEzEEMqPuFhK_Qavy3skMpmv9mmzGyGf-msVxARAmIjI-tc8Mh/pub?gid=2088748176&single=true&output=csv'
 
 
 def run():
@@ -39,23 +41,32 @@ def run():
     download_file(SYNTHETIC_LEVEL1_URL, synthetic_path)
 
     # Save SunCET Metatadata
+    metadata_fits_path = Path(run_dir) / 'suncet_metadata_definition_fits.csv'
+    metadata_nczarr_path = Path(run_dir) / 'suncet_metadata_definition_nczarr.csv'
+
     if args.live_metadata:
-        url = SUNCET_METADATA_LIVE_URL
+        
+        to_download = {
+            SUNCET_METADATA_FITS_LIVE_URL: metadata_fits_path,
+            SUNCET_METADATA_NETCDF_ZARR_LIVE_URL: metadata_nczarr_path,
+
+        }
         metadata_version = 'live'
         print("Using 'live' version of metadata from Google Drive")
     else:
-        url = SUNCET_METADATA_FROZEN_URL
-        metadata_version = find_metadata_version(url)
+        to_download = {
+            SUNCET_METADATA_FROZEN_URL: metadata_fits_path,
+        }
+        metadata_version = find_metadata_version(SUNCET_METADATA_FROZEN_URL)
         print("Using 'frozen' version of metadata from Dropbox")
 
-
     # Setup output paths
-    metadata_path = Path(run_dir) / 'suncet_metadata_definition.csv'
-    metadata_ver_path = Path(run_dir) / 'suncet_metadata_definition_version.csv'
-    
-    metadata_path.parent.mkdir(parents=True, exist_ok=True)    
-        
-    download_file(url, metadata_path)
+    metadata_ver_path = Path(run_dir) / 'suncet_metadata_definition_version.txt'
+    Path(run_dir).mkdir(parents=True, exist_ok=True) 
+
+    for url, metadata_path in to_download.items():        
+        download_file(url, metadata_path)
+
     with open(metadata_ver_path, 'w') as fh:
         cprint('Writing metadata version: ', 'green', end='')
         print(metadata_version)
