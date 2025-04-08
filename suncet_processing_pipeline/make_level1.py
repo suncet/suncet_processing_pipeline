@@ -18,8 +18,8 @@ from suncet_processing_pipeline import config_parser
 class Level1:
     def __init__(self, config):
         self.config = config
-        # self.metadata = self.__load_metadata_from_level0_5()
-        self.cosmic_rays = np.array([]) #TODO: figure out how to save removed cosmic rays.
+        self.metadata = self.__load_metadata_from_level0_5()
+        self.cosmic_rays = np.array([])
 
     def __load_metadata_from_level0_5(self):
          pass
@@ -71,14 +71,13 @@ class Level1:
 
         level05_map = self.__load_level0_5(filename)
 
-        dark_corrected = self.__dark_correction(self, level05_map,
-                                                os.path.join(self.config.calibration_path, self.config.dark_filename))
-        flat_corrected = self.__flat_correction(self, dark_corrected,
-                                                os.path.join(self.config.calibration_path, self.config.flat_filename))
-        badpixel_corrected = self.__badpixel_removal(self, flat_corrected,
-                                                     os.path.join(self.config.calibration_path, self.config.badpix_filename))
-        outlier_mask = self.detect_outliers(badpixel_corrected.data)
-        cosmic_ray_corrected = self.__cosmic_ray_removal(self, badpixel_corrected, outlier_mask)
+        dark_corrected = self.__dark_correction(level05_map, os.path.join(self.config.calibration_path,
+                                                                          self.config.dark_filename))
+        flat_corrected = self.__flat_correction(dark_corrected, os.path.join(self.config.calibration_path,
+                                                                             self.config.flat_filename))
+        badpixel_corrected = self.__badpixel_removal(flat_corrected, os.path.join(self.config.calibration_path,
+                                                                                  self.config.badpix_filename))
+        cosmic_ray_corrected = self.__cosmic_ray_removal(badpixel_corrected)
 
         basic_map = cosmic_ray_corrected
 
@@ -142,6 +141,8 @@ class Level1:
         if self.config.cosmic_ray_removal:
 
             outlier_mask = utilities.detect_outliers(input_map.data, 20)
+            row_indices, col_indices = np.where(outlier_mask)
+            removed_values = input_map.data[row_indices, col_indices]
 
             # Create coordinate grid for good pixels
             y, x = np.indices(input_map.data.shape)
@@ -176,6 +177,12 @@ class Level1:
             # Replace bad pixel values with interpolated values
             cosmic_ray_corrected_data = copy.deepcopy(input_map.data)
             cosmic_ray_corrected_data[bad_pixel_coords[:, 0], bad_pixel_coords[:, 1]] = interpolated_values
+
+            corrected_values = cosmic_ray_corrected_data[row_indices, col_indices]
+            index_1d_ravel = np.ravel_multi_index((row_indices, col_indices), input_map.data.shape)
+
+            # Set cosmic ray output file (1d location, removed spike value, interpolated spike value)
+            self.cosmic_rays = np.column_stack((index_1d_ravel, removed_values, corrected_values))
         else:
             cosmic_ray_corrected_data = input_map.data.copy()
 
@@ -199,7 +206,10 @@ class Level1:
         # Determining the number of 90 deg rotations to keep solar north approximately on the top of the matrix
         k = np.round(angle_deg / 90)
 
-        # TODO: update self.metadata rotation to indicate the number of rotations
+        # Update metadata dictionary
+        self.metadata.coord_sys_rotation = k * 90.
+        self.metadata.wcs_rot_pc11, self.metadata.wcs_rot_pc12, self.metadata.wcs_rot_pc21, self.metadata.wcs_rot_pc22 = \
+            (utilities.CROTA_2_WCSrotation_matrix(k * 90.))
 
         return np.rot90(data, k)
 
