@@ -1,5 +1,13 @@
-"""
+"""Metadata Management Classes
 
+Usage:
+
+   metadata = metadata_mgr.FitsMetadataManager(self.run_dir)
+   metadata.load_from_dict({
+      ...
+   })
+        
+   metadata.generate_fits_header(fits_file)
 """
 import pandas as pd
 from pathlib import Path
@@ -63,7 +71,6 @@ class FitsMetadataManager:
         # Convert metadata df to dictionary mapping internal name to dictionary
         # of spreadsheet's columns to cell contents
         self._metadata_dict = _get_metadata_dict(self._df_metadata)
-
         
         # Define variable that will be used to store values. Maps internal name
         # to values
