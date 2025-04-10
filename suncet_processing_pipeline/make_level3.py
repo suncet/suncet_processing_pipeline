@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from suncet_processing_pipeline import (
-    config_parser, metadata_mgr
+    config_parser, metadata_managers
 )
 
 
@@ -37,7 +37,7 @@ class Level3:
     def run(self):
         """Main method to process the level2 -> level3 stage."""
         # Load metadata and add values
-        metadata = metadata_mgr.FitsMetadataManager(self.run_dir)
+        metadata = metadata_managers.FitsMetadataManager(self.run_dir)
         metadata.load_from_dict({
             "project_name": "SunCET",
             "data_title": "SunCET Level 1 Image",
