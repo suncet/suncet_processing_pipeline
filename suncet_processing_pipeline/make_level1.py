@@ -12,6 +12,7 @@ import sunpy.map
 from scipy import ndimage, interpolate
 from pykdtree.kdtree import KDTree
 from suncet_processing_pipeline import suncet_utility as utilities
+from sunkit_image.utils.noise_estimation import noise_estimate
 from suncet_processing_pipeline import config_parser
 
 
@@ -212,6 +213,128 @@ class Level1:
             (utilities.CROTA_2_WCSrotation_matrix(k * 90.))
 
         return np.rot90(data, k)
+
+    def __create_exposure_time_mask(self, image_data): #TODO check composite image dimensions expected
+        """
+        Create an exposure time mask matching the shape of image_data.
+
+        Parameters:
+        -----------
+        image_data : np.ndarray
+            Composite image data, shape can be (n_sections, height, width) or (height, width)
+
+        Returns:
+        --------
+        np.ndarray
+            Exposure time mask with the same shape as image_data.
+        """
+        telapse = self.metadata.TELAPSE
+
+        if image_data.ndim == 3:
+            telapse = np.asarray(telapse)
+            if telapse.size != image_data.shape[0]:
+                raise ValueError("Length of TELAPSE does not match number of image sections.")
+            # Broadcast exposure times across height and width
+            exposure_mask = telapse[:, None, None] * np.ones_like(image_data)
+        elif image_data.ndim == 2:
+            # Single-section image: broadcast scalar or single-element array
+            exposure_mask = np.full_like(image_data, telapse, dtype=float)
+        else:
+            raise ValueError("Unsupported image_data shape: must be 2D or 3D array.")
+
+        return exposure_mask
+
+    def __convert_to_DN(self, image_data):
+        """
+        Convert image data to DN by dividing each pixel by its exposure time.
+
+        Parameters:
+        -----------
+        image_data : np.ndarray
+            Composite image data, expected to be 2D or 3D
+
+        Returns:
+        --------
+        np.ndarray
+            Image data converted to DN.
+        """
+        exposure_mask = self.__create_exposure_time_mask(image_data)
+        return image_data / exposure_mask
+
+def __compute_1AU_scaling_factor(self): #TODO decide where this belongs in the meta data
+    """
+    Compute a scaling factor to adjust image intensity to 1 AU distance.
+
+    Returns:
+    --------
+    float
+        Multiplicative scaling factor to adjust observed intensity to what it would be at 1 AU.
+    """
+    AU_METERS = 1.496e11  # 1 AU in meters
+    dsun_obs = self.metadata.DSUN_OBS
+
+    if dsun_obs is None or dsun_obs <= 0:
+        raise ValueError("Invalid DSUN_OBS value: must be a positive number in meters.")
+
+    # Inverse-square law: intensity ∝ 1 / distance^2 → scale by (AU / dsun_obs)^2
+    scaling_factor = (AU_METERS / dsun_obs) ** 2
+    return scaling_factor
+
+
+def parameterize_noise(self, image_data, n_regions=9, region_size=64): #TODO test for desired outputs
+    """
+    Estimate image noise sigma in representative regions and store results in metadata.
+
+    Parameters:
+    -----------
+    image_data : np.ndarray
+        2D or 3D array representing image(s).
+    n_regions : int
+        Total number of regions to sample (must be a perfect square for grid).
+    region_size : int
+        Size of square region in pixels for each sample.
+
+    Stores:
+    -------
+    self.metadata.noise_map : dict
+        Dictionary with region locations and corresponding noise sigma estimates.
+    """
+    if image_data.ndim == 3:
+        # Average over sections to get a representative 2D image
+        image = np.mean(image_data, axis=0)
+    elif image_data.ndim == 2:
+        image = image_data
+    else:
+        raise ValueError("Unsupported image_data shape: must be 2D or 3D.")
+
+    height, width = image.shape
+    noise_map = {}
+    grid_dim = int(np.sqrt(n_regions))
+    if grid_dim ** 2 != n_regions:
+        raise ValueError("n_regions must be a perfect square (e.g., 9, 16, 25).")
+
+    step_y = height // grid_dim
+    step_x = width // grid_dim
+
+    for i in range(grid_dim):
+        for j in range(grid_dim):
+            y0 = i * step_y + (step_y - region_size) // 2
+            x0 = j * step_x + (step_x - region_size) // 2
+
+            # Ensure boundaries are within the image
+            y0 = max(0, min(y0, height - region_size))
+            x0 = max(0, min(x0, width - region_size))
+
+            region = image[y0:y0 + region_size, x0:x0 + region_size]
+            sigma = noise_estimate(region)
+
+            noise_map[(i, j)] = {
+                "center": (y0 + region_size // 2, x0 + region_size // 2),
+                "sigma": float(sigma)
+            }
+
+    self.metadata.noise_map = noise_map
+
 
 
 if __name__ == "__main__":
