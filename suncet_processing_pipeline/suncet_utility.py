@@ -4,6 +4,9 @@ Helper functions for the processing pipeline
 import astropy.units as u
 from astropy.coordinates import ICRS, GCRS, Angle
 from astropy.time import Time
+from astropy.io import fits
+from astropy.io.fits.verify import VerifyError
+import sunpy.map
 import numpy as np
 from scipy import ndimage
 from scipy.spatial.transform import Rotation as R
@@ -110,3 +113,32 @@ def CROTA_2_WCSrotation_matrix(crota2, decimals=6):
     pc2_2 = np.round(np.cos(np.deg2rad(crota2)), decimals=decimals)
 
     return pc1_1, pc1_2, pc2_1, pc2_2
+
+def save_to_fits(smap, filename, metadata_dict=None):
+    """
+    Save a SunPy Map to a FITS file, optionally including extra metadata.
+
+    Parameters:
+    -----------
+    smap : sunpy.map.Map
+        The SunPy map object containing image data and metadata.
+    filename : str
+        Path where the FITS file will be written.
+    metadata_dict : dict, optional
+        Dictionary of additional FITS-compatible metadata to add to the header.
+        Only scalar types (str, int, float, bool) will be written.
+    """
+    header = smap.meta.copy()
+    data = smap.data
+
+    if metadata_dict: #TODO verify functionality with new metadata class
+        for key, value in metadata_dict.items():
+            if isinstance(value, (str, int, float, bool)):
+                fits_key = key.upper()[:8]
+                try:
+                    header[fits_key] = value
+                except (ValueError, TypeError, VerifyError) as e:
+                    print(f"Warning: Could not add '{fits_key}' to header: {e}")
+
+    hdu = fits.PrimaryHDU(data=data, header=fits.Header(header))
+    hdu.writeto(filename, overwrite=True)
