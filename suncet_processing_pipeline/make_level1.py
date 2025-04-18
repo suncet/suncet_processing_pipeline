@@ -12,7 +12,7 @@ import sunpy.map
 from scipy import ndimage, interpolate
 from pykdtree.kdtree import KDTree
 from suncet_processing_pipeline import suncet_utility as utilities
-from sunkit_image.utils.noise_estimation import noise_estimate
+from sunkit_image.utils import noise_estimation
 from suncet_processing_pipeline import config_parser
 
 
@@ -326,7 +326,7 @@ def parameterize_noise(self, image_data, n_regions=9, region_size=64): #TODO tes
             x0 = max(0, min(x0, width - region_size))
 
             region = image[y0:y0 + region_size, x0:x0 + region_size]
-            sigma = noise_estimate(region)
+            sigma = noise_estimation(region)
 
             noise_map[(i, j)] = {
                 "center": (y0 + region_size // 2, x0 + region_size // 2),
