@@ -45,18 +45,50 @@ class Level3:
         
         # Write fits file
         fits_path = self.run_dir / 'level3' / 'output.fits'
-        fits_file = fits.open(fits_path, "append")
 
+        if fits_path.exists():
+            fits_path.unlink()
+
+        fits_file = fits.open(fits_path, "append")
+        
         image_data = np.zeros((1024, 1024), dtype=np.uint16)
         hdu = fits.ImageHDU(image_data)
         fits_file.append(hdu)
 
         metadata.generate_fits_header(fits_file)
 
-        print(f'Wrote to {fits_path}')
+        cprint(f'Wrote to {fits_path}', 'green')
         print()
         print(repr(fits_file[0].header))
-    
+
+        fits_file.close()
+
+        print()
+        
+        # Test loading metadata from FITS
+        cprint('Starting new FITS file', 'green')
+
+        metadata_new = metadata_managers.FitsMetadataManager(self.run_dir)
+        metadata_new.load_from_fits(fits_path)
+
+        print('Loaded metadata from previous FITS:')
+        print(metadata_new._metadata_values)
+
+        fits_path_new = self.run_dir / 'level3' / 'output_new.fits'
+
+        if fits_path_new.exists():
+            fits_path_new.unlink()
+
+        fits_file_new = fits.open(fits_path_new, "append")
+        hdu = fits.ImageHDU(image_data)
+        fits_file_new.append(hdu)
+            
+        metadata.generate_fits_header(fits_file_new)
+        print()
+        print(repr(fits_file_new[0].header))
+
+        fits_file_new.close()
+        
 
 def final_shdr_compositing_fix(level2_data, config):
     """Fix any lingaring SHDR Compositing Issues.
