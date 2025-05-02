@@ -9,6 +9,7 @@ Usage:
         
    metadata.generate_fits_header(fits_file)
 """
+from astropy.io import fits
 import pandas as pd
 from pathlib import Path
 
@@ -18,6 +19,17 @@ FITS_METADATA_DEFINITIONS_FILENAME = 'suncet_metadata_definition_fits.csv'
 
 # Expected name of the meta version text file in the run directory
 FITS_METADATA_VERSION_FILENAME = 'suncet_metadata_definition_version.txt'
+
+# Reserved names in FITS, written automatically by AstroPy
+FITS_RESERVED_NAMES = [
+    'SIMPLE',
+    'BITPIX',
+    'NAXIS',
+    'NAXIS1',
+    'NAXIS2',
+    'BSCALE',
+    'BZERO',
+]
 
 
 class FitsMetadataManager:
@@ -87,6 +99,38 @@ class FitsMetadataManager:
         """        
         self._metadata_values.update(metadata_values)
 
+    def load_from_fits(self, fits_path):
+        """Load metadata values from a fits file.
+
+        This can be used to carry over metadata from a previous step.
+
+        Args
+          fits_path: Path to fits file
+        """
+        fits_file = fits.open(fits_path)
+        fits_name_to_internal_name = {}
+
+        # Generate mapping between FITS names and internal variable names
+        for _, row in self._df_metadata.iterrows():
+            fits_name_to_internal_name[row['FITS variable name']] = (
+                row['Internal Variable Name']
+            )
+
+        # Read from FITS file            
+        for hdu in fits_file:
+            for fits_name in hdu.header:                               
+                # Don't load FITS reserved variables written automatically by
+                # astropy.
+                in_spreadsheet = fits_name in fits_name_to_internal_name
+                is_reserved = fits_name in FITS_RESERVED_NAMES
+
+                if in_spreadsheet and not is_reserved:                
+                    internal_name = fits_name_to_internal_name[fits_name]
+                    value = hdu.header[fits_name]
+                    self._metadata_values[internal_name] = value
+
+        fits_file.close()
+        
     def generate_fits_header(self, fits_file):
         """Add a FITS header to an open fits file using metadata values
         which have been supplied.
@@ -99,7 +143,7 @@ class FitsMetadataManager:
         # Build list of things to write, organized by the groups they are
         # in with care to preserve their order
         vars_with_values = set(self._metadata_values.keys())
-        counter = 0
+        counter = 7            # start after the default FITS header
         to_write = []
         
         for group_name, group_variables in self._metadata_groups.items():
@@ -123,7 +167,7 @@ class FitsMetadataManager:
 
         # Write to_write items to fits header
         header = fits_file[0].header
-        
+
         for index, *args in to_write:
             header.insert(index, tuple(args))
         
