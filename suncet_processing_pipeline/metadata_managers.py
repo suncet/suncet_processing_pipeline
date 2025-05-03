@@ -3,10 +3,11 @@
 Example Usage:
 
    metadata = metadata_managers.FitsMetadataManager(self.run_dir)
+   metadata.load_from_fits('previous_step.fits')
    metadata.load_from_dict({
       ...
-   })
-        
+   })       
+   metadata.validate(level_num=3)
    metadata.generate_fits_header(fits_file)
 """
 from pathlib import Path
