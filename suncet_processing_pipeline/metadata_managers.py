@@ -1,8 +1,8 @@
 """Metadata Management Classes
 
-Usage:
+Example Usage:
 
-   metadata = metadata_mgr.FitsMetadataManager(self.run_dir)
+   metadata = metadata_managers.FitsMetadataManager(self.run_dir)
    metadata.load_from_dict({
       ...
    })

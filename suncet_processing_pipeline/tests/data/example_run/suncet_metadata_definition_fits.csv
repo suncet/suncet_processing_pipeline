@@ -1,0 +1,155 @@
+Field Name,Internal Variable Name,Description,FITS variable name,units (human),units (astropy),data type,typical value
+COMMENT ----- FITS Required ----------------------------------------------------,,,,,,,
+Mandatory fits keyword,mandatory_fits_keyword,Fits Standard Compliance,SIMPLE,,,bool,TRUE
+Bits Per Pixel,bits_per_pixel,Number of bits per pixel ,BITPIX,,u.bit/u.pix,int,16
+Number of Axes,num_axes,Number of Axes on the data,NAXIS,,u.dimensionless_unscaled,int,2
+Length of first Axis,length_axis1,"Number of pixels in the second axis (horizontal, X)",NAXIS1,pixels,u.pix,int,1000
+Length of second Axis,length_axis2,"Number of pixels in the thrid axis (vertical, Y)",NAXIS2,pixels,u.pix,int,752
+OGIP long string convention,ogip_long_str_convention,"Under this convention, the long string value is divided into multiple substrings, each of which is no longer than 67 characters in length.",LONGSTRN,,,string,OGIP 1.0
+"COMMENT ----- Documentation, Contact, and Collection Metadata ------------------",,,,,,,
+Data Reference DOI,data_ref_doi,"numbers, letters, and symbols to provide a persistent link to the location of content",DOI,,,string,doi:10.1000/182
+Project Name,project_name,Sun Coronal Ejection Tracker,PROJECT,,,string,SunCET
+Name of the data,data_title,A descriptive name of the data,TITLE,,,string,SunCET Level 1 Image
+Definition of Keywords,thesaurus_keywords,Unified Astronomy Thesaurus Keywords,KEYVOCAB,,,string,astrothesaurus.org/thesaurus/
+Keywords,phenomena_keywords,Keywords of phenomena captured by the image,KEYWORDS,,,string,Solar corona
+License ,license_usage,Usage License          ,LICENSE,,,string,Creative Commons Attribution 4.0 International | CC BY 4.0
+COMMENT ----- File Type and Provenance -----------------------------------------,,,,,,,
+Filename,filename,Filename,FILENAME,,,string,lev1_default_OBS_2023-02-14T17-00-00.000
+Data level,data_level,data processing level number,LEVEL,,u.dimensionless_unscaled,int,1
+Observation description,observation_desc,Plan text description of observation,OBSTYPE,,,string,Name of Observing program
+Product Type,product_type,Product type code,TYPECODE,,,string,42
+Parent file,filename_parent,filename of parent product,L0PARENT,,,string,config_default_OBS_2023-02-14T17-00-00.000
+Pipeline Version,ver_pipeline,Processing pipeline version number,PIPEVRSN,,,string,v1.0
+Raw filename,filename_raw_telem,Raw telemetry filename ,FILE_RAW,,,string,config_default_OBS_2023-02-14T17-00-00.000
+Instituition ,institution,Institution responsible for data creation,ORIGIN,,,string,LASP
+COMMENT ----- Temporal Information ---------------------------------------------,,,,,,,
+Time System,time_sys,Principle time system: 'UTC',TIMESYS,,,string,UTC
+Beginning Observation Time,time_start,Beginning of the observation on orbit in UTC ISO 8601 format,DATE-BEG,,,string,2023-01-14T17:00:00.000
+Reference Observation Time,time_ref,Reference observation time on orbit in UTC ISO 8601 format,DATE-OBS,,,string,2023-01-14T17:00:00.000
+Ending Observation Time,time_end,End of the observation on orbit in UTC ISO 8601 format,DATE-END,,,string,2023-01-14T17:00:59.650
+File Generation Date,time_file_create,File generation time in UTC ISO 8601 format,DATE-FILE,,,string,2024-01-14T17:00:00.000
+COMMENT ----- Instrument and Spacecraft State ----------------------------------,,,,,,,
+Observation Wavelength,wavelength,Center wavelength of observation: 185. The full band pass runs from 170-200 angstroms,WAVELNTH,angstrom,u.aa,int,185
+Unit of observation,wavelength_units,Units observation wavelength reported,WAVEUNIT,,,string,Angstrom
+Observation Mode,observation_mode,"Imaging observation mode (e.g., dark, campaign, off point, etc.)",OBS-MODE,,,string,Full Sun
+Instrument Name,instrument_name,Instrument Name: 'SunCET',INSTRUME,,,string,SunCET
+Telescope Name,telescope_name,Telescope Name: 'SunCET',TELESCOP,,,string,SunCET
+Object Observed,observed_object,"Primary target object, e.g. 'EUV Sun'",OBJECT,,,string,EUV Sun
+Instrument Mode,instrument_mode,"For example, calibration mode (CAL), nominal science (SCI)",INST_MODE,,,string,SCI
+Quality,data_quality,Integer value indicating the quality of the image (0 is the nominal image observation),QUAL,,u.dimensionless_unscaled,int,0
+COMMENT ----- World Coordinate System ------------------------------------------,,,,,,,
+WCS Axes,wcs_num_axes,WCS number of axes,WCSAXES,,u.dimensionless_unscaled,int,2
+WCS Coordinate 1 type,wcs_coord1_type,TAN (gnomic) projection + Simple Imaging Polynomial (SIP) distortions: e.g. 'RA---TAN-SIP',CTYPE1,,,string,HPLN-TAN
+WCS Coordinate 2 type,wcs_coord2_type,TAN (gnomic) projection + Simple Imaging Polynomial (SIP) distortions: e.g. 'DEC---TAN-SIP',CTYPE2,,,string ,HPLT-TAN
+Equatorial coordinates definition,equitorial_coord_def,Equatorial coordinates definition year,EQUINOX,,u.yr,int,2000
+Pole Longitude ,pole_long,Native longitude of the celestial pole,LONPOLE,degree (angle),u.deg,int,180
+Pole Latitude ,pole_lat,Native latitude of the celestial pole,LATPOLE,degree (angle),u.deg,int,0
+Coordinate 1 reference value,coord1_ref_value,location of reference pixel in x-direction (0 is Sun center),CRVAL1,arcsecond,u.arcsec,float,0.0
+Coordinate 2 reference value,coord2_ref_value,location of reference pixel in y-direction (0 is Sun center),CRVAL2,arcsecond,u.arcsec,float,0.0
+Coordinate 1 reference pixel,coord1_ref_pixel,X reference pixel,CRPIX1,pixels,u.pix,float,499.5
+Coordinate 2 reference pixel,coord2_ref_pixel,Y reference pixel,CRPIX2,pixels,u.pix,float,375.5
+Coordinate 1 scale units,coord1_scale_units,X pixel scale units,CUNIT1,arcsecond,u.arcsec,string,arcsec
+Coordinate 2 scale units,coord2_scale_units,Y pixel scale units,CUNIT2,arcsecond,u.arcsec,string ,arcsec
+Coordinate 1 plate scale ,coord1_plate_scale,Size projected into a detector pixel in axis1,CDELT1,arcseconds per pixel,u.arcsec/u.pix,float,9.6
+Coordinate 2 plate scale ,coord2_place_scale,Size projected into a detector pixel in axis2,CDELT2,arcseconds per pixel,u.arcsec/u.pix,float,9.6
+Coordinate system rotation angle,coord_sys_rotation,Rotation of the horizontal and vertical axes ,CROTA2,degree (angle),u.deg,float,0.0
+Rotation matrix,wcs_rot_pc11,WCS coordinate rotation matrix ,PC1_1,,u.dimensionless_unscaled,float,1.0
+Rotation matrix,wcs_rot_pc12,WCS coordinate rotation matrix ,PC1_2,,u.dimensionless_unscaled,float,0.0
+Rotation matrix,wcs_rot_pc21,WCS coordinate rotation matrix ,PC2_1,,u.dimensionless_unscaled,float,0.0
+Rotation matrix,wcs_rot_pc22,WCS coordinate rotation matrix ,PC2_2,,u.dimensionless_unscaled,float,1.0
+WCS standard rotation and scaling matrix,wcs_coord_cd11,WCS coordinate description matrix ,CD1_1,,u.dimensionless_unscaled,float,9.6
+WCS standard rotation and scaling matrix,wcs_coord_cd12,WCS coordinate description matrix,CD1_2,,u.dimensionless_unscaled,float,0
+WCS standard rotation and scaling matrix,wcs_coord_cd21,WCS coordinate description matrix,CD2_1,,u.dimensionless_unscaled,float,0
+WCS standard rotation and scaling matrix,wcs_coord_cd22,WCS coordinate description matrix,CD2_2,,u.dimensionless_unscaled,float,9.6
+WCS Coordinate Name,wcs_name,Name of the WCS to be used to create the header values,WCSNAME,,,string,Helioprojective-cartesian
+Image height,img_height, Image width in pixels with the dark rows cropped.,IMAGEW,pixels,u.pix,int,1000
+Image Width,img_width, Image height in pixels with the dark rows cropped.,IMAGEH,pixels,u.pix,int,752
+COMMENT ----- Camera and Readout State -----------------------------------------,,,,,,,
+Detector Description ,detector_desc,CMOS detector 2000 x1505 pixels,DETECTOR,,,string,CMOS detector 2000 x1504 pixels
+Bad Pixel Count,num_pixel_bad,Number of invalid pixel counts,NPIXBAD,pixels,u.pix,int,0
+Readout Time,readout_time,Time to readout raw image from camera,READTIME,miliseconds,u.ms ,float,10
+Exposure lapse time,exposure_time,Time between begin and end of exposure,TELAPSE,seconds,u.s ,float,59.65
+Detector Name,detector_name,Name of the Detector,CAMERA,,,string,CSIE
+First Detector Row,detector_row_start,First read-out detector row,PXBEG1,,u.dimensionless_unscaled,int ,0
+Last Detector Row,detector_row_end,Last read-out detector row,PXEND1,,u.dimensionless_unscaled,int ,751
+First Detector Column,detector_col_start,First read-out detector column,PXBEG2,,u.dimensionless_unscaled,int ,0
+Last Detector Column ,detector_col_end,Last read-out detector column,PXEND2,,u.dimensionless_unscaled,int ,999
+Axis 1 Bin,bin_axis1_length,"Number of pixels binned along camera axis1 (horizontal, X)",NBIN1,pixels,u.pix,int,2
+Axis 2 Bin,bin_axis2_length,"Number of pixels binned along camera axis2 (vertical, Y)",NBIN2,pixels,u.pix,int,2
+Binned Pixels,bin_pixel_num,Number of pixels binned,NBIN,pixels,u.pix,int,4
+First Data Column,data_col_start,First column of image array on data array,DSTART1,,u.dimensionless_unscaled,int,0
+Last Data Column,data_col_end,Last column of image array on data array,DSTOP1,,u.dimensionless_unscaled,int,999
+First Data Row,data_row_start,First row of image area on data array,DSTART2,,u.dimensionless_unscaled,int,0
+Last Data Row,data_row_end,Last row of image area on data array,DSTOP2,,u.dimensionless_unscaled,int,749
+Image Counter,image_counter,Image counter from IDPU,IMGCTR,,u.dimensionless_unscaled,int,0
+Offset,camera_offset,Commanded offset value used in camera,OFFSET,data number,u.DN,int,5
+Gain,camera_gain,"Commanded gain value (set value, not read value)",GAINCMD,data number per electron,u.DN / u.electron,float,1.8
+Bytes Sent,total_bytes_sent,Number of bytes sent,XFBYTES,bytes,u.byte,int,413793
+Detector temperature,detector_temp,Temperature measured inside the detector,DET_TEMP,celsius,u.deg_C,float,-32
+Detector board temperature,detector_temp_board,Temperature measured on the detector board,DET_TEMP_BRD,celsius,u.deg_C,float,17
+COMMENT ----- Onboard Image Processing -----------------------------------------,,,,,,,
+Raw Bits Per Pix,bits_per_pixel_raw,Raw image bits per pixel,RAWBITS,bit,u.bit,int,14
+Compressed Bits Per Pix,bits_per_pixel_cmpr,Compressed image bits per pixel,COMPBITS,bit,u.bit,float,0.9655
+Code Table ,code_table_name,Square-root coding table name,SQRTCODE,,,string,SLUTID_10
+Image Compression,cmpr_type,Image compression type,COMPRESS,,,string,RICE
+Compression Ratio,cmpr_ratio,Compressed/uncompressed data ratio,COMP_RAT,,u.dimensionless_unscaled,float,14.5
+COMMENT ----- Calibration Data -------------------------------------------------,,,,,,,
+Vignet File,vignet_file,Vignetting filename,CALVI,,,string ,Vignet_2023-01-14T17-00-00.000
+PSF File,psf_file,PSF filename,CALPSF,,,string ,PSF_2023-01-14T17-00-00.000
+Bad Pixel File,bad_pixel_file,Bad pixel map filename,CALBPM,,,string ,BadPixel_2023-01-14T17-00-00.000
+Stray Light File,stray_light_file,Stray light model filename,CALSL,,,string ,StrayLight_2023-01-14T17-00-00.000
+Detector-board LED stimulation lamp powered on,led_detector_stim_lamp_on,Flag for whether the detector-board LED stimulation lamp is on or off. Used for aliveness checks of the detector. ,LED_DET_ON,,,boolean,FALSE
+Outside-detector-filter LED stimulation lamp powered on,led_outside_filter_stim_lamp_on,Flag for whether the LED that is outside the focal-plane filter is on or off. If the detector sees light that means that the filter is broken. ,LED_EXT_DET_ON,,,boolean,FALSE
+COMMENT ----- Image Statistics and Properties ----------------------------------,,,,,,,
+Units ,units,Units of observation,BUNIT,data number per second,u.DN/u.s,string,dn/sec
+Data Zeros,num_pixels,Number of pixels,DATAZER,pixels,u.pix,int,752000
+Data Saturated,num_pixels_saturated,Number of saturated pixels,DATASAT,pixels,u.pix,int,0
+Satruation Value,pixel_saturate_max,Saturation value in calibrated units,DSATVAL,data number,u.DN,float,59400
+Mean Pixel,pixel_mean,Mean of valid pixels,DATAAVG,data number,u.DN,float,218.34567
+Median Pixel,pixel_median,Median of valid pixels,DATAMDN,data number,u.DN,float,215.65837
+Stdv Pixel,pixel_stdev,Standard deviation of non-zero pixels,DATASIG,data number,u.DN,float,22.6873
+1st Percent,pixel_1pct,1% of non-zero pixels are LE this value,DATAP01,data number,u.DN,float,1299.6
+10th Percent,pixel_10pct,10% of non-zero pixels are LE this value,DATAP10,data number,u.DN,float,1306.8
+25th Percent,pixel_25pct,25% of non-zero pixels are LE this value,DATAP25,data number,u.DN,float,1314
+50th Percent,pixel_50pct,50% of non-zero pixels are LE this value,DATAP50,data number,u.DN,float,1557
+75th Percent,pixel_75pct,75% of non-zero pixels are LE this value,DATAP75,data number,u.DN,float,1969.2
+90th Percent,pixel_90pct,90% of non-zero pixels are LE this value,DATAP90,data number,u.DN,float,2462.4
+95 Percent,pixel_95pct,95% of non-zero pixels are LE this value,DATAP95,data number,u.DN,float,2991.6
+98 Percent,pixel_98pct,98% of non-zero pixels are LE this value,DATAP98,data number,u.DN,float,4107.6
+99 Percent,pixel_99pct,99% of non-zero pixels are LE this value,DATAP99,data number,u.DN,float,7086.8
+Minimum Value,min_valid_obs_value,minimum valid physical value,DATAMIN,data number,u.DN,int ,81
+Maximum Value,min_max_obs_value,maximum valid physical value,DATAMAX,data number,u.DN,int ,16980
+Short Noise Center,exposure_short_center,Short Exposure AWGN center,NOISE_MU1,data number,u.DN,float,12.8
+Short Noise Stdev,exposure_short_stdev,Short Exposure AWGN standard deviation ,NOISE_SIG1,data number,u.DN,float,6.8
+Long Noise Center,exposure_long_center,Long Exposure AWGN center,NOISE_MU2,data number,u.DN,float,10.4
+Long Noise Stdev,exposure_long_stdev,Long Exposure AWGN standard deviation ,NOISE_SIG2,data number,u.DN,float,8.9
+Exposure time mask,exposure_time_mask_file,Filename of the exposure time mask,EXP_MASK,,,string,ExpTime_2023-01-14T17-00-00.000
+COMMENT ----- Solar Reference Data ---------------------------------------------,,,,,,,
+Apparent Solar Radius,solr_radius_app,photospheric solar radius,RSUN,arcsec,u.arcsec,float,959.63
+Physical Solar Radius,solar_radius_phys,Assumed physical solar radius,RSUN_REF,meters,u.m,int,696000000
+Ecliptic Sun Angle,sun_angle_ecliptic,spacecraft ecliptic North to solar North angle,SOLAR_EP,degree (angle),u.deg,float,17.8
+Carrington Rotation ,carring_rot_num,Carrington Rotation number,CAR_ROT,,u.dimensionless_unscaled,float,2275.714
+COMMENT ----- Spacecraft Location & Environment --------------------------------,,,,,,,
+Geo Lat,geo_lat,spacecract sub-point geodetic latitude,GEOD_LAT,degree (angle),u.deg,float,40.00914
+Geo Long,geo_long,spacecract sub-point longitude,GEOD_LON,degree (angle),u.deg,float,-105.24785
+Altitude ,atltitude,spacecract WGS84 altitude,GEOD_ALT,meter,u.m,float,1852.075
+LOS Altitude,los_altitude,line-of-sight altitude above Earth,LOS_ALT,meter,u.m,float,1874.001
+Heliographic Lat,heliog_lat,spacecraft heliographic latitude,HGLT_OBS,degree (angle),u.deg,float,0.0
+Heliographic Lon,heliog_long,spacecraft heliographic longitude (B0),HGLN_OBS,degree (angle),u.deg,float,0.0
+Carrington Lat,carring_lat,spacecraft Carrington latitude (B0),CRLT_OBS,degree (angle),u.deg,float,7.0563583
+Carrington Lon,carring_long,spacecraft Carrington longitude,CRLN_OBS,degree (angle),u.deg,float,109.52087
+Sun Distance,sun_dist,spacecraft distance from Sun,DSUN_OBS,meter,u.m,float,149597870691
+COMMENT ----- Spacecraft Pointing --------------------------------------------,,,,,,,
+First quaternion value,attitude_quaternion1,"Body wrt J2000 ECI, element 1",ATT_QUAT1,none,u.dimensionless_unscaled,float,-1
+Second quaternion value,attitude_quaternion2,"Body wrt J2000 ECI, element 2",ATT_QUAT2,none,u.dimensionless_unscaled,float,-1
+Third quaternion value,attitude_quaternion3,"Body wrt J2000 ECI, element 3",ATT_QUAT3,none,u.dimensionless_unscaled,float,-1
+Fourth quaternion value,attitude_quaternion4,"Body wrt J2000 ECI, element 4, always the scalar",ATT_QUAT4,none,u.dimensionless_unscaled,float,-1
+COMMENT ----- FIXITY -----------------------------------------------------------,,,,,,,
+HDU Checksum,hdu_chksum,HDU checksum ,CHECKSUM,,,string,fIdjiFdhfFdhfFdh
+Data Checksum,check_chksum,data unit checksum ,DATASUM,,,string,9cCWEa9U9aCUEa9U
+COMMENT ----- HISTORY ----------------------------------------------------------,,,,,,,
+Data History ,data_history,Records of processing from pipeline,HISTORY,,,string,Template version 1
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,\
