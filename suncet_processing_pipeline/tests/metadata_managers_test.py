@@ -44,6 +44,7 @@ def test_generate_fits_header(tmpdir):
     metadata.load_from_dict({
         "project_name": "SunCET",
         "data_title": "SunCET Level 1 Image",
+        "solr_radius_app": 959.63
     })
     
     # Write fits file and call generate_fits_header()
@@ -60,12 +61,22 @@ def test_generate_fits_header(tmpdir):
     
     # Test loading the fits file
     fits_file_new = fits.open(fits_path)
-
+    
     assert fits_file_new[0].header['PROJECT'] == 'SunCET'
     assert fits_file_new[0].header['TITLE'] == 'SunCET Level 1 Image'
-    assert fits_file[0].header.comments['PROJECT'] == 'Sun Coronal Ejection Tracker'
-    assert fits_file[0].header.comments['TITLE'] == 'A descriptive name of the data'    
+    assert fits_file_new[0].header['RSUN'] == 959.63
 
+    #raise RuntimeError(repr(fits_file_new[0].header)) # debug
+    
+    # Test comments are added (doesn't check exact text as metadata may
+    # change)
+    assert fits_file_new[0].header.comments['PROJECT'] 
+    assert fits_file_new[0].header.comments['TITLE']
+
+    # Test units are added in comments
+    assert 'nan' not in fits_file_new[0].header.comments['PROJECT'].lower()
+    assert 'arcsec' in fits_file_new[0].header.comments['RSUN'].lower()
+    
     
 def test_load_from_fits(tmpdir):
     """Tests the FitsMetadataManager.generate_fits_header() method.
@@ -109,5 +120,8 @@ def test_load_from_fits(tmpdir):
     
     assert fits_file_new[0].header['PROJECT'] == 'SunCET'
     assert fits_file_new[0].header['TITLE'] == 'SunCET Level 1 Image'
-    assert fits_file[0].header.comments['PROJECT'] == 'Sun Coronal Ejection Tracker'
-    assert fits_file[0].header.comments['TITLE'] == 'A descriptive name of the data'    
+
+    # Test comments are added (doesn't check exact text as metadata may
+    # change)
+    assert fits_file[0].header.comments['PROJECT'] 
+    assert fits_file[0].header.comments['TITLE'] 

@@ -9,9 +9,12 @@ Example Usage:
         
    metadata.generate_fits_header(fits_file)
 """
-from astropy.io import fits
-import pandas as pd
 from pathlib import Path
+
+from astropy.io import fits
+import numpy as np
+import pandas as pd
+
 
 
 # Expected name of FITS metadata definitions file in the run directory
@@ -159,10 +162,16 @@ class FitsMetadataManager:
             for group_var in group_variables:
                 if group_var in vars_with_values:
                     name = self._metadata_dict[group_var]['FITS variable name']
-                    description = self._metadata_dict[group_var]['Description']
+                    comment = self._metadata_dict[group_var]['Description']
+                    units = self._metadata_dict[group_var]['units (human)']
 
+                    # If no units in the spreadsheet, sometimes the value get reads
+                    # in as NaN's instead of a string.
+                    if units and not (isinstance(units, float) and np.isnan(units)):
+                        comment += f' ({units})'
+                    
                     value = self._metadata_values[group_var]
-                    to_write.append((counter, name, value, description))
+                    to_write.append((counter, name, value, comment))
                     counter += 1
 
         # Write to_write items to fits header
