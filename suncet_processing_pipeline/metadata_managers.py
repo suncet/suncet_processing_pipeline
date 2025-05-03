@@ -180,7 +180,57 @@ class FitsMetadataManager:
         for index, *args in to_write:
             header.insert(index, tuple(args))
         
+
+    def validate(self, level_num):
+        """Check that all metadata is present in this instance for a given
+        processing level.
         
+        If this function completes without raising an exception, validation
+        passed.
+
+        Args
+           level_num: Integer leven num of processing
+        Raises
+           IncompleteMetadataError: some fields are missing
+        """
+        # Take subset of metadata df with Minimum Level less than or equal to the
+        # current proccessing level. Check each internal name is present.
+        df_level = self._df_metadata[self._df_metadata['Minimum Level'] <= level_num]
+        missing_internal_names = []
+        
+        for _, row in df_level.iterrows():
+            internal_name = row['Internal Variable Name'] 
+            if internal_name not in self._metadata_values:
+                missing_internal_names.append(internal_name)
+
+        missing_internal_names.sort()
+
+        # Raise custom exception if variables are missing
+        if missing_internal_names:
+            raise IncompleteMetadataError(level_num, missing_internal_names)
+
+
+
+class IncompleteMetadataError(Exception):
+    """Exception thrown when metadata is incomplete for given processing level.
+    
+    Attributes:
+       level_num: integer
+       missing_internal_names: list of strings
+    """
+    def __init__(self, level_num, missing_internal_names):
+        self.level_num = level_num
+        self.missing_internal_names = missing_internal_names
+
+    def __repr__(self):
+        return (
+            f'IncompleteMetadataError('
+            f' level_num={self.level_num}, '
+            f' missing_internal_names={repr(self.missing_internal_names)}'
+            f')'
+        )
+    
+            
 def _get_metadata_dict(df_metadata):
     """Convert metadata dataframe to dictinoary mapping internal name
     to dictionary of cols to values.
