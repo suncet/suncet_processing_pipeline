@@ -125,3 +125,42 @@ def test_load_from_fits(tmpdir):
     # change)
     assert fits_file[0].header.comments['PROJECT'] 
     assert fits_file[0].header.comments['TITLE'] 
+
+    
+def test_fits_validate_faulty_case(tmpdir):
+    """Tests the FitsMetadataManager.validate() method.
+    
+    - Makes FITS metadata manager instance and uses load_from_dict()
+    - tests that exception is thrown for faulty case
+    """
+    # Create instance of class
+    metadata = metadata_managers.FitsMetadataManager(tmpdir)
+    metadata.load_from_dict({
+        "project_name": "SunCET",
+        "data_title": "SunCET Level 1 Image",
+    })
+
+    # Check that exception is thrown and that it includes one of
+    # the missing keys
+    with pytest.raises(metadata_managers.IncompleteMetadataError) as exc:
+        metadata.validate(1)        
+        assert 'data_ref_doi' in repr(exc)
+
+
+def test_fits_validate_valid_case(tmpdir):        
+    """Tests the FitsMetadataManager.validate() method.
+    
+    - Makes FITS metadata manager instance and uses load_from_dict()
+    - tests that not exception is thrown for valid case
+    """
+    # Create instance of class
+    metadata = metadata_managers.FitsMetadataManager(tmpdir)
+    metadata.load_from_dict({
+        "project_name": "SunCET",
+        "data_title": "SunCET Level 1 Image",
+    })
+
+    # Check that not exception is thrown. Do level 0 to force no
+    # requirements.
+    metadata.validate(0)        
+
