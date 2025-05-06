@@ -1,17 +1,21 @@
 """Metadata Management Classes
 
-Usage:
+Example Usage:
 
-   metadata = metadata_mgr.FitsMetadataManager(self.run_dir)
+   metadata = metadata_managers.FitsMetadataManager(self.run_dir)
+   metadata.load_from_fits('previous_step.fits')
    metadata.load_from_dict({
       ...
-   })
-        
+   })       
+   metadata.validate(level_num=3)
    metadata.generate_fits_header(fits_file)
 """
-from astropy.io import fits
-import pandas as pd
 from pathlib import Path
+
+from astropy.io import fits
+import numpy as np
+import pandas as pd
+
 
 
 # Expected name of FITS metadata definitions file in the run directory
@@ -159,10 +163,16 @@ class FitsMetadataManager:
             for group_var in group_variables:
                 if group_var in vars_with_values:
                     name = self._metadata_dict[group_var]['FITS variable name']
-                    description = self._metadata_dict[group_var]['Description']
+                    comment = self._metadata_dict[group_var]['Description']
+                    units = self._metadata_dict[group_var]['units (human)']
 
+                    # If no units in the spreadsheet, sometimes the value get reads
+                    # in as NaN's instead of a string.
+                    if units and not (isinstance(units, float) and np.isnan(units)):
+                        comment += f' ({units})'
+                    
                     value = self._metadata_values[group_var]
-                    to_write.append((counter, name, value, description))
+                    to_write.append((counter, name, value, comment))
                     counter += 1
 
         # Write to_write items to fits header
@@ -171,7 +181,57 @@ class FitsMetadataManager:
         for index, *args in to_write:
             header.insert(index, tuple(args))
         
+
+    def validate(self, level_num):
+        """Check that all metadata is present in this instance for a given
+        processing level.
         
+        If this function completes without raising an exception, validation
+        passed.
+
+        Args
+           level_num: Integer leven num of processing
+        Raises
+           IncompleteMetadataError: some fields are missing
+        """
+        # Take subset of metadata df with Minimum Level less than or equal to the
+        # current proccessing level. Check each internal name is present.
+        df_level = self._df_metadata[self._df_metadata['Minimum Level'] <= level_num]
+        missing_internal_names = []
+        
+        for _, row in df_level.iterrows():
+            internal_name = row['Internal Variable Name'] 
+            if internal_name not in self._metadata_values:
+                missing_internal_names.append(internal_name)
+
+        missing_internal_names.sort()
+
+        # Raise custom exception if variables are missing
+        if missing_internal_names:
+            raise IncompleteMetadataError(level_num, missing_internal_names)
+
+
+
+class IncompleteMetadataError(Exception):
+    """Exception thrown when metadata is incomplete for given processing level.
+    
+    Attributes:
+       level_num: integer
+       missing_internal_names: list of strings
+    """
+    def __init__(self, level_num, missing_internal_names):
+        self.level_num = level_num
+        self.missing_internal_names = missing_internal_names
+
+    def __repr__(self):
+        return (
+            f'IncompleteMetadataError('
+            f' level_num={self.level_num}, '
+            f' missing_internal_names={repr(self.missing_internal_names)}'
+            f')'
+        )
+    
+            
 def _get_metadata_dict(df_metadata):
     """Convert metadata dataframe to dictinoary mapping internal name
     to dictionary of cols to values.
