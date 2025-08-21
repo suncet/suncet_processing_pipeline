@@ -3,19 +3,20 @@ This is the code to make the Level 0.5 data product.
 We use 0_5 in the filename to prevent issues with some operating systems not being able to handle a period in a filename
 """
 from suncet_processing_pipeline.packet_definitions import gen_pkts
+from suncet_processing_pipeline.packet_definitions import dsps_decoders
 
 import numpy as np
 from astropy.io import fits
 import re
 import psutil
 import os
-import time  # Added for time measurement
+import time 
 from datetime import datetime
-import pandas as pd  # Added for reading CSV
-import h5py  # Added for HDF5 file handling
+import pandas as pd 
+import h5py 
 from pillow_jpls import Image
 from io import BytesIO
-from tqdm import tqdm  # Added for progress tracking
+from tqdm import tqdm
 
 class Level0_5:
     # CSIE HW/SW configuration values. Do not edit unless you know why
@@ -24,6 +25,7 @@ class Level0_5:
     PRIMARY_HDR_LEN = 6
     SECONDARY_HDR_LEN = 6
     CHECKSUM_LEN = 4
+    CHECKSUM_LEN_DSPS = 2
     SYNC_MARKER = [b'\x1A', b'\xCF', b'\xFC', b'\x1D'] # CSIE as saved by Alan's GSE
     
     def __init__(self, file_paths):
@@ -40,7 +42,85 @@ class Level0_5:
         
         # Initialize storage for processed data
         self.image_arrays = []
+        
+        # Initialize counters for statistics
+        self.bad_checksum_counter = 0
     
+    def fletcher16(self, data: bytes) -> int:
+        sum1 = 0
+        sum2 = 0
+        for b in data:
+            sum1 = (sum1 + b) % 256
+            sum2 = (sum2 + sum1) % 256
+        return (sum2 << 8) | sum1
+
+    def fletcher32(self, data: bytes) -> int:
+        if len(data) % 2:
+            data += b'\x00'
+        words = [data[i] | (data[i+1] << 8) for i in range(0, len(data), 2)]
+        sum1 = 0xffff
+        sum2 = 0xffff
+        for word in words:
+            sum1 = (sum1 + word) % 0xffff
+            sum2 = (sum2 + sum1) % 0xffff
+        return (sum2 << 16) | sum1
+
+    def validate_checksum(self, packet):
+        """
+        Validate the checksum of a packet.
+        
+        First tries Fletcher-32 checksum (4 bytes), then falls back to Fletcher-16 (2 bytes)
+        for DSPS packets if the first check fails.
+        
+        Args:
+            packet (bytes): The complete packet including header and data
+            
+        Returns:
+            bool: True if either checksum is valid, False otherwise
+        """
+        if len(packet) < self.PRIMARY_HDR_LEN + self.CHECKSUM_LEN_DSPS:
+            return False
+        
+        # First try Fletcher-32 checksum (4 bytes)
+        if len(packet) >= self.PRIMARY_HDR_LEN + self.CHECKSUM_LEN:
+            # Extract the data portion (everything except the 4-byte checksum)
+            data_portion = packet[:-self.CHECKSUM_LEN]
+            
+            # Extract the stored checksum (last 4 bytes)
+            stored_checksum = packet[-self.CHECKSUM_LEN:]
+            
+            # Calculate the expected checksum using Fletcher-32 algorithm and convert to big-endian format
+            calculated_checksum = self.fletcher32(data_portion)
+            calculated_checksum = calculated_checksum.to_bytes(4, 'big')
+            
+            if stored_checksum == calculated_checksum:
+                return True
+        
+        # If Fletcher-32 failed or packet is too short, try Fletcher-16 (2 bytes)
+        if len(packet) >= self.PRIMARY_HDR_LEN + self.CHECKSUM_LEN_DSPS:   
+            # Tom's DSPS code uses checkbytes so that if you include them in the fletcher16 mod 256 calculation, the checksum will be 0x0000
+            calculated_checksum = self.fletcher16(packet)
+            
+            if calculated_checksum == 0x0000:
+                return True
+        
+        # If both checksums failed, return False
+        return False
+
+    def get_checksum_stats(self):
+        """
+        Get checksum validation statistics.
+        
+        Returns:
+            dict: Dictionary containing checksum validation statistics
+        """
+        return {
+            'bad_checksum_count': self.bad_checksum_counter,
+            'checksum_length_bytes': self.CHECKSUM_LEN,
+            'checksum_length_dsps_bytes': self.CHECKSUM_LEN_DSPS,
+            'primary_header_length_bytes': self.PRIMARY_HDR_LEN
+        }
+
     def process(self):
         """Main processing function."""
         start_time = time.time()
@@ -48,6 +128,7 @@ class Level0_5:
         metadata_dict = {}  # Dictionary to store image metadata packets
         data_dict = {}      # Dictionary to store data packets by image_id
         telemetry_dict = {} # Dictionary to store other telemetry packets
+        dsps_dict = {}      # Dictionary to store DSPS packets
         processed_images = 0
         
         for path in self.ABSOLUTE_FILE_PATH:
@@ -64,15 +145,18 @@ class Level0_5:
             print(f"Extracted {len(packets)} packets")
             
             for packet in tqdm(packets, desc=f"Processing packets in {filename}"):
-                self.process_packet(packet, metadata_dict, data_dict, telemetry_dict, filename)
+                self.process_packet(packet, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename)
 
         elapsed_time = time.time() - start_time
         
         print("\nPacket parsing complete. Summary:")
         print(f"Processing time: {elapsed_time:.2f} seconds")
-        print(f"Metadata packets found: {len(metadata_dict)}")
+        print(f"Total packets processed: {len(packets)}")
+        print(f"Telemetry packets found: {len(telemetry_dict)}")
+        print(f"CSIE Metadata packets found: {len(metadata_dict)}")
         print(f"Data for {len(data_dict)} different image IDs collected")
-        print(f"Telemetry packets collected: {len(telemetry_dict)}")
+        print(f"DSPS packets found: {len(dsps_dict)}")
+        print(f"Packets with invalid checksums: {self.bad_checksum_counter}")
         
         # Process and save images to FITS files
         if data_dict:
@@ -80,13 +164,23 @@ class Level0_5:
             
         # Save telemetry data to HDF5 file
         if telemetry_dict:
-            self.save_telemetry_to_hdf5(telemetry_dict)
+            self.save_packet_data_to_hdf5(telemetry_dict, 'telemetry')
+        
+        # Save DSPS data to HDF5 file
+        if dsps_dict:
+            self.save_packet_data_to_hdf5(dsps_dict, 'dsps')
         
         elapsed_time = time.time() - start_time
         print(f"Processing time: {elapsed_time:.2f} seconds")
+        print(f"Total packets with invalid checksums: {self.bad_checksum_counter}")
 
-    def process_packet(self, packet, metadata_dict, data_dict, telemetry_dict, filename=None):
+    def process_packet(self, packet, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename=None):
         """Process a single packet."""
+        # Validate checksum before processing
+        if not self.validate_checksum(packet):
+            self.bad_checksum_counter += 1
+            return
+        
         apid, length, sequence_number, header = self.parse_header(packet)
         
         # Get packet name from APID
@@ -99,7 +193,7 @@ class Level0_5:
         # Handle playback packets by stripping extra header and recursively processing
         if packet_name == 'playback':
             remaining_data = self.strip_playback_header(packet)
-            return self.process_packet(remaining_data, metadata_dict, data_dict, telemetry_dict, filename)
+            return self.process_packet(remaining_data, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename)
         
         # Skip unwanted packet types
         if any(packet_name.startswith(prefix) for prefix in ['des_', 'fp_test', 'uhf_pass', 'log_', 'mem_', 'version']):
@@ -148,6 +242,15 @@ class Level0_5:
                         new_data = np.frombuffer(data, dtype=np.uint16).byteswap()
                         data_dict[image_id_data] = np.concatenate([data_dict[image_id_data], new_data])
             
+        elif 'dsps' in packet_name:            
+            class_name = packet_name.upper()
+            try:
+                packet_class = getattr(dsps_decoders, class_name)
+                packet_instance = packet_class(packet[self.PRIMARY_HDR_LEN:], header, filename)
+                dsps_dict[f"{packet_name}_{sequence_number}"] = packet_instance
+            except (AttributeError, TypeError) as e:
+                print(f"Warning: Could not process packet type {packet_name}: {str(e)}")
+        
         else:
             # For all other packet types, use the packet name to get the corresponding class
             # Convert packet name to uppercase to match class names in gen_pkts
@@ -427,72 +530,85 @@ class Level0_5:
         except FileNotFoundError:
             print(f"Warning: Version file not found at {version_file}, using 'unknown'")
             return 'unknown'
-
-    def save_telemetry_to_hdf5(self, telemetry_dict, base_path=None, filename=None):
+    
+    def deduplicate_telemetry_points(self, points):
         """
-        Save telemetry data to an HDF5 file in a flat structure with timestamps as the index.
-        All telemetry from all input files is combined and sorted by timestamp.
-        If an existing HDF5 file exists, it will be read, merged with new data, 
-        duplicates removed, and sorted by time.
+        Remove duplicates based on timestamp and packet_type, keeping the *newly generated* data in case of duplicates.
+        We do this by iterating over points in order: existing first, then new.
+        To keep the new data, we build a dict mapping dedup_key to the point, so later (new) points overwrite earlier (existing) ones.
+        """
+        dedup_dict = {}
+        for point in points:
+            dedup_key = (point['timestamp_seconds_since_boot'], point['packet_type'])
+            dedup_dict[dedup_key] = point  # This will keep the last occurrence, i.e., the new data if duplicate
+        return list(dedup_dict.values())
+
+    def save_packet_data_to_hdf5(self, packet_dict, data_type, base_path=None, filename=None):
+        """
+        Generic method to save packet data to HDF5 file.
         
         Args:
-            telemetry_dict (dict): Dictionary containing telemetry data from all input files
+            packet_dict (dict): Dictionary containing packet data
+            data_type (str): Type of data being saved (e.g., 'telemetry', 'dsps')
             base_path (str, optional): Base path for output. If None, uses the directory of the first input file.
             filename (str, optional): Custom filename. If None, uses default format with version.
         """
+        if not packet_dict:
+            print(f"No {data_type} packets to save")
+            return
+            
         if base_path is None:
             base_path = os.path.dirname(self.ABSOLUTE_FILE_PATH[0])
         
-        # Create telemetry directory if it doesn't exist
-        output_dir = os.path.join(base_path, "telemetry")
+        # Create output directory if it doesn't exist
+        output_dir = os.path.join(base_path, data_type)
         os.makedirs(output_dir, exist_ok=True)
         
         # Generate filename with version if not provided
         if filename is None:
             version = self.get_version()
-            filename = f'suncet_telemetry_mission_length_v{version}.h5'
+            filename = f'suncet_{data_type}_mission_length_v{version}.h5'
         
         filepath = os.path.join(output_dir, filename)
         
         # Read existing data if file exists
-        existing_telemetry_points = []
+        existing_packets = []
         if os.path.exists(filepath):
-            print(f"Reading existing telemetry data from: {filepath}")
+            print(f"Reading existing {data_type} data from: {filepath}")
             try:
                 with h5py.File(filepath, 'r') as f:
-                    if 'telemetry' in f:
-                        existing_data = f['telemetry'][:]
+                    if data_type in f:
+                        existing_data = f[data_type][:]
                         # Convert structured array back to list of dictionaries
                         for row in existing_data:
-                            point_dict = {}
+                            packet_dict_row = {}
                             for field_name in row.dtype.names:
                                 value = row[field_name]
                                 # Convert bytes back to string for packet_type
                                 if field_name == 'packet_type':
                                     value = value.decode('utf-8')
-                                point_dict[field_name] = value
-                            existing_telemetry_points.append(point_dict)
-                        print(f"Loaded {len(existing_telemetry_points)} existing telemetry points")
+                                packet_dict_row[field_name] = value
+                            existing_packets.append(packet_dict_row)
+                        print(f"Loaded {len(existing_packets)} existing {data_type} packets")
             except Exception as e:
                 print(f"Warning: Could not read existing file {filepath}: {e}")
-                existing_telemetry_points = []
+                existing_packets = []
         
-        # Create a list to store all telemetry points (existing + new)
-        all_telemetry_points = existing_telemetry_points.copy()
+        # Create a list to store all packets (existing + new)
+        all_packets = existing_packets.copy()
         
         # Process each new packet
-        new_telemetry_points = []
-        for packet_key, packet in telemetry_dict.items():
+        new_packets = []
+        for packet_key, packet in packet_dict.items():
             # Get the timestamp from the packet using the helper function
             timestamp = self.get_packet_timestamp(packet)
             if timestamp is None:
-                print(f"Warning: Packet {packet_key} has no timestamp, skipping")
+                print(f"Warning: {data_type} packet {packet_key} has no timestamp, skipping")
                 continue
             
-            # Create a dictionary for this telemetry point
-            # Extract packet type name from the packet object's class name
+            # Create a dictionary for this packet
             packet_type_name = packet.__class__.__name__
-            point_dict = {'packet_type': packet_type_name, 'timestamp_seconds_since_boot': timestamp}
+            packet_dict_row = {'packet_type': packet_type_name, 'timestamp_seconds_since_boot': timestamp}
             
             # Add all attributes of the packet
             for attr_name in dir(packet):
@@ -509,43 +625,33 @@ class Level0_5:
                             else:
                                 # Skip arrays/lists with multiple values
                                 continue
-                        point_dict[attr_name] = value
+                        packet_dict_row[attr_name] = value
                     except (AttributeError, TypeError):
                         continue
             
-            new_telemetry_points.append(point_dict)
+            new_packets.append(packet_dict_row)
         
-        # Add new points to all points
-        all_telemetry_points.extend(new_telemetry_points)
+        # Add new packets to all packets
+        all_packets.extend(new_packets)
         
-        if not all_telemetry_points:
-            print("No valid telemetry points to save")
+        if not all_packets:
+            print(f"No valid {data_type} packets to save")
             return
         
-        # Remove duplicates based on timestamp and packet_type
-        # Create a set to track seen combinations
-        seen = set()
-        unique_telemetry_points = []
+        # Remove duplicates based on timestamp and packet_type, keeping the newly generated data
+        unique_packets = self.deduplicate_telemetry_points(all_packets)
+        print(f"Removed {len(all_packets) - len(unique_packets)} duplicate {data_type} packets (kept new data if duplicate)")
         
-        for point in all_telemetry_points:
-            # Create a key for deduplication (timestamp + packet_type)
-            dedup_key = (point['timestamp_seconds_since_boot'], point['packet_type'])
-            if dedup_key not in seen:
-                seen.add(dedup_key)
-                unique_telemetry_points.append(point)
-        
-        print(f"Removed {len(all_telemetry_points) - len(unique_telemetry_points)} duplicate telemetry points")
-        
-        # Sort telemetry points by timestamp to ensure chronological order
-        unique_telemetry_points.sort(key=lambda x: x['timestamp_seconds_since_boot'])
+        # Sort packets by timestamp to ensure chronological order
+        unique_packets.sort(key=lambda x: x['timestamp_seconds_since_boot'])
         
         # Extract timestamps and data for HDF5 storage
-        timestamps = [point['timestamp_seconds_since_boot'] for point in unique_telemetry_points]
+        timestamps = [packet['timestamp_seconds_since_boot'] for packet in unique_packets]
         
         # Get all unique field names (excluding timestamp and packet_type)
         field_names = set()
-        for point in unique_telemetry_points:
-            for key in point.keys():
+        for packet in unique_packets:
+            for key in packet.keys():
                 if key not in ['timestamp_seconds_since_boot', 'packet_type']:
                     field_names.add(key)
         
@@ -560,18 +666,18 @@ class Level0_5:
             dtype_list.append((field_name, 'f8'))
         
         # Create structured array
-        data_array = np.zeros(len(unique_telemetry_points), dtype=dtype_list)
+        data_array = np.zeros(len(unique_packets), dtype=dtype_list)
         
         # Fill the structured array
-        for i, point in enumerate(unique_telemetry_points):
-            data_array[i]['timestamp_seconds_since_boot'] = point['timestamp_seconds_since_boot']
-            data_array[i]['packet_type'] = point['packet_type'].encode('utf-8')
+        for i, packet in enumerate(unique_packets):
+            data_array[i]['timestamp_seconds_since_boot'] = packet['timestamp_seconds_since_boot']
+            data_array[i]['packet_type'] = packet['packet_type'].encode('utf-8')
             
             # Fill other fields
             for field_name in field_names:
-                if field_name in point:
+                if field_name in packet:
                     try:
-                        data_array[i][field_name] = float(point[field_name])
+                        data_array[i][field_name] = float(packet[field_name])
                     except (ValueError, TypeError):
                         data_array[i][field_name] = np.nan
                 else:
@@ -579,24 +685,24 @@ class Level0_5:
         
         # Save to HDF5
         with h5py.File(filepath, 'w') as f:
-            # Create a dataset for the telemetry data
-            f.create_dataset('telemetry', data=data_array)
+            # Create a dataset for the packet data
+            f.create_dataset(data_type, data=data_array)
             
             # Store field names as attributes
-            f['telemetry'].attrs['field_names'] = list(field_names)
+            f[data_type].attrs['field_names'] = list(field_names)
             
             # Store metadata about the processing
             f.attrs['version'] = self.get_version()
-            f.attrs['total_telemetry_points'] = len(unique_telemetry_points)
+            f.attrs[f'total_{data_type}_packets'] = len(unique_packets)
             f.attrs['time_range_start'] = timestamps[0]
             f.attrs['time_range_end'] = timestamps[-1]
             f.attrs['processing_timestamp'] = datetime.now().isoformat()
             f.attrs['num_input_files_this_run'] = len(self.ABSOLUTE_FILE_PATH)
         
-        print(f"Saved {len(unique_telemetry_points)} total telemetry points to HDF5 file: {filepath}")
-        print(f"Added {len(new_telemetry_points)} new points from {len(self.ABSOLUTE_FILE_PATH)} input files")
+        print(f"Saved {len(unique_packets)} total {data_type} packets to HDF5 file: {filepath}")
+        print(f"Added {len(new_packets)} new packets from {len(self.ABSOLUTE_FILE_PATH)} input files")
         print(f"Time range: {timestamps[0]:.2f} to {timestamps[-1]:.2f} seconds since boot")
-        print(f"Available telemetry types: {', '.join(set(point['packet_type'] for point in unique_telemetry_points))}")
+        print(f"Available {data_type} types: {', '.join(set(packet['packet_type'] for packet in unique_packets))}")
     
     @staticmethod
     def read_ct_pkt_csv():
@@ -673,7 +779,7 @@ class Level0_5:
 def main():
     # Example usage
     file_paths = [
-        f"{os.getenv('suncet_data')}/test_data/2025-07-03_dark_subtraction_test/Frame_250703_165917.bin",
+        f"{os.getenv('suncet_data')}/test_data/2025_206_10_18_14_bus_dsps_data/ccsds_2025_206_10_25_30",
     #     os.path.expanduser("~/Downloads/2025-02-13 sample cubixss data/CSIE_GSE_raw_219_truncated.bin"),
     #     os.path.expanduser("~/Dropbox/suncet_dropbox/9000 Processing/data/test_data/2025-06-13_bluefin_tvac/ccsds_2025_164_11_46_23")
     ]
@@ -689,6 +795,7 @@ def main():
     # Sort the file paths for consistent ordering
     file_paths.sort()
     processor = Level0_5(file_paths)
+    
     processor.process()
 
 if __name__ == "__main__":

@@ -50,4 +50,8 @@ xband_register_pkt,69,suncet_bus,,"",,,,
 csie_meta,26,suncet_bus,,"CSIE Meta Packet",,,,
 csie_data,24,suncet_bus,,"CSIE Data Packet",,,,
 playback,68,suncet_bus,,"Playback Packet",,,,
+dsps_log, 23, dsps,,"Dual-SPS Log Packet",,,,
+dsps_param, 25, dsps,,"Dual-SPS Param Packet",,,,
+dsps_time, 29, dsps,,"Dual-SPS Time Packet",,,,
+dsps_data, 35, dsps,,"Dual-SPS Data Packet",,,,
 
