@@ -134,3 +134,7 @@ dmypy.json
 # MacOS junk
 */.DS_Store
 .DS_Store
+
+# Private packet definitions (keep local only)
+suncet_processing_pipeline/packet_definitions/
+.vscode/launch.json
