@@ -714,32 +714,78 @@ class Level0_5:
         print(f"Total images processed: {processed_images}")
         print(f"Total images in image_arrays: {len(self.image_arrays)}")
 
-    def get_packet_timestamp(self, packet):
-        """
-        Extract timestamp from a packet by looking for attributes that start with 'ccsdsSecHeader2_sec'.
-        
-        Args:
-            packet: The packet object to extract timestamp from
-            
-        Returns:
-            float: The timestamp value, or None if not found
-        """
+    @staticmethod
+    def _coerce_numeric_scalar(value):
+        """Convert a value to float if it is a scalar numeric."""
+        if isinstance(value, (list, np.ndarray)):
+            if len(value) != 1:
+                return None
+            value = value[0]
+        if isinstance(value, (int, float, np.number)):
+            return float(value)
+        return None
+
+    def _get_numeric_attr_by_prefix(self, packet, prefix):
+        """Return the first numeric attribute value matching a prefix."""
         for attr_name in dir(packet):
-            # Skip private attributes and methods
             if attr_name.startswith('_'):
                 continue
-                
-            # Check if the attribute name starts with 'ccsdsSecHeader2_sec'
-            if attr_name.startswith('ccsdsSecHeader2_sec'):
+            if attr_name.startswith(prefix):
                 try:
-                    timestamp = getattr(packet, attr_name)
-                    # Ensure it's a numeric value
-                    if isinstance(timestamp, (int, float, np.number)):
-                        return float(timestamp)
+                    value = getattr(packet, attr_name)
                 except (AttributeError, TypeError, ValueError):
                     continue
-        
+                numeric = self._coerce_numeric_scalar(value)
+                if numeric is not None:
+                    return numeric
         return None
+
+    def get_packet_time_seconds(self, packet):
+        """
+        Extract packet time from CCSDS secondary header seconds.
+        This is available in all packet types.
+        """
+        return self._get_numeric_attr_by_prefix(packet, 'ccsdsSecHeader2_sec')
+
+    def get_time_since_boot_seconds(self, packet):
+        """
+        Extract time since boot for packets that include it.
+        Only beacon and sw_stat packets are expected to have this.
+        """
+        for attr_name in ('beac_time_since_boot', 'sw_time_since_boot'):
+            if hasattr(packet, attr_name):
+                value = self._coerce_numeric_scalar(getattr(packet, attr_name))
+                if value is not None:
+                    return value
+        return None
+
+    def normalize_packet_time_fields(self, packet_dict):
+        """
+        Ensure packet_time_seconds and time_since_boot_seconds exist on dicts.
+        This also migrates legacy timestamp_seconds_since_boot values.
+        """
+        packet_time = packet_dict.get('packet_time_seconds')
+        packet_time = self._coerce_numeric_scalar(packet_time)
+        if packet_time is None and 'timestamp_seconds_since_boot' in packet_dict:
+            packet_time = self._coerce_numeric_scalar(packet_dict.get('timestamp_seconds_since_boot'))
+        packet_dict['packet_time_seconds'] = packet_time if packet_time is not None else np.nan
+
+        time_since_boot = packet_dict.get('time_since_boot_seconds')
+        time_since_boot = self._coerce_numeric_scalar(time_since_boot)
+        if time_since_boot is None:
+            for key in ('beac_time_since_boot', 'sw_time_since_boot'):
+                if key in packet_dict:
+                    time_since_boot = self._coerce_numeric_scalar(packet_dict.get(key))
+                    if time_since_boot is not None:
+                        break
+        packet_dict['time_since_boot_seconds'] = (
+            time_since_boot if time_since_boot is not None else np.nan
+        )
+
+        if 'timestamp_seconds_since_boot' in packet_dict:
+            packet_dict.pop('timestamp_seconds_since_boot')
+
+        return packet_dict
 
     def get_version(self):
         """Read version from the version file in the repo root."""
@@ -758,13 +804,13 @@ class Level0_5:
     
     def deduplicate_telemetry_points(self, points):
         """
-        Remove duplicates based on timestamp and packet_type, keeping the *newly generated* data in case of duplicates.
+        Remove duplicates based on packet_time_seconds and packet_type, keeping new data on collisions.
         We do this by iterating over points in order: existing first, then new.
         To keep the new data, we build a dict mapping dedup_key to the point, so later (new) points overwrite earlier (existing) ones.
         """
         dedup_dict = {}
         for point in points:
-            dedup_key = (point['timestamp_seconds_since_boot'], point['packet_type'])
+            dedup_key = (point['packet_time_seconds'], point['packet_type'])
             dedup_dict[dedup_key] = point  # This will keep the last occurrence, i.e., the new data if duplicate
         return list(dedup_dict.values())
 
@@ -813,7 +859,7 @@ class Level0_5:
                                 if field_name == 'packet_type':
                                     value = value.decode('utf-8')
                                 packet_dict_row[field_name] = value
-                            existing_packets.append(packet_dict_row)
+                            existing_packets.append(self.normalize_packet_time_fields(packet_dict_row))
                         print(f"Loaded {len(existing_packets)} existing {data_type} packets")
             except Exception as e:
                 print(f"Warning: Could not read existing file {filepath}: {e}")
@@ -825,15 +871,21 @@ class Level0_5:
         # Process each new packet
         new_packets = []
         for packet_key, packet in packet_dict.items():
-            # Get the timestamp from the packet using the helper function
-            timestamp = self.get_packet_timestamp(packet)
-            if timestamp is None:
-                print(f"Warning: {data_type} packet {packet_key} has no timestamp, skipping")
+            packet_time = self.get_packet_time_seconds(packet)
+            time_since_boot = self.get_time_since_boot_seconds(packet)
+            if packet_time is None and time_since_boot is None:
+                print(f"Warning: {data_type} packet {packet_key} has no packet time, skipping")
                 continue
+            if packet_time is None:
+                packet_time = time_since_boot
             
             # Create a dictionary for this packet
             packet_type_name = packet.__class__.__name__
-            packet_dict_row = {'packet_type': packet_type_name, 'timestamp_seconds_since_boot': timestamp}
+            packet_dict_row = {
+                'packet_type': packet_type_name,
+                'packet_time_seconds': packet_time,
+                'time_since_boot_seconds': time_since_boot if time_since_boot is not None else np.nan,
+            }
             
             # Add all attributes of the packet
             for attr_name in dir(packet):
@@ -858,6 +910,25 @@ class Level0_5:
         
         # Add new packets to all packets
         all_packets.extend(new_packets)
+
+        # Drop packets without a usable packet_time_seconds value
+        valid_packets = []
+        for packet in all_packets:
+            packet_time = packet.get('packet_time_seconds')
+            if packet_time is None:
+                print(f"Warning: {data_type} packet {packet.get('packet_type', 'unknown')} missing packet_time_seconds, skipping")
+                continue
+            if not isinstance(packet_time, (int, float, np.number)):
+                packet_time = self._coerce_numeric_scalar(packet_time)
+                if packet_time is None:
+                    print(f"Warning: {data_type} packet {packet.get('packet_type', 'unknown')} has non-numeric packet_time_seconds, skipping")
+                    continue
+                packet['packet_time_seconds'] = packet_time
+            if not np.isfinite(packet_time):
+                print(f"Warning: {data_type} packet {packet.get('packet_type', 'unknown')} has non-finite packet_time_seconds, skipping")
+                continue
+            valid_packets.append(packet)
+        all_packets = valid_packets
         
         if not all_packets:
             print(f"No valid {data_type} packets to save")
@@ -868,21 +939,22 @@ class Level0_5:
         print(f"Removed {len(all_packets) - len(unique_packets)} duplicate {data_type} packets (kept new data if duplicate)")
         
         # Sort packets by timestamp to ensure chronological order
-        unique_packets.sort(key=lambda x: x['timestamp_seconds_since_boot'])
+        unique_packets.sort(key=lambda x: x['packet_time_seconds'])
         
         # Extract timestamps and data for HDF5 storage
-        timestamps = [packet['timestamp_seconds_since_boot'] for packet in unique_packets]
+        timestamps = [packet['packet_time_seconds'] for packet in unique_packets]
         
-        # Get all unique field names (excluding timestamp and packet_type)
+        # Get all unique field names (excluding time fields and packet_type)
         field_names = set()
         for packet in unique_packets:
             for key in packet.keys():
-                if key not in ['timestamp_seconds_since_boot', 'packet_type']:
+                if key not in ['packet_time_seconds', 'time_since_boot_seconds', 'packet_type']:
                     field_names.add(key)
         
         # Create structured array for HDF5
         dtype_list = [
-            ('timestamp_seconds_since_boot', 'f8'),
+            ('packet_time_seconds', 'f8'),
+            ('time_since_boot_seconds', 'f8'),
             ('packet_type', 'S50')  # String type for packet type names
         ]
         
@@ -895,7 +967,8 @@ class Level0_5:
         
         # Fill the structured array
         for i, packet in enumerate(unique_packets):
-            data_array[i]['timestamp_seconds_since_boot'] = packet['timestamp_seconds_since_boot']
+            data_array[i]['packet_time_seconds'] = packet['packet_time_seconds']
+            data_array[i]['time_since_boot_seconds'] = packet['time_since_boot_seconds']
             data_array[i]['packet_type'] = packet['packet_type'].encode('utf-8')
             
             # Fill other fields
@@ -921,12 +994,13 @@ class Level0_5:
             f.attrs[f'total_{data_type}_packets'] = len(unique_packets)
             f.attrs['time_range_start'] = timestamps[0]
             f.attrs['time_range_end'] = timestamps[-1]
+            f.attrs['time_range_basis'] = 'packet_time_seconds (ccsdsSecHeader2_sec)'
             f.attrs['processing_timestamp'] = datetime.now().isoformat()
             f.attrs['num_input_files_this_run'] = len(self.ABSOLUTE_FILE_PATH)
         
         print(f"Saved {len(unique_packets)} total {data_type} packets to HDF5 file: {filepath}")
         print(f"Added {len(new_packets)} new packets from {len(self.ABSOLUTE_FILE_PATH)} input files")
-        print(f"Time range: {timestamps[0]:.2f} to {timestamps[-1]:.2f} seconds since boot")
+        print(f"Time range: {timestamps[0]:.2f} to {timestamps[-1]:.2f} packet time seconds")
         print(f"Available {data_type} types: {', '.join(set(packet['packet_type'] for packet in unique_packets))}")
     
     @staticmethod
