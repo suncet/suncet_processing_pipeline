@@ -716,7 +716,11 @@ class Level0_5:
 
     def get_packet_timestamp(self, packet):
         """
-        Extract timestamp from a packet by looking for attributes that start with 'ccsdsSecHeader2_sec'.
+        Extract timestamp from a packet. 
+        
+        For beacon packets: uses beac_time_since_boot if available (time since boot).
+        For sw_stat packets: uses sw_time_since_boot if available (time since boot).
+        For all other packets: uses ccsdsSecHeader2_sec* (packet time, not necessarily time since boot).
         
         Args:
             packet: The packet object to extract timestamp from
@@ -724,6 +728,30 @@ class Level0_5:
         Returns:
             float: The timestamp value, or None if not found
         """
+        packet_type = packet.__class__.__name__
+        
+        # For beacon packets, prefer beac_time_since_boot (time since boot)
+        if packet_type == 'BEACON':
+            if hasattr(packet, 'beac_time_since_boot'):
+                try:
+                    timestamp = getattr(packet, 'beac_time_since_boot')
+                    if isinstance(timestamp, (int, float, np.number)):
+                        return float(timestamp)
+                except (AttributeError, TypeError, ValueError):
+                    pass
+        
+        # For sw_stat packets, prefer sw_time_since_boot (time since boot)
+        if packet_type == 'SW_STAT':
+            if hasattr(packet, 'sw_time_since_boot'):
+                try:
+                    timestamp = getattr(packet, 'sw_time_since_boot')
+                    if isinstance(timestamp, (int, float, np.number)):
+                        return float(timestamp)
+                except (AttributeError, TypeError, ValueError):
+                    pass
+        
+        # For all packets (including beacon/sw_stat if time_since_boot not available),
+        # fall back to ccsdsSecHeader2_sec* (packet time)
         for attr_name in dir(packet):
             # Skip private attributes and methods
             if attr_name.startswith('_'):
