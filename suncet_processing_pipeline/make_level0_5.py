@@ -2,14 +2,13 @@
 This is the code to make the Level 0.5 data product. 
 We use 0_5 in the filename to prevent issues with some operating systems not being able to handle a period in a filename
 """
-from suncet_processing_pipeline.packet_definitions import gen_pkts
-from suncet_processing_pipeline.packet_definitions import dsps_decoders
 
 import numpy as np
 from astropy.io import fits
 import re
 import psutil
 import os
+import sys
 import time 
 from datetime import datetime
 import pandas as pd 
@@ -17,24 +16,41 @@ import h5py
 from pillow_jpls import Image
 from io import BytesIO
 from tqdm import tqdm
+import importlib.util
 
 class Level0_5:
-    # CSIE HW/SW configuration values. Do not edit unless you know why
+    # Hardware and software configuration values. Do not edit unless you know why
     CSIE_ROWS = 2000
     CSIE_COLS = 1504
     PRIMARY_HDR_LEN = 6
     SECONDARY_HDR_LEN = 6
     CHECKSUM_LEN = 4
-    CHECKSUM_LEN_DSPS = 2
-    SYNC_MARKER = [b'\x1A', b'\xCF', b'\xFC', b'\x1D'] # CSIE as saved by Alan's GSE
+    SYNC_MARKER = [b'\x1A', b'\xCF', b'\xFC', b'\x1D']
+    SYNC_MARKER_LEN = len(SYNC_MARKER)
+    VCDU_HEADER_LEN = 8
+    RETRANSMIT_HEADER_LEN = 16
     
-    def __init__(self, file_paths):
+    def __init__(self, file_paths, packet_definitions_path):
         """
         Initialize the Level0_5 processor.
         
         Args:
             file_paths (list): List of paths to the binary files to process
+            packet_definitions_path (str): Path to folder containing gen_pkts.py and dsps_decoders.py.
+                Must be provided. Path will be expanded (e.g., ~ will be expanded to home directory).
+        
+        Raises:
+            ValueError: If packet_definitions_path is None or empty, or if the path doesn't exist.
         """
+        if packet_definitions_path is None or not packet_definitions_path:
+            raise ValueError("packet_definitions_path is required and cannot be None or empty")
+        
+        # Expand user path (e.g., ~ to home directory)
+        packet_definitions_path = os.path.expanduser(packet_definitions_path)
+        
+        # Import gen_pkts and dsps_decoders from the specified path
+        self.gen_pkts, self.dsps_decoders = self._import_packet_definitions(packet_definitions_path)
+        
         self.ABSOLUTE_FILE_PATH = file_paths
         
         # Get APIDs from the packet definitions
@@ -45,15 +61,53 @@ class Level0_5:
         
         # Initialize counters for statistics
         self.bad_checksum_counter = 0
+        self.vcdu_headers = []
+        self.retransmit_headers = []
     
-    def fletcher16(self, data: bytes) -> int:
-        sum1 = 0
-        sum2 = 0
-        for b in data:
-            sum1 = (sum1 + b) % 256
-            sum2 = (sum2 + sum1) % 256
-        return (sum2 << 8) | sum1
-
+    def _import_packet_definitions(self, packet_definitions_path):
+        """
+        Import gen_pkts and dsps_decoders from a specified path.
+        
+        Args:
+            packet_definitions_path (str): Path to folder containing gen_pkts.py and dsps_decoders.py
+            
+        Returns:
+            tuple: (gen_pkts module, dsps_decoders module)
+        """
+        # Check if path exists
+        if not os.path.isdir(packet_definitions_path):
+            raise ValueError(f"Packet definitions path does not exist: {packet_definitions_path}")
+        
+        # Check if required files exist
+        gen_pkts_path = os.path.join(packet_definitions_path, 'gen_pkts.py')
+        dsps_decoders_path = os.path.join(packet_definitions_path, 'dsps_decoders.py')
+        
+        if not os.path.isfile(gen_pkts_path):
+            raise ValueError(f"gen_pkts.py not found at: {gen_pkts_path}")
+        if not os.path.isfile(dsps_decoders_path):
+            raise ValueError(f"dsps_decoders.py not found at: {dsps_decoders_path}")
+        
+        # Add the path to sys.path temporarily for imports
+        original_path = sys.path.copy()
+        try:
+            if packet_definitions_path not in sys.path:
+                sys.path.insert(0, packet_definitions_path)
+            
+            # Import using importlib to avoid module name conflicts
+            spec_gen_pkts = importlib.util.spec_from_file_location("gen_pkts", gen_pkts_path)
+            gen_pkts = importlib.util.module_from_spec(spec_gen_pkts)
+            spec_gen_pkts.loader.exec_module(gen_pkts)
+            
+            spec_dsps_decoders = importlib.util.spec_from_file_location("dsps_decoders", dsps_decoders_path)
+            dsps_decoders = importlib.util.module_from_spec(spec_dsps_decoders)
+            spec_dsps_decoders.loader.exec_module(dsps_decoders)
+            
+            return gen_pkts, dsps_decoders
+            
+        finally:
+            # Restore original sys.path
+            sys.path[:] = original_path
+    
     def fletcher32(self, data: bytes) -> int:
         if len(data) % 2:
             data += b'\x00'
@@ -67,45 +121,30 @@ class Level0_5:
 
     def validate_checksum(self, packet):
         """
-        Validate the checksum of a packet.
+        Validate the checksum of a packet using Fletcher-32.
         
-        First tries Fletcher-32 checksum (4 bytes), then falls back to Fletcher-16 (2 bytes)
-        for DSPS packets if the first check fails.
+        All packets (including DSPS) now use Fletcher-32 checksums (4 bytes).
         
         Args:
             packet (bytes): The complete packet including header and data
             
         Returns:
-            bool: True if either checksum is valid, False otherwise
+            bool: True if checksum is valid, False otherwise
         """
-        if len(packet) < self.PRIMARY_HDR_LEN + self.CHECKSUM_LEN_DSPS:
+        if len(packet) < self.PRIMARY_HDR_LEN + self.CHECKSUM_LEN:
             return False
         
-        # First try Fletcher-32 checksum (4 bytes)
-        if len(packet) >= self.PRIMARY_HDR_LEN + self.CHECKSUM_LEN:
-            # Extract the data portion (everything except the 4-byte checksum)
-            data_portion = packet[:-self.CHECKSUM_LEN]
-            
-            # Extract the stored checksum (last 4 bytes)
-            stored_checksum = packet[-self.CHECKSUM_LEN:]
-            
-            # Calculate the expected checksum using Fletcher-32 algorithm and convert to big-endian format
-            calculated_checksum = self.fletcher32(data_portion)
-            calculated_checksum = calculated_checksum.to_bytes(4, 'big')
-            
-            if stored_checksum == calculated_checksum:
-                return True
+        # Extract the data portion (everything except the 4-byte checksum)
+        data_portion = packet[:-self.CHECKSUM_LEN]
         
-        # If Fletcher-32 failed or packet is too short, try Fletcher-16 (2 bytes)
-        if len(packet) >= self.PRIMARY_HDR_LEN + self.CHECKSUM_LEN_DSPS:   
-            # Tom's DSPS code uses checkbytes so that if you include them in the fletcher16 mod 256 calculation, the checksum will be 0x0000
-            calculated_checksum = self.fletcher16(packet)
-            
-            if calculated_checksum == 0x0000:
-                return True
+        # Extract the stored checksum (last 4 bytes)
+        stored_checksum = packet[-self.CHECKSUM_LEN:]
         
-        # If both checksums failed, return False
-        return False
+        # Calculate the expected checksum using Fletcher-32 algorithm and convert to big-endian format
+        calculated_checksum = self.fletcher32(data_portion)
+        calculated_checksum = calculated_checksum.to_bytes(4, 'big')
+        
+        return stored_checksum == calculated_checksum
 
     def get_checksum_stats(self):
         """
@@ -117,7 +156,6 @@ class Level0_5:
         return {
             'bad_checksum_count': self.bad_checksum_counter,
             'checksum_length_bytes': self.CHECKSUM_LEN,
-            'checksum_length_dsps_bytes': self.CHECKSUM_LEN_DSPS,
             'primary_header_length_bytes': self.PRIMARY_HDR_LEN
         }
 
@@ -130,19 +168,23 @@ class Level0_5:
         telemetry_dict = {} # Dictionary to store other telemetry packets
         dsps_dict = {}      # Dictionary to store DSPS packets
         processed_images = 0
+        total_packets_processed = 0
         
         for path in self.ABSOLUTE_FILE_PATH:
             print(f"Processing file: {path}")
             
             filename = os.path.basename(path)
             from_hydra = filename.startswith('ccsds_')
+            from_xband_gse = filename.startswith('suncet_')
             
-            packets = self.extract_packets(path, from_hydra)
+            source = "hydra" if from_hydra else "xband_gse" if from_xband_gse else "csie"
+            packets = self.extract_packets(path, source=source)
             if not packets:
                 print(f"No packets found in {path}")
                 continue
                 
             print(f"Extracted {len(packets)} packets")
+            total_packets_processed += len(packets)
             
             for packet in tqdm(packets, desc=f"Processing packets in {filename}"):
                 self.process_packet(packet, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename)
@@ -151,7 +193,7 @@ class Level0_5:
         
         print("\nPacket parsing complete. Summary:")
         print(f"Processing time: {elapsed_time:.2f} seconds")
-        print(f"Total packets processed: {len(packets)}")
+        print(f"Total packets processed: {total_packets_processed}")
         print(f"Telemetry packets found: {len(telemetry_dict)}")
         print(f"CSIE Metadata packets found: {len(metadata_dict)}")
         print(f"Data for {len(data_dict)} different image IDs collected")
@@ -201,7 +243,7 @@ class Level0_5:
             
         # Use gen_pkts to interpret the packet based on its type
         if packet_name == 'csie_meta':
-            meta_packet = gen_pkts.CSIE_META(packet[self.PRIMARY_HDR_LEN:], header) # CSIE_META expects "packet" to not include the header
+            meta_packet = self.gen_pkts.CSIE_META(packet[self.PRIMARY_HDR_LEN:], header) # CSIE_META expects "packet" to not include the header
             image_id_meta = meta_packet.csie_meta_img_id
             metadata_dict[image_id_meta] = meta_packet
             
@@ -245,7 +287,7 @@ class Level0_5:
         elif 'dsps' in packet_name:            
             class_name = packet_name.upper()
             try:
-                packet_class = getattr(dsps_decoders, class_name)
+                packet_class = getattr(self.dsps_decoders, class_name)
                 packet_instance = packet_class(packet[self.PRIMARY_HDR_LEN:], header, filename)
                 dsps_dict[f"{packet_name}_{sequence_number}"] = packet_instance
             except (AttributeError, TypeError) as e:
@@ -256,65 +298,248 @@ class Level0_5:
             # Convert packet name to uppercase to match class names in gen_pkts
             class_name = packet_name.upper()
             try:
-                packet_class = getattr(gen_pkts, class_name)
+                packet_class = getattr(self.gen_pkts, class_name)
                 packet_instance = packet_class(packet[self.PRIMARY_HDR_LEN:], header, filename)
                 # Store the interpreted packet in telemetry_dict using a unique key
                 telemetry_dict[f"{packet_name}_{sequence_number}"] = packet_instance
             except (AttributeError, TypeError) as e:
                 print(f"Warning: Could not process packet type {packet_name}: {str(e)}")
     
-    def extract_packets(self, file_path, from_hydra=False):
-        """Extract packets from data using either sync markers or CCSDS headers."""
-        if from_hydra:
-            # For Hydra CCSDS files, read packets using header length
+    def extract_packets(self, file_path, source="csie"):
+        """Extract packets from data using the appropriate strategy for the source."""
+        if source == "hydra":
             return self.extract_ccsds_packets(file_path)
-        else:
-            # For CSIE files, use sync markers
-            sync_indices, data = self.find_all_sync_markers(file_path)
-            if not sync_indices:
-                return []
-            
-            packets = []
-            for i in range(len(sync_indices) - 1):
-                start = sync_indices[i] + len(self.SYNC_MARKER)
-                end = sync_indices[i + 1]
+        if source == "xband_gse":
+            return self.extract_xband_packets(file_path)
+
+        # For direct CSIE files, use sync markers
+        sync_indices, data = self.find_all_sync_markers(file_path)
+        if not sync_indices:
+            return []
+
+        packets = []
+        for i in range(len(sync_indices) - 1):
+            start = sync_indices[i] + self.SYNC_MARKER_LEN
+            end = sync_indices[i + 1]
+            packet = data[start:end]
+            packets.append(packet)
+
+        # Handle the final packet (from last sync marker to end of file)
+        if sync_indices:
+            start = sync_indices[-1] + self.SYNC_MARKER_LEN
+            end = len(data)
+            if start < end:
                 packet = data[start:end]
                 packets.append(packet)
-            
-            # Handle the final packet (from last sync marker to end of file)
-            if sync_indices:
-                start = sync_indices[-1] + len(self.SYNC_MARKER)
-                end = len(data)
-                if start < end:
-                    packet = data[start:end]
-                    packets.append(packet)
-            
-            return packets
 
-    def extract_ccsds_packets(self, file_path):
-        """Extract packets from CCSDS file using header length."""
+        return packets
+
+    def extract_xband_packets(self, file_path):
+        """Extract CCSDS packets from X-band GSE VCDU formatted files."""
+        sync_indices, data = self.find_all_sync_markers(file_path)
+        if not sync_indices or data is None:
+            if data is None:
+                print("Warning: X-band file too large to load into memory for VCDU stripping.")
+            return []
+
+        ccsds_packets = []
+        frame_boundaries = sync_indices + [len(data)]
+
+        for current_index, next_index in zip(sync_indices, frame_boundaries[1:]):
+            frame_start = current_index + self.SYNC_MARKER_LEN
+            frame_end = next_index
+            frame = data[frame_start:frame_end]
+            minimum_frame_len = self.VCDU_HEADER_LEN + self.SYNC_MARKER_LEN + self.RETRANSMIT_HEADER_LEN
+            if len(frame) < minimum_frame_len:
+                continue
+
+            vcdu_header = frame[:self.VCDU_HEADER_LEN]
+            interpreted_header = self.parse_vcdu_header(vcdu_header)
+            interpreted_header["file_path"] = file_path
+            self.vcdu_headers.append(interpreted_header)
+
+            frame_payload = frame[self.VCDU_HEADER_LEN:]
+            swapped_payload = self.swap_bytes_in_words(frame_payload, word_size=4)
+
+            retransmit_segments = self.segment_data_by_sync(swapped_payload)
+            if not retransmit_segments:
+                print("Warning: No retransmit segments found within VCDU payload.")
+                continue
+
+            for segment in retransmit_segments:
+                if len(segment) < self.RETRANSMIT_HEADER_LEN:
+                    continue
+
+                retrans_header_bytes = segment[:self.RETRANSMIT_HEADER_LEN]
+                retrans_header = self.parse_retransmit_header(retrans_header_bytes)
+                retrans_header["file_path"] = file_path
+                retrans_header["vcdu_master_frame_count"] = interpreted_header.get("master_channel_frame_count")
+                retrans_header["vcdu_virtual_channel_id"] = interpreted_header.get("virtual_channel_id")
+                self.retransmit_headers.append(retrans_header)
+
+                ccsds_payload = segment[self.RETRANSMIT_HEADER_LEN:]
+                if not ccsds_payload:
+                    continue
+
+                ccsds_packets.extend(self.extract_ccsds_packets(ccsds_payload))
+
+        return ccsds_packets
+
+    @staticmethod
+    def swap_bytes_in_words(data, word_size=4):
+        """Swap each word to big-endian order (default 4-byte words)."""
+        swapped = bytearray()
+        for i in range(0, len(data), word_size):
+            chunk = data[i:i + word_size]
+            swapped.extend(chunk[::-1])
+        return bytes(swapped)
+
+    def find_sync_markers_in_bytes(self, data):
+        """Find sync marker indices within a bytes-like object."""
+        sync_pattern = b''.join(self.SYNC_MARKER)
+        return [match.start() for match in re.finditer(re.escape(sync_pattern), data)]
+
+    def segment_data_by_sync(self, data):
+        """Split bytes on sync markers, returning the payload segments between markers."""
+        indices = self.find_sync_markers_in_bytes(data)
+        if not indices:
+            return []
+
+        segments = []
+        boundaries = indices + [len(data)]
+        for start_idx, end_idx in zip(indices, boundaries[1:]):
+            payload_start = start_idx + self.SYNC_MARKER_LEN
+            if payload_start >= end_idx:
+                continue
+            segments.append(data[payload_start:end_idx])
+        return segments
+
+    def parse_vcdu_header(self, header_bytes):
+        """Parse an 8-byte VCDU header and return a dictionary of fields."""
+        if len(header_bytes) != self.VCDU_HEADER_LEN:
+            raise ValueError("VCDU header must be 8 bytes long")
+
+        primary = header_bytes[:6]
+        data_field_status = primary[4:6]
+        padding = header_bytes[6:8]
+
+        # Primary header
+        first_two = int.from_bytes(primary[0:2], "big")
+        transfer_frame_version = (first_two >> 14) & 0x03
+        spacecraft_id = (first_two >> 4) & 0x03FF
+        virtual_channel_id = first_two & 0x0F
+        ocf_flag = (primary[2] >> 7) & 0x01
+        master_channel_frame_count = primary[2]
+        virtual_channel_frame_count = primary[3]
+
+        # Data field status
+        dfs_word = int.from_bytes(data_field_status, "big")
+        secondary_header_flag = (dfs_word >> 15) & 0x01
+        sync_flag = (dfs_word >> 14) & 0x01
+        packet_order_flag = (dfs_word >> 13) & 0x01
+        segment_length_id = (dfs_word >> 11) & 0x03
+        first_header_pointer = dfs_word & 0x07FF
+
+        return {
+            "transfer_frame_version": transfer_frame_version,
+            "spacecraft_id": spacecraft_id,
+            "virtual_channel_id": virtual_channel_id,
+            "ocf_flag": ocf_flag,
+            "master_channel_frame_count": master_channel_frame_count,
+            "virtual_channel_frame_count": virtual_channel_frame_count,
+            "secondary_header_flag": secondary_header_flag,
+            "sync_flag": sync_flag,
+            "packet_order_flag": packet_order_flag,
+            "segment_length_id": segment_length_id,
+            "first_header_pointer": first_header_pointer,
+            "padding": padding,
+        }
+
+    def parse_retransmit_header(self, header_bytes):
+        """Parse a 16-byte retransmit header and return a dictionary of fields."""
+        if len(header_bytes) != self.RETRANSMIT_HEADER_LEN:
+            raise ValueError("Retransmit header must be 16 bytes long")
+
+        packet_id = int.from_bytes(header_bytes[0:2], "little")
+        seq_count = int.from_bytes(header_bytes[2:4], "little")
+        pkt_length = int.from_bytes(header_bytes[4:6], "little")
+        partition_id = int.from_bytes(header_bytes[6:8], "little")
+        page = int.from_bytes(header_bytes[8:12], "little")
+        record_num = header_bytes[12]
+        record_total = header_bytes[13]
+        pad1 = header_bytes[14]
+        pad2 = header_bytes[15]
+
+        return {
+            "packet_id": packet_id,
+            "sequence_count": seq_count,
+            "packet_length": pkt_length,
+            "partition_id": partition_id,
+            "page": page,
+            "record_number": record_num,
+            "record_total": record_total,
+            "pad1": pad1,
+            "pad2": pad2,
+        }
+
+    def extract_ccsds_packets(self, data_source):
+        """Extract packets from CCSDS data using header length."""
+        if isinstance(data_source, (bytes, bytearray, memoryview)):
+            return self._extract_ccsds_packets_from_bytes(data_source)
+
+        with open(data_source, 'rb') as file_obj:
+            return self._extract_ccsds_packets_from_fileobj(file_obj)
+
+    def _extract_ccsds_packets_from_bytes(self, data_bytes):
         packets = []
-        
-        with open(file_path, 'rb') as file:
-            while True:
-                # Read the primary header (6 bytes)
-                header = file.read(self.PRIMARY_HDR_LEN) # FYI: file.read advances the file pointer by the number of bytes read
-                if len(header) < self.PRIMARY_HDR_LEN:
-                    break  # End of file
-                
-                # Parse the length field from the header
-                length = int.from_bytes(header[4:6], 'big') + 1  # CCSDS length field
-                
-                # Read the rest of the packet (data portion)
-                packet_data = file.read(length) # FYI: file.read advances the file pointer by the number of bytes read
-                if len(packet_data) < (length):
-                    print(f"Warning: Incomplete packet at end of file")
-                    break
-                
-                # Combine header and data to form complete packet
-                packet = header + packet_data
-                packets.append(packet)
-        
+        view = memoryview(data_bytes)
+        offset = 0
+        total_length = len(view)
+
+        while offset + self.PRIMARY_HDR_LEN <= total_length:
+            # Skip filler (assumed 0x00) between packets
+            while offset < total_length and view[offset] == 0x00:
+                offset += 1
+            if offset + self.PRIMARY_HDR_LEN > total_length:
+                break
+
+            header = bytes(view[offset:offset + self.PRIMARY_HDR_LEN])
+            if all(b == 0x00 for b in header):
+                offset += self.PRIMARY_HDR_LEN
+                continue
+
+            length = int.from_bytes(header[4:6], 'big') + 1
+            if length <= 0:
+                offset += self.PRIMARY_HDR_LEN
+                continue
+
+            packet_end = offset + self.PRIMARY_HDR_LEN + length
+            if packet_end > total_length:
+                break
+
+            packet = bytes(view[offset:packet_end])
+            packets.append(packet)
+            offset = packet_end
+
+        return packets
+
+    def _extract_ccsds_packets_from_fileobj(self, file_obj):
+        packets = []
+        while True:
+            header = file_obj.read(self.PRIMARY_HDR_LEN)
+            if len(header) < self.PRIMARY_HDR_LEN:
+                break
+
+            if all(b == 0x00 for b in header):
+                continue
+
+            length = int.from_bytes(header[4:6], 'big') + 1
+            packet_data = file_obj.read(length)
+            if len(packet_data) < length:
+                break
+
+            packets.append(header + packet_data)
+
         return packets
 
     def find_all_sync_markers(self, file_path):
@@ -388,7 +613,7 @@ class Level0_5:
     
     def parse_csie_meta(self, packet, header):
         """Extract metadata packet into a class using autogen constructor."""
-        return gen_pkts.CSIE_META(packet[6:], header, "HSSI BIN") # Note: CSIE_META expects the header to not be included as part of the packet so this [6:] gets rid of it
+        return self.gen_pkts.CSIE_META(packet[6:], header, "HSSI BIN") # Note: CSIE_META expects the header to not be included as part of the packet so this [6:] gets rid of it
 
     def get_image_meta(self, meta_packet):
         row_bin = (meta_packet.csie_meta_fpm_proc_config & 0xFF) + 1
@@ -778,23 +1003,26 @@ class Level0_5:
 
 def main():
     # Example usage
-    file_paths = [
-        f"{os.getenv('suncet_data')}/test_data/2025_206_10_18_14_bus_dsps_data/ccsds_2025_206_10_25_30",
+    #file_paths = [
+    #    f"{os.getenv('suncet_data')}/test_data/2025_206_10_18_14_bus_dsps_data/ccsds_2025_206_10_25_30",
     #     os.path.expanduser("~/Downloads/2025-02-13 sample cubixss data/CSIE_GSE_raw_219_truncated.bin"),
     #     os.path.expanduser("~/Dropbox/suncet_dropbox/9000 Processing/data/test_data/2025-06-13_bluefin_tvac/ccsds_2025_164_11_46_23")
-    ]
+    #]
     
-    # Get all file paths from the specified folder that start with 'ccsds_'
-    # import glob
-    # folder_path = os.path.expanduser("~/Dropbox/suncet_dropbox/9000 Processing/data/test_data/2025-06-13_bluefin_tvac/")
-    # file_paths = glob.glob(os.path.join(folder_path, "ccsds_*"))
+    import glob
+    folder = f"{os.getenv('suncet_data')}/test_data/2026-01-16_7170-002_fm_flatsat_cpt/2026_016_09_23_06_FM_FLATSAT_CPT"
+    file_paths = glob.glob(os.path.join(folder, "ccsds_*"))
     
     # Filter to only include files (not directories)
     file_paths = [path for path in file_paths if os.path.isfile(path)]
     
     # Sort the file paths for consistent ordering
     file_paths.sort()
-    processor = Level0_5(file_paths)
+    
+    # Path to packet definitions
+    packet_definitions_path = '~/Library/CloudStorage/Box-Box/SunCET Private/suncet_ctdb/suncet_bus_v1-0-0/suncet_v1-0-0_decoders'
+    
+    processor = Level0_5(file_paths, packet_definitions_path)
     
     processor.process()
 

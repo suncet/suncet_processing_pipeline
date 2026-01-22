@@ -39,7 +39,11 @@ class Processor:
 
     def run(self):
         if self.config.make_level0_5:
-            level0_5 = Level0_5(self.config)
+            # Path to packet definitions
+            packet_definitions_path = '~/Library/CloudStorage/Box-Box/SunCET Private/suncet_ctdb/suncet_bus_v1-0-0'
+            # TODO: Update to pass actual file_paths instead of self.config
+            # For now, this will need to be fixed based on how file paths should be obtained
+            level0_5 = Level0_5(self.config, packet_definitions_path)
             level0_5.run()
 
         if self.config.make_level1:
