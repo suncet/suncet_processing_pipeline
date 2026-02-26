@@ -2,7 +2,7 @@
 This is the code to make the Level 0.5 data product. 
 We use 0_5 in the filename to prevent issues with some operating systems not being able to handle a period in a filename
 """
-
+import glob
 import numpy as np
 from astropy.io import fits
 import re
@@ -17,6 +17,8 @@ from pillow_jpls import Image
 from io import BytesIO
 from tqdm import tqdm
 import importlib.util
+import configparser
+
 
 class Level0_5:
     # Hardware and software configuration values. Do not edit unless you know why
@@ -29,7 +31,12 @@ class Level0_5:
     SYNC_MARKER_LEN = len(SYNC_MARKER)
     VCDU_HEADER_LEN = 8
     RETRANSMIT_HEADER_LEN = 16
-    
+    # X-band flight filename: ISO8601-style timestamp (filesystem-safe), then hashid, then ".tm"
+    # e.g. 2026-02-19T12-30-45_abc123.tm or 2026-02-19_123045_a1b2c3d4.tm
+    XBAND_FLIGHT_FILENAME_RE = re.compile(
+        r"^\d{4}-\d{2}-\d{2}[T_]\d{2}[-_]?\d{2}[-_]?\d{2}[_\-][a-zA-Z0-9_-]+\.tm$"
+    )
+
     def __init__(self, file_paths, packet_definitions_path):
         """
         Initialize the Level0_5 processor.
@@ -175,10 +182,25 @@ class Level0_5:
             print(f"Processing file: {path}")
             
             filename = os.path.basename(path)
-            from_hydra = filename.startswith('ccsds_')
+            from_hydra_realtime = filename.startswith('ccsds_')
             from_xband_gse = filename.startswith('suncet_')
-            
-            source = "hydra" if from_hydra else "xband_gse" if from_xband_gse else "csie"
+            from_xband_flight = self.XBAND_FLIGHT_FILENAME_RE.match(filename) is not None
+            from_uhf_playback = filename.startswith('pbk_')
+            from_hardline_playback = filename.startswith('hardline_playback_')
+
+            source = (
+                "hydra_realtime"
+                if from_hydra_realtime
+                else "xband_gse"
+                if from_xband_gse
+                else "xband_flight"
+                if from_xband_flight
+                else "uhf_playback"
+                if from_uhf_playback
+                else "hardline_playback"
+                if from_hardline_playback
+                else "csie"
+            )
             packets = self.extract_packets(path, source=source)
             if not packets:
                 print(f"No packets found in {path}")
@@ -222,10 +244,15 @@ class Level0_5:
         # Validate checksum before processing
         if not self.validate_checksum(packet):
             self.bad_checksum_counter += 1
-            return
+            #return # FIXME: Commented out to allow processing of bad checksums for testing
         
         apid, length, sequence_number, header = self.parse_header(packet)
-        
+
+        # APID 68 is playback: strip playback header (same length as retransmit header) and process inner CCSDS packet
+        if apid == 68:
+            remaining_data = packet[self.RETRANSMIT_HEADER_LEN:]
+            return self.process_packet(remaining_data, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename)
+
         # Get packet name from APID
         packet_name = self.apid_df[self.apid_df['APID'] == apid]['Name'].values
         if len(packet_name) == 0:
@@ -311,10 +338,14 @@ class Level0_5:
     
     def extract_packets(self, file_path, source="csie"):
         """Extract packets from data using the appropriate strategy for the source."""
-        if source == "hydra":
+        if source == "hydra_realtime":
             return self.extract_ccsds_packets(file_path)
-        if source == "xband_gse":
+        if source == "xband_gse" or source == "xband_flight":
             return self.extract_xband_packets(file_path)
+        if source == "uhf_playback":
+            return self.extract_uhf_playback_packets(file_path)
+        if source == "hardline_playback":
+            return self.extract_hardline_playback_packets(file_path)
 
         # For direct CSIE files, use sync markers
         sync_indices, data = self.find_all_sync_markers(file_path)
@@ -337,6 +368,16 @@ class Level0_5:
                 packets.append(packet)
 
         return packets
+
+    def extract_uhf_playback_packets(self, file_path):
+        """Extract CCSDS packets from UHF playback files. Assumes sync already done; file starts at a CCSDS primary header."""
+        with open(file_path, 'rb') as file_obj:
+            return self._extract_ccsds_packets_from_fileobj(file_obj)
+
+    def extract_hardline_playback_packets(self, file_path):
+        """Extract CCSDS packets from hardline playback files via file object."""
+        with open(file_path, 'rb') as file_obj:
+            return self._extract_ccsds_packets_from_fileobj(file_obj)
 
     def extract_xband_packets(self, file_path):
         """Extract CCSDS packets from X-band GSE VCDU formatted files."""
@@ -641,8 +682,9 @@ class Level0_5:
         output_dir = os.path.join(base_path, "processed_images")
         os.makedirs(output_dir, exist_ok=True)
         
-        # Format the filename using just the image ID
-        filename = f"image_{image_id}.fits"
+        # Format the filename using just the image ID (with optional output suffix from config)
+        suffix = self.get_output_suffix()
+        filename = f"image_{image_id}{suffix}.fits"
         filepath = os.path.join(output_dir, filename)
         
         # Create primary HDU with the image data
@@ -796,19 +838,26 @@ class Level0_5:
         return None
 
     def get_version(self):
-        """Read version from the version file in the repo root."""
-        # Get the repo root directory (one level up from this file)
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        repo_root = os.path.dirname(current_dir)
-        version_file = os.path.join(repo_root, 'version')
-        
+        """Read version from the config INI file."""
+        config_path = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
         try:
-            with open(version_file, 'r') as f:
-                version = f.read().strip()
-            return version
-        except FileNotFoundError:
-            print(f"Warning: Version file not found at {version_file}, using 'unknown'")
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            return config['structure']['version']
+        except (FileNotFoundError, KeyError) as e:
+            print(f"Warning: Could not read version from config at {config_path}: {e}, using 'unknown'")
             return 'unknown'
+
+    def get_output_suffix(self):
+        """Read output_suffix from config. Returns '-{suffix}' if set, else '' (always prepends dash)."""
+        config_path = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
+        try:
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            suffix = config.get('structure', 'output_suffix', fallback='').strip()
+            return f'-{suffix}' if suffix else ''
+        except (FileNotFoundError, configparser.NoSectionError, configparser.NoOptionError):
+            return ''
     
     def deduplicate_telemetry_points(self, points):
         """
@@ -846,7 +895,8 @@ class Level0_5:
         # Generate filename with version if not provided
         if filename is None:
             version = self.get_version()
-            filename = f'suncet_{data_type}_mission_length_v{version}.h5'
+            suffix = self.get_output_suffix()
+            filename = f'suncet_{data_type}_mission_length_v{version}{suffix}.h5'
         
         filepath = os.path.join(output_dir, filename)
         
@@ -1089,26 +1139,35 @@ class Level0_5:
             arr = np.array(img)
         return arr
 
-def main():
-    # Example usage
-    #file_paths = [
-    #    f"{os.getenv('suncet_data')}/test_data/2025_206_10_18_14_bus_dsps_data/ccsds_2025_206_10_25_30",
-    #     os.path.expanduser("~/Downloads/2025-02-13 sample cubixss data/CSIE_GSE_raw_219_truncated.bin"),
-    #     os.path.expanduser("~/Dropbox/suncet_dropbox/9000 Processing/data/test_data/2025-06-13_bluefin_tvac/ccsds_2025_164_11_46_23")
-    #]
+
+def _version_to_path_format(version_str):
+    """Convert config version (e.g. 1.0.0 or 1.0.0-alpha) to path format (e.g. v1-0-0 or v1-0-0-alpha).
+    Config uses periods; path strings use dashes.
+    """
+    return 'v' + version_str.replace('.', '-')
+
+
+def main():  
+    config = configparser.ConfigParser()
+    config.read(os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini'))
+    data_path = config.get('paths', 'data_to_process_path')
+
+    # Resolve path: absolute (~ or /) use as-is; otherwise relative to suncet_data
     
-    import glob
-    folder = f"{os.getenv('suncet_data')}/test_data/2026-01-16_7170-002_fm_flatsat_cpt/2026_016_09_23_06_FM_FLATSAT_CPT"
-    file_paths = glob.glob(os.path.join(folder, "ccsds_*"))
-    
-    # Filter to only include files (not directories)
-    file_paths = [path for path in file_paths if os.path.isfile(path)]
+    if data_path.startswith('/') or data_path.startswith('~'):
+        folder = os.path.expanduser(data_path)
+    else:
+        folder = os.path.join(os.getenv('suncet_data', ''), data_path)
+    file_paths = [f for f in glob.glob(os.path.join(folder, '*')) if not os.path.basename(f).startswith('EventLog')]
+    file_paths = [f for f in file_paths if not os.path.isdir(f)]
     
     # Sort the file paths for consistent ordering
     file_paths.sort()
     
-    # Path to packet definitions
-    packet_definitions_path = '~/Library/CloudStorage/Box-Box/SunCET Private/suncet_ctdb/suncet_bus_v1-0-0/suncet_v1-0-0_decoders'
+    # Path to packet definitions (version from config)
+    version_path = _version_to_path_format(config['structure']['version'])
+    ctdb_base = os.path.expanduser('~/Library/CloudStorage/Box-Box/SunCET Private/suncet_ctdb')
+    packet_definitions_path = os.path.join(ctdb_base, f'suncet_{version_path}', f'suncet_{version_path}_decoders')
     
     processor = Level0_5(file_paths, packet_definitions_path)
     
