@@ -24,9 +24,16 @@ class Config:
         # limits
         self.example_limit = json.loads(config.get('limits', 'example_limit')) * u.Angstrom
 
+        # paths (optional - for configs without [paths] section)
+        try:
+            self.data_to_process_path = config.get('paths', 'data_to_process_path')
+        except (configparser.NoSectionError, configparser.NoOptionError):
+            self.data_to_process_path = ''
+
         # structure
         self.version = config['structure']['version']
         self.base_metadata_filename = config['structure']['base_metadata_filename']
+        self.output_suffix = config.get('structure', 'output_suffix', fallback='').strip()
 
         # calibration
         self.calibration_path = config['calibration']['calibration_path']
