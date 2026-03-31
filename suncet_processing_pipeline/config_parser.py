@@ -20,6 +20,7 @@ class Config:
         self.make_level2 = config['behavior'].getboolean('make_level2')
         self.make_level3 = config['behavior'].getboolean('make_level3')
         self.make_level4 = config['behavior'].getboolean('make_level4')
+        self.ignore_realtime = config['behavior'].getboolean('ignore_realtime', fallback=False)
 
         # limits
         self.example_limit = json.loads(config.get('limits', 'example_limit')) * u.Angstrom
@@ -30,10 +31,27 @@ class Config:
         except (configparser.NoSectionError, configparser.NoOptionError):
             self.data_to_process_path = ''
 
-        # structure
+        # structure (needed for CTDB paths)
         self.version = config['structure']['version']
+        self.csie_version = config['structure']['csie_version']
         self.base_metadata_filename = config['structure']['base_metadata_filename']
         self.output_suffix = config.get('structure', 'output_suffix', fallback='').strip()
+
+        try:
+            ctdb_base = os.path.expanduser(config.get('paths', 'ctdb_base'))
+        except (configparser.NoSectionError, configparser.NoOptionError):
+            ctdb_base = os.path.expanduser('~/Library/CloudStorage/Box-Box/SunCET Private')
+
+        def _version_to_path_format(v):
+            return 'v' + v.replace('.', '-')
+
+        version_path = _version_to_path_format(self.version)
+        csie_version_path = _version_to_path_format(self.csie_version)
+        self.bus_ctdb_path = os.path.join(ctdb_base, 'suncet_ctdb', f'suncet_{version_path}')
+        self.csie_ctdb_path = os.path.join(ctdb_base, 'suncet_ctdb', f'suncet_csie_ctdb_{csie_version_path}')
+        self.packet_definitions_path = os.path.join(
+            self.bus_ctdb_path, f'suncet_{version_path}_decoders'
+        )
 
         # calibration
         self.calibration_path = config['calibration']['calibration_path']

@@ -2,7 +2,7 @@
 This is the code to make the Level 0.5 data product. 
 We use 0_5 in the filename to prevent issues with some operating systems not being able to handle a period in a filename
 """
-import glob
+import argparse
 import numpy as np
 from astropy.io import fits
 import re
@@ -29,38 +29,71 @@ class Level0_5:
     CHECKSUM_LEN = 4
     SYNC_MARKER = [b'\x1A', b'\xCF', b'\xFC', b'\x1D']
     SYNC_MARKER_LEN = len(SYNC_MARKER)
+    # Early test datasets: no NVM so time-since-boot resets on power cycle; optional stitch (see _fix_boot_time_resets_for_test_suffix).
+    REBOOT_TIME_ASSUMED_SEC = 5.0
+    # Treat a backward jump in timestamp ≥ this many seconds as a reboot (resets may not return to 0).
+    BOOT_TIME_RESET_MIN_DROP_SEC = 1.0
     VCDU_HEADER_LEN = 8
-    RETRANSMIT_HEADER_LEN = 16
+    RETRANSMIT_HEADER_LEN = 16 # TODO: think this will be one just for xband?
+    PLAYBACK_HEADER_LEN = 10 # Consistent with the documentaiton https://docs.google.com/presentation/d/1DNZaUyqBdebCL-kyPS6qJhq_GaYo6934/edit?usp=sharing&ouid=112151199578775100472&rtpof=true&sd=true
     # X-band flight filename: ISO8601-style timestamp (filesystem-safe), then hashid, then ".tm"
     # e.g. 2026-02-19T12-30-45_abc123.tm or 2026-02-19_123045_a1b2c3d4.tm
     XBAND_FLIGHT_FILENAME_RE = re.compile(
         r"^\d{4}-\d{2}-\d{2}[T_]\d{2}[-_]?\d{2}[-_]?\d{2}[_\-][a-zA-Z0-9_-]+\.tm$"
     )
 
-    def __init__(self, file_paths, packet_definitions_path):
+    def __init__(
+        self,
+        file_paths,
+        packet_definitions_path,
+        bus_ctdb_path,
+        csie_ctdb_path,
+        output_base_folder=None,
+        processing_config=None,
+    ):
         """
         Initialize the Level0_5 processor.
-        
+
         Args:
             file_paths (list): List of paths to the binary files to process
             packet_definitions_path (str): Path to folder containing gen_pkts.py and dsps_decoders.py.
                 Must be provided. Path will be expanded (e.g., ~ will be expanded to home directory).
-        
+            bus_ctdb_path (str): Path to the bus CTDB folder (e.g. .../suncet_ctdb/suncet_v1-0-0).
+            csie_ctdb_path (str): Path to the CSIE CTDB folder (e.g. .../suncet_csie_ctdb_v1-0-0).
+            output_base_folder (str, optional): Directory from config ``data_to_process_path`` (resolved).
+                HDF5 outputs are written under ``<output_base_folder>/level0_5/``. If None, uses the
+                directory of the first input file (legacy behavior).
+            processing_config (Config, optional): Parsed ``config_parser.Config`` for this run.
+                When set, ``get_version`` and ``get_output_suffix`` use its ``version`` and
+                ``output_suffix``. If None, those methods fall back to ``config_default.ini`` in this
+                package (legacy).
+
         Raises:
             ValueError: If packet_definitions_path is None or empty, or if the path doesn't exist.
         """
         if packet_definitions_path is None or not packet_definitions_path:
             raise ValueError("packet_definitions_path is required and cannot be None or empty")
-        
+
         # Expand user path (e.g., ~ to home directory)
         packet_definitions_path = os.path.expanduser(packet_definitions_path)
-        
+        self.bus_ctdb_path = os.path.expanduser(bus_ctdb_path)
+        self.csie_ctdb_path = os.path.expanduser(csie_ctdb_path)
+
         # Import gen_pkts and dsps_decoders from the specified path
         self.gen_pkts, self.dsps_decoders = self._import_packet_definitions(packet_definitions_path)
-        
+
+        # Import CSIE decoder (gen_pkts from CSIE CTDB) as csie_pkts to avoid namespace conflict
+        self.csie_pkts = self._import_csie_gen_pkts()
+
         self.ABSOLUTE_FILE_PATH = file_paths
-        
-        # Get APIDs from the packet definitions
+        self.output_base_folder = (
+            os.path.abspath(os.path.expanduser(output_base_folder))
+            if output_base_folder
+            else None
+        )
+        self._processing_config = processing_config
+
+        # Get APIDs from bus + CSIE ct_pkt (merged)
         self.apid_df = self.read_ct_pkt_csv()
         
         # Initialize storage for processed data
@@ -70,8 +103,17 @@ class Level0_5:
         self.bad_checksum_counter = 0
         self.vcdu_headers = []
         self.retransmit_headers = []
-        self._debug_timestamp_count = {'BEACON': 0, 'SW_STAT': 0}  # Limit debug output
-    
+
+    def _default_output_base_path(self):
+        """Parent directory for ``level0_5`` outputs (HDF5)."""
+        if self.output_base_folder is not None:
+            return self.output_base_folder
+        if not self.ABSOLUTE_FILE_PATH:
+            raise ValueError(
+                "Cannot determine output directory: no input files and output_base_folder not set"
+            )
+        return os.path.dirname(self.ABSOLUTE_FILE_PATH[0])
+
     def _import_packet_definitions(self, packet_definitions_path):
         """
         Import gen_pkts and dsps_decoders from a specified path.
@@ -115,7 +157,29 @@ class Level0_5:
         finally:
             # Restore original sys.path
             sys.path[:] = original_path
-    
+
+    def _import_csie_gen_pkts(self):
+        """
+        Import gen_pkts from the CSIE CTDB path (external folder) under the name
+        'csie_pkts' to avoid namespace conflict with the bus gen_pkts. Same pattern
+        as loading CDH gen_pkts from packet_definitions_path; only the module name
+        differs. Raises if the file is missing or fails to load.
+        """
+        csie_gen_pkts_path = os.path.join(self.csie_ctdb_path, 'gen_pkts.py')
+        if not os.path.isfile(csie_gen_pkts_path):
+            raise FileNotFoundError(f"CSIE gen_pkts not found at {csie_gen_pkts_path}")
+        original_path = sys.path.copy()
+        try:
+            if self.csie_ctdb_path not in sys.path:
+                sys.path.insert(0, self.csie_ctdb_path)
+            spec = importlib.util.spec_from_file_location("csie_pkts", csie_gen_pkts_path)
+            csie_pkts = importlib.util.module_from_spec(spec)
+            if spec.loader is not None:
+                spec.loader.exec_module(csie_pkts)
+            return csie_pkts
+        finally:
+            sys.path[:] = original_path
+
     def fletcher32(self, data: bytes) -> int:
         if len(data) % 2:
             data += b'\x00'
@@ -229,6 +293,7 @@ class Level0_5:
             
         # Save telemetry data to HDF5 file
         if telemetry_dict:
+            self._fix_boot_time_resets_for_test_suffix(telemetry_dict)
             self.save_packet_data_to_hdf5(telemetry_dict, 'telemetry')
         
         # Save DSPS data to HDF5 file
@@ -248,8 +313,8 @@ class Level0_5:
         
         apid, length, sequence_number, header = self.parse_header(packet)
 
-        # APID 68 is playback: strip playback header (same length as retransmit header) and process inner CCSDS packet
-        if apid == 68:
+        # APID 68 or 72 is playback: strip playback header (same length as retransmit header) and process inner CCSDS packet
+        if apid == 68 or apid == 72:
             remaining_data = packet[self.RETRANSMIT_HEADER_LEN:]
             return self.process_packet(remaining_data, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename)
 
@@ -271,7 +336,7 @@ class Level0_5:
             
         # Use gen_pkts to interpret the packet based on its type
         if packet_name == 'csie_meta':
-            meta_packet = self.gen_pkts.CSIE_META(packet[self.PRIMARY_HDR_LEN:], header) # CSIE_META expects "packet" to not include the header
+            meta_packet = self.csie_pkts.CSIE_META(packet[self.PRIMARY_HDR_LEN:], header, filename or "HSSI BIN") # CSIE_META expects "packet" to not include the header
             image_id_meta = meta_packet.csie_meta_img_id
             metadata_dict[image_id_meta] = meta_packet
             
@@ -311,6 +376,16 @@ class Level0_5:
                         # For uncompressed data, concatenate as little-endian uint16
                         new_data = np.frombuffer(data, dtype=np.uint16).byteswap()
                         data_dict[image_id_data] = np.concatenate([data_dict[image_id_data], new_data])
+                else:
+                    # No prior packet for this image_id (e.g. we missed packet 1); store as partial image
+                    if compression_enabled:
+                        data_dict[image_id_data] = data
+                    else:
+                        try:
+                            data_dict[image_id_data] = np.frombuffer(data, dtype=np.uint16).byteswap()
+                        except Exception as e:
+                            print(f"Error: failed to convert data to uint16 for image_id {image_id_data}: {e}")
+                            
             
         elif 'dsps' in packet_name:            
             class_name = packet_name.upper()
@@ -658,7 +733,7 @@ class Level0_5:
     
     def parse_csie_meta(self, packet, header):
         """Extract metadata packet into a class using autogen constructor."""
-        return self.gen_pkts.CSIE_META(packet[6:], header, "HSSI BIN") # Note: CSIE_META expects the header to not be included as part of the packet so this [6:] gets rid of it
+        return self.csie_pkts.CSIE_META(packet[6:], header, "HSSI BIN") # Note: CSIE_META expects the header to not be included as part of the packet so this [6:] gets rid of it
 
     def get_image_meta(self, meta_packet):
         row_bin = (meta_packet.csie_meta_fpm_proc_config & 0xFF) + 1
@@ -778,18 +853,6 @@ class Level0_5:
         
         # For beacon packets, prefer beac_time_since_boot (time since boot)
         if packet_type == 'BEACON':
-            # Debug: check what timestamp fields are available (only for first few packets)
-            if self._debug_timestamp_count['BEACON'] < 3:
-                if hasattr(packet, 'beac_time_since_boot'):
-                    beac_time = getattr(packet, 'beac_time_since_boot')
-                    print(f"DEBUG BEACON[{self._debug_timestamp_count['BEACON']}]: beac_time_since_boot = {beac_time}, type = {type(beac_time)}")
-                # Check for ccsdsSecHeader2_sec attributes
-                for attr_name in dir(packet):
-                    if attr_name.startswith('ccsdsSecHeader2_sec') and not attr_name.startswith('_'):
-                        ccsds_time = getattr(packet, attr_name)
-                        print(f"DEBUG BEACON[{self._debug_timestamp_count['BEACON']}]: {attr_name} = {ccsds_time}, type = {type(ccsds_time)}")
-                self._debug_timestamp_count['BEACON'] += 1
-            
             if hasattr(packet, 'beac_time_since_boot'):
                 try:
                     timestamp = getattr(packet, 'beac_time_since_boot')
@@ -800,18 +863,6 @@ class Level0_5:
         
         # For sw_stat packets, prefer sw_time_since_boot (time since boot)
         if packet_type == 'SW_STAT':
-            # Debug: check what timestamp fields are available (only for first few packets)
-            if self._debug_timestamp_count['SW_STAT'] < 3:
-                if hasattr(packet, 'sw_time_since_boot'):
-                    sw_time = getattr(packet, 'sw_time_since_boot')
-                    print(f"DEBUG SW_STAT[{self._debug_timestamp_count['SW_STAT']}]: sw_time_since_boot = {sw_time}, type = {type(sw_time)}")
-                # Check for ccsdsSecHeader2_sec attributes
-                for attr_name in dir(packet):
-                    if attr_name.startswith('ccsdsSecHeader2_sec') and not attr_name.startswith('_'):
-                        ccsds_time = getattr(packet, attr_name)
-                        print(f"DEBUG SW_STAT[{self._debug_timestamp_count['SW_STAT']}]: {attr_name} = {ccsds_time}, type = {type(ccsds_time)}")
-                self._debug_timestamp_count['SW_STAT'] += 1
-            
             if hasattr(packet, 'sw_time_since_boot'):
                 try:
                     timestamp = getattr(packet, 'sw_time_since_boot')
@@ -838,26 +889,97 @@ class Level0_5:
         return None
 
     def get_version(self):
-        """Read version from the config INI file."""
+        """Mission version string for output filenames (from the run's config when available)."""
+        if self._processing_config is not None:
+            return self._processing_config.version
         config_path = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
         try:
-            config = configparser.ConfigParser()
-            config.read(config_path)
-            return config['structure']['version']
+            cfg = configparser.ConfigParser()
+            cfg.read(config_path)
+            return cfg['structure']['version']
         except (FileNotFoundError, KeyError) as e:
             print(f"Warning: Could not read version from config at {config_path}: {e}, using 'unknown'")
             return 'unknown'
 
     def get_output_suffix(self):
-        """Read output_suffix from config. Returns '-{suffix}' if set, else '' (always prepends dash)."""
+        """Return '-{output_suffix}' from the run's config if set, else ''."""
+        if self._processing_config is not None:
+            suffix = (self._processing_config.output_suffix or '').strip()
+            return f'-{suffix}' if suffix else ''
         config_path = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
         try:
-            config = configparser.ConfigParser()
-            config.read(config_path)
-            suffix = config.get('structure', 'output_suffix', fallback='').strip()
+            cfg = configparser.ConfigParser()
+            cfg.read(config_path)
+            suffix = cfg.get('structure', 'output_suffix', fallback='').strip()
             return f'-{suffix}' if suffix else ''
         except (FileNotFoundError, configparser.NoSectionError, configparser.NoOptionError):
             return ''
+
+    def _get_output_suffix_raw(self):
+        """Config ``structure.output_suffix`` string (no leading dash), for gating test-only hacks."""
+        if self._processing_config is not None:
+            return (self._processing_config.output_suffix or '').strip()
+        config_path = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
+        try:
+            cfg = configparser.ConfigParser()
+            cfg.read(config_path)
+            return cfg.get('structure', 'output_suffix', fallback='').strip()
+        except (FileNotFoundError, configparser.NoSectionError, configparser.NoOptionError):
+            return ''
+
+    def _set_primary_packet_time(self, packet, value):
+        """Write the same logical time used by ``get_packet_timestamp`` back onto the packet object."""
+        val = float(value)
+        packet_type = packet.__class__.__name__
+        if packet_type == 'BEACON' and hasattr(packet, 'beac_time_since_boot'):
+            setattr(packet, 'beac_time_since_boot', val)
+            return
+        if packet_type == 'SW_STAT' and hasattr(packet, 'sw_time_since_boot'):
+            setattr(packet, 'sw_time_since_boot', val)
+            return
+        for attr_name in dir(packet):
+            if attr_name.startswith('_'):
+                continue
+            if attr_name.startswith('ccsdsSecHeader2_sec'):
+                setattr(packet, attr_name, val)
+
+    def _fix_boot_time_resets_for_test_suffix(self, telemetry_dict):
+        """
+        Temporary hack for early datasets without NVM: time-since-boot (and CCSDS sec fields used
+        as timestamps) jump backward on power cycle; the value may not return to exactly 0. When
+        ``output_suffix`` contains ``test``, if ``get_packet_timestamp`` decreases by at least
+        ``BOOT_TIME_RESET_MIN_DROP_SEC`` vs the previous packet, treat as a reboot and shift so the
+        first post-reset sample is last_mission + REBOOT_TIME_ASSUMED_SEC; later samples keep the
+        same offset so the series stays monotonic. Inexact if reboot duration is not ~REBOOT_TIME_ASSUMED_SEC.
+        """
+        raw_suffix = self._get_output_suffix_raw()
+        if not raw_suffix or 'test' not in raw_suffix.lower():
+            return
+
+        ordered = list(telemetry_dict.values())
+        raws = [self.get_packet_timestamp(p) for p in ordered]
+
+        cumulative_offset = 0.0
+        last_mission = None
+        last_raw = None
+        missions = []
+        for raw in raws:
+            if raw is None:
+                missions.append(None)
+                continue
+            raw = float(raw)
+            if last_raw is not None and last_mission is not None:
+                drop = last_raw - raw
+                if drop >= self.BOOT_TIME_RESET_MIN_DROP_SEC:
+                    cumulative_offset = last_mission + self.REBOOT_TIME_ASSUMED_SEC - raw
+            mission = raw + cumulative_offset
+            missions.append(mission)
+            last_mission = mission
+            last_raw = raw
+
+        for packet, mission in zip(ordered, missions):
+            if mission is not None:
+                self._set_primary_packet_time(packet, mission)
     
     def deduplicate_telemetry_points(self, points):
         """
@@ -877,8 +999,9 @@ class Level0_5:
         
         Args:
             packet_dict (dict): Dictionary containing packet data
-            data_type (str): Type of data being saved (e.g., 'telemetry', 'dsps')
-            base_path (str, optional): Base path for output. If None, uses the directory of the first input file.
+            data_type (str): Type of data being saved (e.g., 'telemetry', 'dsps'); used in the HDF5 filename.
+            base_path (str, optional): Parent directory for the ``level0_5`` output folder. If None,
+                uses ``output_base_folder`` from the constructor, or the directory of the first input file.
             filename (str, optional): Custom filename. If None, uses default format with version.
         """
         if not packet_dict:
@@ -886,10 +1009,10 @@ class Level0_5:
             return
             
         if base_path is None:
-            base_path = os.path.dirname(self.ABSOLUTE_FILE_PATH[0])
-        
+            base_path = self._default_output_base_path()
+
         # Create output directory if it doesn't exist
-        output_dir = os.path.join(base_path, data_type)
+        output_dir = os.path.join(base_path, "level0_5")
         os.makedirs(output_dir, exist_ok=True)
         
         # Generate filename with version if not provided
@@ -931,9 +1054,7 @@ class Level0_5:
         
         # Process each new packet
         new_packets = []
-        beacon_timestamps = []  # Debug: track beacon timestamps
-        sw_stat_timestamps = []  # Debug: track sw_stat timestamps
-        
+
         for packet_key, packet in packet_dict.items():
             # Get the timestamp from the packet using the helper function
             timestamp = self.get_packet_timestamp(packet)
@@ -943,19 +1064,10 @@ class Level0_5:
             
             # Create a dictionary for this packet
             packet_type_name = packet.__class__.__name__
+            # Column name is historical: value comes from get_packet_timestamp() — for BEACON/SW_STAT
+            # that is usually *boot* time; for other packets it is typically the first ccsdsSecHeader2_sec*
+            # field (CCSDS time), not boot. Raw ccsdsSecHeader2_sec* attrs are not written as columns.
             packet_dict_row = {'packet_type': packet_type_name, 'timestamp_seconds_since_boot': timestamp}
-            
-            # Debug: collect timestamps for first few beacon/sw_stat packets
-            if packet_type_name == 'BEACON' and len(beacon_timestamps) < 10:
-                beacon_timestamps.append((packet_key, timestamp))
-                if hasattr(packet, 'beac_time_since_boot'):
-                    beac_time = getattr(packet, 'beac_time_since_boot')
-                    print(f"DEBUG SAVE: BEACON packet {packet_key}: timestamp={timestamp}, beac_time_since_boot={beac_time}")
-            elif packet_type_name == 'SW_STAT' and len(sw_stat_timestamps) < 10:
-                sw_stat_timestamps.append((packet_key, timestamp))
-                if hasattr(packet, 'sw_time_since_boot'):
-                    sw_time = getattr(packet, 'sw_time_since_boot')
-                    print(f"DEBUG SAVE: SW_STAT packet {packet_key}: timestamp={timestamp}, sw_time_since_boot={sw_time}")
             
             # Add all attributes of the packet
             for attr_name in dir(packet):
@@ -977,12 +1089,6 @@ class Level0_5:
                         continue
             
             new_packets.append(packet_dict_row)
-        
-        # Debug: Show first few timestamps collected
-        if beacon_timestamps:
-            print(f"DEBUG SAVE: First {len(beacon_timestamps)} BEACON timestamps: {[t[1] for t in beacon_timestamps[:5]]}")
-        if sw_stat_timestamps:
-            print(f"DEBUG SAVE: First {len(sw_stat_timestamps)} SW_STAT timestamps: {[t[1] for t in sw_stat_timestamps[:5]]}")
         
         # Add new packets to all packets (new packets come AFTER existing, so they will overwrite duplicates)
         all_packets.extend(new_packets)
@@ -1067,22 +1173,43 @@ class Level0_5:
         print(f"Time range: {timestamps[0]:.2f} to {timestamps[-1]:.2f} seconds since boot")
         print(f"Available {data_type} types: {', '.join(set(packet['packet_type'] for packet in unique_packets))}")
     
-    @staticmethod
-    def read_ct_pkt_csv():
+    def _find_ct_pkt_path(self, ctdb_path):
+        """Return path to ct_pkt.csv under ctdb_path, or None if not found."""
+        for candidate in (
+            os.path.join(ctdb_path, 'packet_definitions', 'ct_pkt.csv'),
+            os.path.join(ctdb_path, 'ct_pkt.csv'),
+        ):
+            if os.path.isfile(candidate):
+                return candidate
+        return None
+
+    def read_ct_pkt_csv(self):
         """
-        Read the ct_pkt.csv file and return a pandas DataFrame containing only the Name and APID columns.
-        
+        Read ct_pkt.csv from both the bus and CSIE CTDB paths, merge into a single
+        DataFrame (Name, APID). CSIE entries are loaded first; bus entries are appended;
+        duplicates by APID are dropped (first occurrence kept). Requires bus_ctdb_path
+        and csie_ctdb_path to be set on the instance (from config).
+
         Returns:
-            pandas.DataFrame: DataFrame containing Name and APID columns from ct_pkt.csv
+            pandas.DataFrame: DataFrame containing Name and APID columns.
         """
-        # Construct the path to ct_pkt.csv relative to the current file
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        csv_path = os.path.join(current_dir, 'packet_definitions', 'ct_pkt.csv')
-        
-        # Read the CSV file and select only Name and APID columns
-        df = pd.read_csv(csv_path, usecols=['Name', 'APID'])
-        
-        return df
+        bus_path = self._find_ct_pkt_path(self.bus_ctdb_path)
+        if bus_path is None:
+            raise FileNotFoundError(
+                f"ct_pkt.csv not found under bus CTDB path: {self.bus_ctdb_path}. "
+                "Looked for packet_definitions/ct_pkt.csv and ct_pkt.csv."
+            )
+        bus_df = pd.read_csv(bus_path, usecols=['Name', 'APID'])
+
+        csie_path = self._find_ct_pkt_path(self.csie_ctdb_path)
+        if csie_path is not None:
+            csie_df = pd.read_csv(csie_path, usecols=['Name', 'APID'])
+            combined = pd.concat([csie_df, bus_df], ignore_index=True)
+            combined = combined.drop_duplicates(subset=['APID'], keep='first')
+        else:
+            combined = bus_df
+        combined = combined.sort_values(by='APID').reset_index(drop=True)
+        return combined
 
     def parse_csie_icm_proc_config(self, config_value):
         """
@@ -1147,30 +1274,131 @@ def _version_to_path_format(version_str):
     return 'v' + version_str.replace('.', '-')
 
 
-def main():  
-    config = configparser.ConfigParser()
-    config.read(os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini'))
-    data_path = config.get('paths', 'data_to_process_path')
+# Filenames under data_to_process_path must match one of these prefixes or XBAND_FLIGHT_FILENAME_RE
+# to be discovered (mirrors the named branches in Level0_5.process).
+LEVEL0_5_TELEMETRY_PREFIXES = (
+    "ccsds_",
+    "suncet_",
+    "pbk_",
+    "hardline_playback_",
+)
+
+
+def _level0_5_source_type_for_basename(filename):
+    """Same source labels as Level0_5.process() uses (basename only)."""
+    if filename.startswith("ccsds_"):
+        return "hydra_realtime"
+    if filename.startswith("suncet_"):
+        return "xband_gse"
+    if Level0_5.XBAND_FLIGHT_FILENAME_RE.match(filename):
+        return "xband_flight"
+    if filename.startswith("pbk_"):
+        return "uhf_playback"
+    if filename.startswith("hardline_playback_"):
+        return "hardline_playback"
+    return "csie"
+
+
+def _basename_matches_level0_5_telemetry(filename):
+    if filename.startswith(LEVEL0_5_TELEMETRY_PREFIXES):
+        return True
+    return Level0_5.XBAND_FLIGHT_FILENAME_RE.match(filename) is not None
+
+
+def discover_level0_5_input_files(folder, ignore_realtime=False):
+    """
+    Walk ``folder`` recursively and collect files whose basenames match the telemetry
+    naming rules used in Level0_5.process() (prefixes above or X-band flight ``.tm`` pattern).
+
+    Skips basenames starting with ``EventLog`` (same as previous single-level glob behavior).
+    Does not descend into subdirectories named ``decoded`` (and skips files if the walk root
+    is itself named ``decoded``).
+    If ``ignore_realtime`` is True, files classified as ``hydra_realtime`` (``ccsds_`` prefix)
+    are omitted from the returned list.
+
+    Returns:
+        list[str]: Sorted absolute paths.
+
+    Prints:
+        Unique source types found among matched files (sorted).
+        If ``ignore_realtime`` is True, prints that Hydra realtime files are omitted; if any were
+        present, prints how many were skipped.
+    """
+    folder = os.path.abspath(os.path.expanduser(folder))
+    if not os.path.isdir(folder):
+        raise FileNotFoundError(f"Data folder does not exist: {folder}")
+
+    file_paths = []
+    types_found = set()
+    skipped_hydra_realtime = 0
+
+    for dirpath, dirnames, filenames in os.walk(folder):
+        if "decoded" in dirnames:
+            dirnames.remove("decoded")
+        if os.path.basename(dirpath) == "decoded":
+            continue
+        for name in filenames:
+            if name.startswith("EventLog"):
+                continue
+            if not _basename_matches_level0_5_telemetry(name):
+                continue
+            if ignore_realtime and _level0_5_source_type_for_basename(name) == "hydra_realtime.":
+                skipped_hydra_realtime += 1
+                continue
+            path = os.path.join(dirpath, name)
+            if not os.path.isfile(path):
+                continue
+            file_paths.append(path)
+            types_found.add(_level0_5_source_type_for_basename(name))
+
+    if ignore_realtime:
+        print(
+            "Level 0.5 discovery: ignore_realtime=True — Hydra realtime files (ccsds_*) will not "
+            "be processed."
+        )
+        if skipped_hydra_realtime:
+            print(f"  ({skipped_hydra_realtime} Hydra realtime file(s) skipped.)")
+
+    print(
+        "Discovered telemetry file types: "
+        + (", ".join(sorted(types_found)) if types_found else "(none)")
+    )
+    return sorted(file_paths)
+
+
+def main():
+    from suncet_processing_pipeline.config_parser import Config
+
+    default_config = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
+    parser = argparse.ArgumentParser(description='SunCET Level 0.5 processing')
+    parser.add_argument(
+        '--config',
+        default=default_config,
+        help='Path to processing config INI (default: config_default.ini next to this module)',
+    )
+    args = parser.parse_args()
+    config_path = os.path.abspath(os.path.expanduser(args.config))
+    if not os.path.isfile(config_path):
+        raise SystemExit(f'Config file not found: {config_path}')
+    config = Config(config_path)
+    data_path = config.data_to_process_path
 
     # Resolve path: absolute (~ or /) use as-is; otherwise relative to suncet_data
-    
     if data_path.startswith('/') or data_path.startswith('~'):
         folder = os.path.expanduser(data_path)
     else:
         folder = os.path.join(os.getenv('suncet_data', ''), data_path)
-    file_paths = [f for f in glob.glob(os.path.join(folder, '*')) if not os.path.basename(f).startswith('EventLog')]
-    file_paths = [f for f in file_paths if not os.path.isdir(f)]
-    
-    # Sort the file paths for consistent ordering
-    file_paths.sort()
-    
-    # Path to packet definitions (version from config)
-    version_path = _version_to_path_format(config['structure']['version'])
-    ctdb_base = os.path.expanduser('~/Library/CloudStorage/Box-Box/SunCET Private/suncet_ctdb')
-    packet_definitions_path = os.path.join(ctdb_base, f'suncet_{version_path}', f'suncet_{version_path}_decoders')
-    
-    processor = Level0_5(file_paths, packet_definitions_path)
-    
+    file_paths = discover_level0_5_input_files(folder, ignore_realtime=config.ignore_realtime)
+
+    processor = Level0_5(
+        file_paths,
+        config.packet_definitions_path,
+        config.bus_ctdb_path,
+        config.csie_ctdb_path,
+        output_base_folder=folder,
+        processing_config=config,
+    )
+
     processor.process()
 
 if __name__ == "__main__":
