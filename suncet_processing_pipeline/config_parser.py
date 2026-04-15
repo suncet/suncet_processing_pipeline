@@ -21,6 +21,8 @@ class Config:
         self.make_level3 = config['behavior'].getboolean('make_level3')
         self.make_level4 = config['behavior'].getboolean('make_level4')
         self.ignore_realtime = config['behavior'].getboolean('ignore_realtime', fallback=False)
+        self.save_png = config['behavior'].getboolean('save_png', fallback=False)
+        self.save_jpeg2000 = config['behavior'].getboolean('save_jpeg2000', fallback=False)
 
         # limits
         self.example_limit = json.loads(config.get('limits', 'example_limit')) * u.Angstrom

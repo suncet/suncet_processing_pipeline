@@ -15,3 +15,9 @@ def test_read_default_config():
     assert hasattr(config, 'make_level2')
     assert hasattr(config, 'make_level3')
     assert hasattr(config, 'make_level4')
+    assert hasattr(config, 'ignore_realtime')
+    assert config.ignore_realtime is False
+    assert hasattr(config, 'save_png')
+    assert config.save_png is False
+    assert hasattr(config, 'save_jpeg2000')
+    assert config.save_jpeg2000 is False

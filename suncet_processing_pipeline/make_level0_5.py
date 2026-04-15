@@ -50,6 +50,8 @@ class Level0_5:
         csie_ctdb_path,
         output_base_folder=None,
         processing_config=None,
+        save_png=None,
+        save_jpeg2000=None,
     ):
         """
         Initialize the Level0_5 processor.
@@ -67,6 +69,11 @@ class Level0_5:
                 When set, ``get_version`` and ``get_output_suffix`` use its ``version`` and
                 ``output_suffix``. If None, those methods fall back to ``config_default.ini`` in this
                 package (legacy).
+            save_png (bool, optional): If True, write PNG previews alongside FITS. If None,
+                uses ``processing_config.save_png`` when config is set; otherwise False.
+            save_jpeg2000 (bool, optional): If True, write JPEG2000 (.jp2) previews alongside FITS
+                (same scaling and inferno colormap as PNG). If None, uses
+                ``processing_config.save_jpeg2000`` when config is set; otherwise False.
 
         Raises:
             ValueError: If packet_definitions_path is None or empty, or if the path doesn't exist.
@@ -92,6 +99,19 @@ class Level0_5:
             else None
         )
         self._processing_config = processing_config
+        if save_png is not None:
+            self._save_png = bool(save_png)
+        elif self._processing_config is not None:
+            self._save_png = getattr(self._processing_config, "save_png", False)
+        else:
+            self._save_png = False
+
+        if save_jpeg2000 is not None:
+            self._save_jpeg2000 = bool(save_jpeg2000)
+        elif self._processing_config is not None:
+            self._save_jpeg2000 = getattr(self._processing_config, "save_jpeg2000", False)
+        else:
+            self._save_jpeg2000 = False
 
         # Get APIDs from bus + CSIE ct_pkt (merged)
         self.apid_df = self.read_ct_pkt_csv()
@@ -272,9 +292,37 @@ class Level0_5:
                 
             print(f"Extracted {len(packets)} packets")
             total_packets_processed += len(packets)
-            
-            for packet in tqdm(packets, desc=f"Processing packets in {filename}"):
-                self.process_packet(packet, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename)
+
+            if source in ("uhf_playback", "hardline_playback"):
+                used_playback_pipeline = self.process_playback_outer_packets(
+                    packets, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename
+                )
+                if not used_playback_pipeline:
+                    print(
+                        f"No APID 68/72/73 playback payloads in {filename}; "
+                        "falling back to per-packet processing."
+                    )
+                    for packet in tqdm(
+                        packets, desc=f"Processing packets in {filename}"
+                    ):
+                        self.process_packet(
+                            packet,
+                            metadata_dict,
+                            data_dict,
+                            telemetry_dict,
+                            dsps_dict,
+                            filename,
+                        )
+            else:
+                for packet in tqdm(packets, desc=f"Processing packets in {filename}"):
+                    self.process_packet(
+                        packet,
+                        metadata_dict,
+                        data_dict,
+                        telemetry_dict,
+                        dsps_dict,
+                        filename,
+                    )
 
         elapsed_time = time.time() - start_time
         
@@ -654,6 +702,122 @@ class Level0_5:
 
         return packets
 
+    @staticmethod
+    def _is_valid_ccsds_header(data, offset, valid_apids=None):
+        """
+        Return (ok, packet_len) if the 6 bytes at data[offset:offset+6] form a valid CCSDS
+        primary header: version 0; optional APID in valid_apids; length fits in buffer.
+        packet_len is total bytes including the 6-byte primary header.
+        """
+        if offset + Level0_5.PRIMARY_HDR_LEN > len(data):
+            return False, 0
+        h = data[offset : offset + Level0_5.PRIMARY_HDR_LEN]
+        version = (h[0] >> 5) & 0x07
+        if version != 0:
+            return False, 0
+        apid = int.from_bytes(h[0:2], "big") & 0x7FF
+        if valid_apids is not None and apid not in valid_apids:
+            return False, 0
+        L = int.from_bytes(h[4:6], "big")
+        packet_len = L + 7
+        if packet_len < Level0_5.PRIMARY_HDR_LEN or offset + packet_len > len(data):
+            return False, 0
+        return True, packet_len
+
+    @staticmethod
+    def strip_uhf_segmentation_header(packet):
+        """
+        For APID 73 (UHF segmented) packets, strip primary + 6-byte UHF segmentation header.
+        Returns (pay_apid, seg_flags, payload) or (None, None, b'') if too short.
+        """
+        if len(packet) < Level0_5.PRIMARY_HDR_LEN + 6:
+            return None, None, b""
+        pay_apid_offset = Level0_5.PRIMARY_HDR_LEN
+        pay_apid = int.from_bytes(packet[pay_apid_offset : pay_apid_offset + 2], "big")
+        seg_flags_offset = Level0_5.PRIMARY_HDR_LEN + 5
+        seg_flags = packet[seg_flags_offset]
+        payload_start = Level0_5.PRIMARY_HDR_LEN + 6
+        payload = packet[payload_start:]
+        return pay_apid, seg_flags, payload
+
+    @staticmethod
+    def extract_ccsds_packets_unaligned(concatenated_bytes, valid_apids=None):
+        """
+        Extract CCSDS Space Packets from a raw byte array that may not be aligned to
+        packet boundaries (sliding window). If valid_apids is set, only those APIDs are
+        accepted as packet starts.
+        """
+        data = concatenated_bytes
+        packets = []
+        offset = 0
+        n = len(data)
+        while offset + Level0_5.PRIMARY_HDR_LEN <= n:
+            ok, packet_len = Level0_5._is_valid_ccsds_header(
+                data, offset, valid_apids=valid_apids
+            )
+            if ok:
+                packet = bytes(data[offset : offset + packet_len])
+                packets.append(packet)
+                offset += packet_len
+            else:
+                offset += 1
+        return packets
+
+    def _collect_playback_inner_stream_bytes(self, packets):
+        """
+        Concatenate inner playback payload bytes from outer APID 68/72 and reassembled APID 73.
+        Same layout as extract_playback_image: strip primary + playback header (16 bytes) per
+        playback wrapper packet.
+        """
+        playback_chunks = []
+        segmented_uhf_buffer = b""
+        hdr_after_primary = self.PRIMARY_HDR_LEN + self.PLAYBACK_HEADER_LEN
+
+        for packet in packets:
+            apid, _length, _seq, _header = self.parse_header(packet)
+
+            if apid == 73:
+                _pay_apid, seg_flags, payload = self.strip_uhf_segmentation_header(packet)
+                if seg_flags is None:
+                    continue
+                if seg_flags == 1:
+                    segmented_uhf_buffer = payload
+                elif seg_flags == 0:
+                    segmented_uhf_buffer += payload
+                elif seg_flags == 2:
+                    segmented_uhf_buffer += payload
+                    reconstructed = segmented_uhf_buffer
+                    segmented_uhf_buffer = b""
+                    inner_apid, _, _, _ = self.parse_header(reconstructed)
+                    if inner_apid in (68, 72):
+                        playback_chunks.append(reconstructed[hdr_after_primary:])
+                continue
+
+            if apid in (68, 72):
+                playback_chunks.append(packet[hdr_after_primary:])
+
+        return b"".join(playback_chunks)
+
+    def process_playback_outer_packets(
+        self, packets, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename
+    ):
+        """
+        Decode UHF/hardline playback files: collect inner byte stream, then unaligned CCSDS
+        extract and process each inner packet.
+        """
+        concatenated = self._collect_playback_inner_stream_bytes(packets)
+        if not concatenated:
+            return False
+        valid_apids = set(self.apid_df["APID"].astype(int))
+        inner_packets = self.extract_ccsds_packets_unaligned(
+            concatenated, valid_apids=valid_apids
+        )
+        for pkt in inner_packets:
+            self.process_packet(
+                pkt, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename
+            )
+        return True
+
     def find_all_sync_markers(self, file_path):
         """Find all occurrences of the sync pattern (1A CF FC 1D) in the file using regex."""
         if self.has_sufficient_memory(file_path):
@@ -807,6 +971,68 @@ class Level0_5:
         hdu.writeto(filepath, overwrite=True)
         print(f"Saved FITS file: {filepath}")
 
+    def _preview_image_array_for_raster(self, image_array):
+        """
+        Rotate the CSIE frame 90° clockwise so PNG/JP2 previews are landscape (wide).
+
+        CSIE arrays are typically taller than wide; Helioviewer-style side previews expect
+        a horizontal aspect.
+        """
+        return np.rot90(image_array, k=-1)
+
+    def _preview_rgb_uint8_inferno(self, preview_2d):
+        """
+        RGB uint8 matching ``plt.imsave(..., cmap='inferno', origin='upper')`` for 2D data.
+        """
+        from matplotlib import cm
+        from matplotlib.colors import Normalize
+
+        a = np.asarray(preview_2d, dtype=np.float64)
+        vmin = float(np.nanmin(a))
+        vmax = float(np.nanmax(a))
+        if vmin == vmax:
+            norm = np.zeros_like(a, dtype=np.float64)
+        else:
+            norm = Normalize(vmin=vmin, vmax=vmax)(a)
+        rgb = cm.inferno(norm)[..., :3]
+        return (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
+
+    def save_image_as_png(self, image_array, image_id, base_path=None):
+        """Save a preview PNG (inferno colormap, origin upper) alongside FITS outputs."""
+        import matplotlib.pyplot as plt
+
+        if base_path is None:
+            base_path = os.path.dirname(self.ABSOLUTE_FILE_PATH[0])
+
+        output_dir = os.path.join(base_path, "processed_images")
+        os.makedirs(output_dir, exist_ok=True)
+
+        suffix = self.get_output_suffix()
+        filename = f"image_{image_id}{suffix}.png"
+        filepath = os.path.join(output_dir, filename)
+
+        preview = self._preview_image_array_for_raster(image_array)
+        plt.imsave(filepath, preview, cmap="inferno", origin="upper")
+        print(f"Saved PNG preview: {filepath}")
+
+    def save_image_as_jpeg2000(self, image_array, image_id, base_path=None):
+        """Save a JPEG2000 preview (.jp2, Helioviewer/JHelioviewer) matching PNG appearance."""
+        if base_path is None:
+            base_path = os.path.dirname(self.ABSOLUTE_FILE_PATH[0])
+
+        output_dir = os.path.join(base_path, "processed_images")
+        os.makedirs(output_dir, exist_ok=True)
+
+        suffix = self.get_output_suffix()
+        filename = f"image_{image_id}{suffix}.jp2"
+        filepath = os.path.join(output_dir, filename)
+
+        preview = self._preview_image_array_for_raster(image_array)
+        rgb = self._preview_rgb_uint8_inferno(preview)
+        pil_img = Image.fromarray(rgb, mode="RGB")
+        pil_img.save(filepath, format="JPEG2000")
+        print(f"Saved JPEG2000 preview: {filepath}")
+
     def process_images(self, data_dict, metadata_dict):
         """
         Process and save all complete images to FITS files.
@@ -835,6 +1061,10 @@ class Level0_5:
                     self.image_arrays.append(decompressed_image)
                     processed_images += 1
                     self.save_image_as_fits(decompressed_image, meta_packet, image_id)
+                    if self._save_png:
+                        self.save_image_as_png(decompressed_image, image_id)
+                    if self._save_jpeg2000:
+                        self.save_image_as_jpeg2000(decompressed_image, image_id)
                     continue
 
                 # Uncompressed: row-indexed dict (sequence_number → row pixels) or legacy 1D array
@@ -851,6 +1081,10 @@ class Level0_5:
                     self.image_arrays.append(image)
                     processed_images += 1
                     self.save_image_as_fits(image, meta_packet, image_id)
+                    if self._save_png:
+                        self.save_image_as_png(image, image_id)
+                    if self._save_jpeg2000:
+                        self.save_image_as_jpeg2000(image, image_id)
                 elif isinstance(data_packets, np.ndarray) and data_packets.size == rows * cols:
                     # Legacy: flat raster in arrival order
                     image = data_packets.reshape(rows, cols)
@@ -858,6 +1092,10 @@ class Level0_5:
                     self.image_arrays.append(image)
                     processed_images += 1
                     self.save_image_as_fits(image, meta_packet, image_id)
+                    if self._save_png:
+                        self.save_image_as_png(image, image_id)
+                    if self._save_jpeg2000:
+                        self.save_image_as_jpeg2000(image, image_id)
                 else:
                     n = (
                         len(data_packets)
@@ -1379,7 +1617,7 @@ def discover_level0_5_input_files(folder, ignore_realtime=False):
                 continue
             if not _basename_matches_level0_5_telemetry(name):
                 continue
-            if ignore_realtime and _level0_5_source_type_for_basename(name) == "hydra_realtime.":
+            if ignore_realtime and _level0_5_source_type_for_basename(name) == "hydra_realtime":
                 skipped_hydra_realtime += 1
                 continue
             path = os.path.join(dirpath, name)
@@ -1413,11 +1651,25 @@ def main():
         default=default_config,
         help='Path to processing config INI (default: config_default.ini next to this module)',
     )
+    parser.add_argument(
+        '--save-png',
+        action='store_true',
+        help='Write PNG previews (inferno) next to FITS in processed_images/ (overrides config save_png)',
+    )
+    parser.add_argument(
+        '--save-jpeg2000',
+        action='store_true',
+        help='Write JPEG2000 (.jp2) previews next to FITS (overrides config save_jpeg2000)',
+    )
     args = parser.parse_args()
     config_path = os.path.abspath(os.path.expanduser(args.config))
     if not os.path.isfile(config_path):
         raise SystemExit(f'Config file not found: {config_path}')
     config = Config(config_path)
+    if args.save_png:
+        config.save_png = True
+    if args.save_jpeg2000:
+        config.save_jpeg2000 = True
     data_path = config.data_to_process_path
 
     # Resolve path: absolute (~ or /) use as-is; otherwise relative to suncet_data
@@ -1434,6 +1686,8 @@ def main():
         config.csie_ctdb_path,
         output_base_folder=folder,
         processing_config=config,
+        save_png=config.save_png,
+        save_jpeg2000=config.save_jpeg2000,
     )
 
     processor.process()
