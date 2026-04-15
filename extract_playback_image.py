@@ -9,7 +9,9 @@ from matplotlib.widgets import Slider
 from suncet_processing_pipeline.make_level0_5 import Level0_5
 from suncet_processing_pipeline.config_parser import Config
 
-# Full-resolution CSIE image dimensions
+# Full-resolution CSIE image dimensions. For csie_data, the CCSDS primary-header
+# sequence_number is the 1-based row index in the frame (up to FULL_ROWS unbinned,
+# or fewer rows when binned per csie_meta).
 FULL_ROWS = 2000
 FULL_COLS = 1504
 
@@ -50,7 +52,7 @@ def _build_file_list(folder):
         for name in os.listdir(folder)
         if name.startswith("hardline_playback") or name.startswith("pbk_") and os.path.isfile(os.path.join(folder, name))
     ]
-    # files.sort()
+    files.sort()
     return files
 
 def _build_level0_5(file_paths, config):
@@ -142,7 +144,13 @@ def strip_uhf_segmentation_header(packet):
     return pay_apid, seg_flags, payload
 
 
-def extract_ccsds_packets_unaligned(concatenated_bytes, valid_apids=None):
+def extract_ccsds_packets_unaligned(
+    concatenated_bytes,
+    valid_apids=None,
+    *,
+    secondary_image_id_apids=None,
+    max_secondary_image_id=None,
+):
     """
     Extract CCSDS Space Packets from a raw byte array that may not be aligned to
     a packet boundary. Sliding window: at each position, if the 6 bytes form a
@@ -153,6 +161,12 @@ def extract_ccsds_packets_unaligned(concatenated_bytes, valid_apids=None):
     valid_apids: optional set/frozenset of int APIDs; if provided, only headers
         with APID in this set are considered valid.
 
+    secondary_image_id_apids / max_secondary_image_id: optional guard against
+    false CCSDS headers inside image payload. For APIDs in secondary_image_id_apids
+    (e.g. csie_data / csie_meta), require bytes [6:10] (big-endian uint32) to be
+    in [0, max_secondary_image_id] so random payload bytes are not accepted as
+    packet starts.
+
     Returns:
         list[bytes]: One element per extracted packet (full packet including 6-byte header).
     """
@@ -160,9 +174,24 @@ def extract_ccsds_packets_unaligned(concatenated_bytes, valid_apids=None):
     packets = []
     offset = 0
     n = len(data)
+    _check_sec = (
+        secondary_image_id_apids is not None
+        and max_secondary_image_id is not None
+        and len(secondary_image_id_apids) > 0
+    )
 
     while offset + _PRIMARY_HDR_LEN <= n:
         ok, packet_len = _is_valid_ccsds_header(data, offset, valid_apids=valid_apids)
+        if ok and _check_sec:
+            h = data[offset : offset + _PRIMARY_HDR_LEN]
+            apid = int.from_bytes(h[0:2], "big") & 0x7FF
+            if apid in secondary_image_id_apids:
+                if offset + 12 > n or packet_len < 12:
+                    ok = False
+                else:
+                    img_id = int.from_bytes(data[offset + 6 : offset + 10], "big")
+                    if not (0 <= img_id <= max_secondary_image_id):
+                        ok = False
         if ok:
             packet = bytes(data[offset : offset + packet_len])
             packets.append(packet)
@@ -288,8 +317,17 @@ def main():
             "will not be recognized unless you add the CSIE packet table path / version."
         )
 
+    # csie_meta is decoded from packet[6:] (no separate secondary header like csie_data);
+    # only csie_data shares parse_secondary_header layout (image_id at bytes 6:10).
+    _sec_rows = level0_5.apid_df[level0_5.apid_df["Name"] == "csie_data"]
+    _secondary_apids = (
+        frozenset(_sec_rows["APID"].astype(int).tolist()) if len(_sec_rows) else frozenset()
+    )
     inner_packets = extract_ccsds_packets_unaligned(
-        concatenated_bytes, valid_apids=valid_apids
+        concatenated_bytes,
+        valid_apids=valid_apids,
+        secondary_image_id_apids=_secondary_apids,
+        max_secondary_image_id=DISPLAY_IMAGE_ID_MAX,
     )
     inner_apid_counts = Counter(
         int.from_bytes(p[0:2], "big") & 0x7FF for p in inner_packets
@@ -317,6 +355,36 @@ def main():
             filename=filename,
         )
 
+    # Drop bogus image_id keys from mis-framed packets (metadata decode can still mis-key)
+    def _prune_image_id_dict(d):
+        return {
+            k: v
+            for k, v in d.items()
+            if isinstance(k, int)
+            and DISPLAY_IMAGE_ID_MIN <= k <= DISPLAY_IMAGE_ID_MAX
+        }
+
+    metadata_dict = _prune_image_id_dict(metadata_dict)
+    data_dict = _prune_image_id_dict(data_dict)
+
+    default_rows = FULL_ROWS // BINNING_FACTOR
+    default_cols = FULL_COLS // BINNING_FACTOR
+    expected_size = default_rows * default_cols
+
+    def _dims_for_csie_image(image_id, raw):
+        """Rows/cols from csie_meta when present; else defaults, inferring from row-indexed dict."""
+        meta = metadata_dict.get(image_id)
+        if meta is not None:
+            r, c, _, _, _, _ = level0_5.get_image_meta(meta)
+            return int(r), int(c)
+        r, c = default_rows, default_cols
+        if isinstance(raw, dict) and raw:
+            max_seq = max(int(s) for s in raw.keys())
+            r = max(r, max_seq)
+            v0 = next(iter(raw.values()))
+            c = max(c, int(np.asarray(v0).size))
+        return r, c
+
     if metadata_dict:
         print(f"Decoded CSIE metadata (csie_meta / e.g. APID 538): {len(metadata_dict)} image_id(s)")
         for img_id, meta in sorted(metadata_dict.items()):
@@ -339,27 +407,29 @@ def main():
             "(metadata_dict empty — expect csie_meta inner packets if APID 538 is present)."
         )
 
-    rows = FULL_ROWS // BINNING_FACTOR
-    cols = FULL_COLS // BINNING_FACTOR
-    expected_size = rows * cols
-
-    def _prepare_csie_image(raw):
-        # Returns (2d_array, n_valid): source pixel count in raster order (excludes pad).
+    def _prepare_csie_image(raw, rows_img, cols_img):
+        # Returns (2d_array, n_valid): sequence_number → row index (1-based) for dict input.
+        expected = rows_img * cols_img
+        if isinstance(raw, dict):
+            img, n_pix = level0_5.assemble_csie_image_from_row_packets(
+                raw, rows_img, cols_img
+            )
+            return img, n_pix
         if isinstance(raw, bytes):
             arr = level0_5.decompress_jpegls_image(raw)
         else:
             arr = np.asarray(raw, dtype=np.uint16)
         n_raw = arr.size
-        if n_raw != expected_size:
+        if n_raw != expected:
             print(
-                f"Warning: csie_data image size {n_raw} != {rows}*{cols}; reshaping to fit."
+                f"Warning: csie_data image size {n_raw} != {rows_img}*{cols_img}; reshaping to fit."
             )
-            if n_raw < expected_size:
-                padded = np.zeros(expected_size, dtype=np.uint16)
+            if n_raw < expected:
+                padded = np.zeros(expected, dtype=np.uint16)
                 padded[:n_raw] = arr.ravel()
-                return padded.reshape((rows, cols)), n_raw
-            return arr.ravel()[:expected_size].reshape((rows, cols)), expected_size
-        return arr.reshape((rows, cols)), expected_size
+                return padded.reshape((rows_img, cols_img)), n_raw
+            return arr.ravel()[:expected].reshape((rows_img, cols_img)), expected
+        return arr.reshape((rows_img, cols_img)), expected
 
     def _pixels_for_stats(arr, n_valid):
         flat = arr.ravel()
@@ -371,11 +441,15 @@ def main():
     image_valid_pixel_count_by_id = {}
     if data_dict:
         for image_id in sorted(data_dict.keys()):
-            img, n_valid = _prepare_csie_image(data_dict[image_id])
+            raw = data_dict[image_id]
+            ri, ci = _dims_for_csie_image(image_id, raw)
+            img, n_valid = _prepare_csie_image(raw, ri, ci)
             image_arrays_by_id[image_id] = img
             image_valid_pixel_count_by_id[image_id] = n_valid
             print(
-                f"Using csie_data image (image_id={image_id}) from {len(inner_packets)} inner packets."
+                f"Using csie_data image (image_id={image_id}) shape {img.shape} "
+                f"(CCSDS sequence_number = row index 1..{ri} × {ci} cols) "
+                f"from {len(inner_packets)} inner packets."
             )
     else:
         # Fallback: treat concatenated payload as raw uint16 image
@@ -383,18 +457,19 @@ def main():
         n_cat = concatenated.size
         if n_cat != expected_size:
             print(
-                f"Warning: Concatenated stream is {n_cat} elements, does not match {rows} x {cols}. Truncating or padding."
+                f"Warning: Concatenated stream is {n_cat} elements, does not match "
+                f"{default_rows} x {default_cols}. Truncating or padding."
             )
             if n_cat < expected_size:
                 padded = np.zeros(expected_size, dtype=np.uint16)
                 padded[:n_cat] = concatenated
-                image_arr = padded.reshape((rows, cols))
+                image_arr = padded.reshape((default_rows, default_cols))
                 n_valid = n_cat
             else:
-                image_arr = concatenated[:expected_size].reshape((rows, cols))
+                image_arr = concatenated[:expected_size].reshape((default_rows, default_cols))
                 n_valid = expected_size
         else:
-            image_arr = concatenated.reshape((rows, cols))
+            image_arr = concatenated.reshape((default_rows, default_cols))
             n_valid = expected_size
         print("No csie_data packets found; using raw playback payload as image.")
         image_arrays_by_id[None] = image_arr

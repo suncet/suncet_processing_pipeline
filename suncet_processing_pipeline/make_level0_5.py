@@ -236,7 +236,7 @@ class Level0_5:
         start_time = time.time()
         
         metadata_dict = {}  # Dictionary to store image metadata packets
-        data_dict = {}      # Dictionary to store data packets by image_id
+        data_dict = {}      # image_id -> JPEG-LS bytes, row-indexed dict, or legacy 1D uint16
         telemetry_dict = {} # Dictionary to store other telemetry packets
         dsps_dict = {}      # Dictionary to store DSPS packets
         processed_images = 0
@@ -343,7 +343,7 @@ class Level0_5:
         elif packet_name == 'csie_data':
             # Parse the secondary header to get image_id
             image_id_data, packet_num, secondary_header = self.parse_secondary_header(packet)
-            
+
             # Calculate the total header size (primary + secondary)
             total_header_size = self.PRIMARY_HDR_LEN + self.SECONDARY_HDR_LEN
 
@@ -359,32 +359,24 @@ class Level0_5:
                 meta_packet = metadata_dict[image_id_data]
                 compression_enabled, _, _, _ = self.parse_csie_icm_proc_config(meta_packet.csie_meta_icm_proc_config)
 
-            # If this is the first row of a new image (sequence_number == 1)
-            if sequence_number == 1:
-                if compression_enabled:
-                    # For compressed data, store as bytes (will be decompressed later)
-                    data_dict[image_id_data] = data
-                else:
-                    # For uncompressed data, convert to little-endian uint16
-                    data_dict[image_id_data] = np.frombuffer(data, dtype=np.uint16).byteswap()
-            else:
+            # Assemble csie_data per image_id. For uncompressed data, CCSDS sequence_number
+            # is the 1-based row index in the image (not arrival order). For JPEG-LS, payload
+            # is the compressed bitstream concatenated across packets in arrival order.
+            if compression_enabled:
                 if image_id_data in data_dict:
-                    if compression_enabled:
-                        # For compressed data, concatenate bytes
-                        data_dict[image_id_data] = data_dict[image_id_data] + data
-                    else:
-                        # For uncompressed data, concatenate as little-endian uint16
-                        new_data = np.frombuffer(data, dtype=np.uint16).byteswap()
-                        data_dict[image_id_data] = np.concatenate([data_dict[image_id_data], new_data])
+                    data_dict[image_id_data] = data_dict[image_id_data] + data
                 else:
-                    # No prior packet for this image_id (e.g. we missed packet 1); store as partial image
-                    if compression_enabled:
-                        data_dict[image_id_data] = data
-                    else:
-                        try:
-                            data_dict[image_id_data] = np.frombuffer(data, dtype=np.uint16).byteswap()
-                        except Exception as e:
-                            print(f"Error: failed to convert data to uint16 for image_id {image_id_data}: {e}")
+                    data_dict[image_id_data] = data
+            else:
+                try:
+                    new_data = np.frombuffer(data, dtype=np.uint16).byteswap()
+                except Exception as e:
+                    print(f"Error: failed to convert data to uint16 for image_id {image_id_data}: {e}")
+                else:
+                    if image_id_data not in data_dict:
+                        data_dict[image_id_data] = {}
+                    # Later packet for the same row overwrites (e.g. retransmit).
+                    data_dict[image_id_data][sequence_number] = new_data
                             
             
         elif 'dsps' in packet_name:            
@@ -747,6 +739,30 @@ class Level0_5:
         cols = roi_cols / col_bin
         return int(rows), int(cols), int(roi_rows), int(roi_cols), int(row_offset), int(col_offset)
 
+    @staticmethod
+    def assemble_csie_image_from_row_packets(row_dict, rows, cols):
+        """
+        Build a (rows, cols) uint16 image from CSIE row packets.
+
+        The CCSDS primary-header sequence_number on each csie_data packet is the 1-based
+        row index in the frame (e.g. 1–2000 unbinned, 1–N when the ROI has N binned rows).
+        """
+        image = np.zeros((rows, cols), dtype=np.uint16)
+        n_pixels = 0
+        for seq, row_data in row_dict.items():
+            r = int(seq) - 1
+            if r < 0 or r >= rows:
+                print(
+                    f"Warning: csie_data row index out of range: sequence_number={seq} "
+                    f"→ row {r} not in [0, {rows - 1}]"
+                )
+                continue
+            rd = np.asarray(row_data, dtype=np.uint16).ravel()
+            n = min(len(rd), cols)
+            image[r, :n] = rd[:n]
+            n_pixels += n
+        return image, n_pixels
+
     
     def save_image_as_fits(self, image_array, meta_packet, image_id, base_path=None):
         """Save an image array as a FITS file with metadata."""
@@ -796,7 +812,9 @@ class Level0_5:
         Process and save all complete images to FITS files.
         
         Args:
-            data_dict (dict): Dictionary containing data packets by image_id
+            data_dict (dict): Per image_id: JPEG-LS bytes, or uncompressed row map
+            ``{sequence_number: row_uint16_1d}`` (CCSDS sequence = 1-based row index),
+            or a legacy flat uint16 buffer.
             metadata_dict (dict): Dictionary containing metadata packets by image_id
         """
         processed_images = 0
@@ -818,19 +836,38 @@ class Level0_5:
                     processed_images += 1
                     self.save_image_as_fits(decompressed_image, meta_packet, image_id)
                     continue
-                
-                # Check if we have enough packets to form a complete image
-                if len(data_packets) == rows * cols:
-                    image = data_packets.reshape(rows, cols)
-                    print(f"Completed processing for image_id: {image_id}, shape: {image.shape}")
-                    
-                    # Store the processed image in image_arrays for later use
+
+                # Uncompressed: row-indexed dict (sequence_number → row pixels) or legacy 1D array
+                if isinstance(data_packets, dict):
+                    image, n_pixels = self.assemble_csie_image_from_row_packets(
+                        data_packets, rows, cols
+                    )
+                    n_row_pkts = len(data_packets)
+                    print(
+                        f"Row-indexed assembly for image_id: {image_id}, shape: {image.shape}, "
+                        f"{n_row_pkts} row packet(s) (CCSDS sequence = row 1..{rows}), "
+                        f"{n_pixels}/{rows * cols} pixels placed"
+                    )
                     self.image_arrays.append(image)
                     processed_images += 1
-                    
+                    self.save_image_as_fits(image, meta_packet, image_id)
+                elif isinstance(data_packets, np.ndarray) and data_packets.size == rows * cols:
+                    # Legacy: flat raster in arrival order
+                    image = data_packets.reshape(rows, cols)
+                    print(f"Completed processing for image_id: {image_id}, shape: {image.shape} (legacy flat buffer)")
+                    self.image_arrays.append(image)
+                    processed_images += 1
                     self.save_image_as_fits(image, meta_packet, image_id)
                 else:
-                    print(f"Incomplete image for image_id: {image_id}, only {len(data_packets)}/{rows * cols} pixels received")
+                    n = (
+                        len(data_packets)
+                        if hasattr(data_packets, "__len__")
+                        else "?"
+                    )
+                    print(
+                        f"Incomplete image for image_id: {image_id}, "
+                        f"could not assemble {rows}×{cols} from buffer (len={n})"
+                    )
         
         print(f"Total images processed: {processed_images}")
         print(f"Total images in image_arrays: {len(self.image_arrays)}")

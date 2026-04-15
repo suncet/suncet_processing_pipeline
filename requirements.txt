@@ -1,3 +1,4 @@
+pillow-jpls>=1.2
 numpy==1.22
 matplotlib==3.5
 pytest-cov==3.0
