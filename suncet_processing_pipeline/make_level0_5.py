@@ -933,10 +933,10 @@ class Level0_5:
     def save_image_as_fits(self, image_array, meta_packet, image_id, base_path=None):
         """Save an image array as a FITS file with metadata."""
         if base_path is None:
-            base_path = os.path.dirname(self.ABSOLUTE_FILE_PATH[0])
-        
-        # Create processed_images directory if it doesn't exist
-        output_dir = os.path.join(base_path, "processed_images")
+            base_path = self._default_output_base_path()
+
+        # Same folder as HDF5 outputs: <base_path>/level0_5/
+        output_dir = os.path.join(base_path, "level0_5")
         os.makedirs(output_dir, exist_ok=True)
         
         # Format the filename using just the image ID (with optional output suffix from config)
@@ -1004,9 +1004,9 @@ class Level0_5:
         import matplotlib.pyplot as plt
 
         if base_path is None:
-            base_path = os.path.dirname(self.ABSOLUTE_FILE_PATH[0])
+            base_path = self._default_output_base_path()
 
-        output_dir = os.path.join(base_path, "processed_images")
+        output_dir = os.path.join(base_path, "level0_5")
         os.makedirs(output_dir, exist_ok=True)
 
         suffix = self.get_output_suffix()
@@ -1020,9 +1020,9 @@ class Level0_5:
     def save_image_as_jpeg2000(self, image_array, image_id, base_path=None):
         """Save a JPEG2000 preview (.jp2, Helioviewer/JHelioviewer) matching PNG appearance."""
         if base_path is None:
-            base_path = os.path.dirname(self.ABSOLUTE_FILE_PATH[0])
+            base_path = self._default_output_base_path()
 
-        output_dir = os.path.join(base_path, "processed_images")
+        output_dir = os.path.join(base_path, "level0_5")
         os.makedirs(output_dir, exist_ok=True)
 
         suffix = self.get_output_suffix()
@@ -1656,7 +1656,7 @@ def main():
     parser.add_argument(
         '--save-png',
         action='store_true',
-        help='Write PNG previews (inferno) next to FITS in processed_images/ (overrides config save_png)',
+        help='Write PNG previews (inferno) next to FITS under level0_5/ (overrides config save_png)',
     )
     parser.add_argument(
         '--save-jpeg2000',
