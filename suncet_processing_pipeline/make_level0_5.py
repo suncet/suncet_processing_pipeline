@@ -516,9 +516,35 @@ class Level0_5:
             return self._extract_ccsds_packets_from_fileobj(file_obj)
 
     def extract_hardline_playback_packets(self, file_path):
-        """Extract CCSDS packets from hardline playback files via file object."""
-        with open(file_path, 'rb') as file_obj:
-            return self._extract_ccsds_packets_from_fileobj(file_obj)
+        """
+        Extract CCSDS packets from hardline playback files.
+
+        Files use the same 4-byte sync marker (``SYNC_MARKER``) between frames as direct
+        CSIE captures. Each inter-sync region is the raw CCSDS Space Packet bytes (one
+        packet per frame in test data). Reading the file sequentially from offset 0
+        mis-frames packets because the sync is not a CCSDS primary header.
+        """
+        sync_indices, data = self.find_all_sync_markers(file_path)
+        if not sync_indices:
+            return []
+        if data is None:
+            print(
+                "Warning: hardline playback file too large to load for sync-based framing; "
+                "falling back to sequential CCSDS read (may mis-parse)."
+            )
+            with open(file_path, "rb") as file_obj:
+                return self._extract_ccsds_packets_from_fileobj(file_obj)
+
+        packets = []
+        frame_boundaries = sync_indices + [len(data)]
+        for current_index, next_index in zip(sync_indices, frame_boundaries[1:]):
+            frame_start = current_index + self.SYNC_MARKER_LEN
+            frame_end = next_index
+            frame = data[frame_start:frame_end]
+            if not frame:
+                continue
+            packets.extend(self._extract_ccsds_packets_from_bytes(frame))
+        return packets
 
     def extract_xband_packets(self, file_path):
         """Extract CCSDS packets from X-band GSE VCDU formatted files."""
