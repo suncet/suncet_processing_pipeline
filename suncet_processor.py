@@ -60,6 +60,9 @@ class Processor:
                 processing_config=self.config,
                 save_png=getattr(self.config, "save_png", False),
                 save_jpeg2000=getattr(self.config, "save_jpeg2000", False),
+                also_save_csie_meta_json=getattr(
+                    self.config, "also_save_csie_meta_json", False
+                ),
             )
             processor.process()
 

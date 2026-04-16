@@ -18,6 +18,8 @@ def test_read_default_config():
     assert hasattr(config, 'ignore_realtime')
     assert config.ignore_realtime is False
     assert hasattr(config, 'save_png')
-    assert config.save_png is False
+    assert config.save_png is True
     assert hasattr(config, 'save_jpeg2000')
-    assert config.save_jpeg2000 is False
+    assert config.save_jpeg2000 is True
+    assert hasattr(config, 'also_save_csie_meta_json')
+    assert config.also_save_csie_meta_json is True

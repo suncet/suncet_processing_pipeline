@@ -18,6 +18,7 @@ from io import BytesIO
 from tqdm import tqdm
 import importlib.util
 import configparser
+import json
 
 
 class Level0_5:
@@ -52,6 +53,7 @@ class Level0_5:
         processing_config=None,
         save_png=None,
         save_jpeg2000=None,
+        also_save_csie_meta_json=None,
     ):
         """
         Initialize the Level0_5 processor.
@@ -74,6 +76,9 @@ class Level0_5:
             save_jpeg2000 (bool, optional): If True, write JPEG2000 (.jp2) previews alongside FITS
                 (same scaling and inferno colormap as PNG). If None, uses
                 ``processing_config.save_jpeg2000`` when config is set; otherwise False.
+            also_save_csie_meta_json (bool, optional): If True, write ``image_<id><suffix>_meta.json``
+                (decoded CSIE_META fields) under ``level0_5/``. If None, uses
+                ``processing_config.also_save_csie_meta_json`` when config is set; otherwise False.
 
         Raises:
             ValueError: If packet_definitions_path is None or empty, or if the path doesn't exist.
@@ -112,6 +117,15 @@ class Level0_5:
             self._save_jpeg2000 = getattr(self._processing_config, "save_jpeg2000", False)
         else:
             self._save_jpeg2000 = False
+
+        if also_save_csie_meta_json is not None:
+            self._also_save_csie_meta_json = bool(also_save_csie_meta_json)
+        elif self._processing_config is not None:
+            self._also_save_csie_meta_json = getattr(
+                self._processing_config, "also_save_csie_meta_json", False
+            )
+        else:
+            self._also_save_csie_meta_json = False
 
         # Get APIDs from bus + CSIE ct_pkt (merged)
         self.apid_df = self.read_ct_pkt_csv()
@@ -429,6 +443,16 @@ class Level0_5:
                     data_dict[image_id_data][sequence_number] = new_data
                             
             
+        elif packet_name in ('csie_hk', 'pid_hk'):
+            class_name = packet_name.upper()
+            try:
+                packet_class = getattr(self.csie_pkts, class_name)
+                packet_instance = packet_class(packet[self.PRIMARY_HDR_LEN:], header, filename)
+                unique_key = f"{filename}_{packet_name}_{sequence_number}"
+                telemetry_dict[unique_key] = packet_instance
+            except (AttributeError, TypeError) as e:
+                print(f"Warning: Could not process packet type {packet_name}: {str(e)}")
+
         elif 'dsps' in packet_name:            
             class_name = packet_name.upper()
             try:
@@ -956,10 +980,13 @@ class Level0_5:
             if not attr_name.startswith('_'):
                 try:
                     value = getattr(meta_packet, attr_name)
-                    # Remove 'csie_' prefix if present and convert to FITS-compliant format
-                    if attr_name.startswith('csie_'):
-                        attr_name = attr_name[5:]  # Remove 'csie_' prefix
-                    fits_key = attr_name.upper()[:8]
+                    # Shorten for FITS 8-char keywords: drop csie_, then meta_ if present
+                    name = attr_name
+                    if name.startswith("csie_"):
+                        name = name[5:]
+                    if name.startswith("meta_"):
+                        name = name[5:]
+                    fits_key = name.upper()[:8]
                     header[fits_key] = value
                 except (AttributeError, TypeError):
                     # Skip if we can't get the value or it's not a simple type
@@ -1035,6 +1062,63 @@ class Level0_5:
         pil_img.save(filepath, format="JPEG2000")
         print(f"Saved JPEG2000 preview: {filepath}")
 
+    def _coerce_attr_for_json(self, value):
+        """Convert a CSIE_META attribute value to a JSON-serializable object."""
+        if isinstance(value, (bytes, bytearray)):
+            raise TypeError("skip binary")
+        if isinstance(value, np.generic):
+            return value.item()
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float, str)):
+            return value
+        if isinstance(value, (list, tuple)):
+            return [self._coerce_attr_for_json(x) for x in value]
+        raise TypeError("unsupported type")
+
+    def _csie_meta_to_json_dict(self, meta_packet, image_id):
+        """Build a dict of decoded CSIE_META public fields for JSON export."""
+        out = {
+            "packet_class": meta_packet.__class__.__name__,
+            "image_id": int(image_id) if isinstance(image_id, (int, np.integer)) else image_id,
+        }
+        for attr_name in dir(meta_packet):
+            if attr_name.startswith("_"):
+                continue
+            try:
+                value = getattr(meta_packet, attr_name)
+            except (AttributeError, TypeError):
+                continue
+            if callable(value):
+                continue
+            try:
+                out[attr_name] = self._coerce_attr_for_json(value)
+            except TypeError:
+                continue
+        return out
+
+    def save_csie_meta_json(self, meta_packet, image_id, base_path=None):
+        """Write decoded CSIE_META fields to ``image_<id><suffix>_meta.json`` under level0_5/."""
+        if base_path is None:
+            base_path = self._default_output_base_path()
+
+        output_dir = os.path.join(base_path, "level0_5")
+        os.makedirs(output_dir, exist_ok=True)
+
+        suffix = self.get_output_suffix()
+        filename = f"image_{image_id}{suffix}_meta.json"
+        filepath = os.path.join(output_dir, filename)
+
+        payload = self._csie_meta_to_json_dict(meta_packet, image_id)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, sort_keys=True)
+            f.write("\n")
+        print(f"Saved CSIE meta JSON: {filepath}")
+
     def process_images(self, data_dict, metadata_dict):
         """
         Process and save all complete images to FITS files.
@@ -1063,6 +1147,8 @@ class Level0_5:
                     self.image_arrays.append(decompressed_image)
                     processed_images += 1
                     self.save_image_as_fits(decompressed_image, meta_packet, image_id)
+                    if self._also_save_csie_meta_json:
+                        self.save_csie_meta_json(meta_packet, image_id)
                     if self._save_png:
                         self.save_image_as_png(decompressed_image, image_id)
                     if self._save_jpeg2000:
@@ -1083,6 +1169,8 @@ class Level0_5:
                     self.image_arrays.append(image)
                     processed_images += 1
                     self.save_image_as_fits(image, meta_packet, image_id)
+                    if self._also_save_csie_meta_json:
+                        self.save_csie_meta_json(meta_packet, image_id)
                     if self._save_png:
                         self.save_image_as_png(image, image_id)
                     if self._save_jpeg2000:
@@ -1094,6 +1182,8 @@ class Level0_5:
                     self.image_arrays.append(image)
                     processed_images += 1
                     self.save_image_as_fits(image, meta_packet, image_id)
+                    if self._also_save_csie_meta_json:
+                        self.save_csie_meta_json(meta_packet, image_id)
                     if self._save_png:
                         self.save_image_as_png(image, image_id)
                     if self._save_jpeg2000:
@@ -1690,6 +1780,7 @@ def main():
         processing_config=config,
         save_png=config.save_png,
         save_jpeg2000=config.save_jpeg2000,
+        also_save_csie_meta_json=config.also_save_csie_meta_json,
     )
 
     processor.process()

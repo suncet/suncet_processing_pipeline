@@ -23,6 +23,9 @@ class Config:
         self.ignore_realtime = config['behavior'].getboolean('ignore_realtime', fallback=False)
         self.save_png = config['behavior'].getboolean('save_png', fallback=False)
         self.save_jpeg2000 = config['behavior'].getboolean('save_jpeg2000', fallback=False)
+        self.also_save_csie_meta_json = config['behavior'].getboolean(
+            'also_save_csie_meta_json', fallback=False
+        )
 
         # limits
         self.example_limit = json.loads(config.get('limits', 'example_limit')) * u.Angstrom
