@@ -22,7 +22,7 @@ with open('requirements.txt', 'r') as txt_file:
 config = configparser.ConfigParser()
 config.read('suncet_processing_pipeline/config_files/config_default.ini')
 try:
-    version_string = config['structure']['version']
+    version_string = config["structure"]["version_pipeline"]
 except KeyError:
     version_string = '0.0.0'
 

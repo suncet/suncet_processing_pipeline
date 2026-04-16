@@ -60,8 +60,8 @@ class Level0_5:
             file_paths (list): List of paths to the binary files to process
             packet_definitions_path (str): Path to folder containing gen_pkts.py and dsps_decoders.py.
                 Must be provided. Path will be expanded (e.g., ~ will be expanded to home directory).
-            bus_ctdb_path (str): Path to the bus CTDB folder (e.g. .../suncet_ctdb/suncet_v1-0-0).
-            csie_ctdb_path (str): Path to the CSIE CTDB folder (e.g. .../suncet_csie_ctdb_v1-0-0).
+            bus_ctdb_path (str): Path to the bus CTDB root folder (e.g. .../suncet_v1-0-0).
+            csie_ctdb_path (str): Path to the CSIE CTDB root folder (e.g. .../suncet_csie_v1-0-0).
             output_base_folder (str, optional): Directory from config ``data_to_process_path`` (resolved).
                 HDF5 outputs are written under ``<output_base_folder>/level0_5/``. If None, uses the
                 directory of the first input file (legacy behavior).
@@ -185,13 +185,15 @@ class Level0_5:
         as loading CDH gen_pkts from packet_definitions_path; only the module name
         differs. Raises if the file is missing or fails to load.
         """
-        csie_gen_pkts_path = os.path.join(self.csie_ctdb_path, 'gen_pkts.py')
+        # CTDB layout: CSIE decoders live under <csie_ctdb_path>/decoders/
+        csie_decoder_path = os.path.join(self.csie_ctdb_path, "decoders")
+        csie_gen_pkts_path = os.path.join(csie_decoder_path, "gen_pkts.py")
         if not os.path.isfile(csie_gen_pkts_path):
             raise FileNotFoundError(f"CSIE gen_pkts not found at {csie_gen_pkts_path}")
         original_path = sys.path.copy()
         try:
-            if self.csie_ctdb_path not in sys.path:
-                sys.path.insert(0, self.csie_ctdb_path)
+            if csie_decoder_path not in sys.path:
+                sys.path.insert(0, csie_decoder_path)
             spec = importlib.util.spec_from_file_location("csie_pkts", csie_gen_pkts_path)
             csie_pkts = importlib.util.module_from_spec(spec)
             if spec.loader is not None:
@@ -1166,12 +1168,12 @@ class Level0_5:
     def get_version(self):
         """Mission version string for output filenames (from the run's config when available)."""
         if self._processing_config is not None:
-            return self._processing_config.version
+            return self._processing_config.version_pipeline
         config_path = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
         try:
             cfg = configparser.ConfigParser()
             cfg.read(config_path)
-            return cfg['structure']['version']
+            return cfg["structure"]["version_pipeline"]
         except (FileNotFoundError, KeyError) as e:
             print(f"Warning: Could not read version from config at {config_path}: {e}, using 'unknown'")
             return 'unknown'

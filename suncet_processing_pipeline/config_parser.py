@@ -34,8 +34,14 @@ class Config:
             self.data_to_process_path = ''
 
         # structure (needed for CTDB paths)
-        self.version = config['structure']['version']
-        self.csie_version = config['structure']['csie_version']
+        structure = config["structure"]
+        # Version fields (2026-04): separate pipeline output version from CTDB versions.
+        # These keys are required in the config.
+        self.version_pipeline = structure["version_pipeline"]
+        self.version_bus = structure["version_bus"]
+        self.version_csie = structure["version_csie"]
+        # Internal alias used by some processing modules: pipeline version only.
+        self.version = self.version_pipeline
         self.base_metadata_filename = config['structure']['base_metadata_filename']
         self.output_suffix = config.get('structure', 'output_suffix', fallback='').strip()
 
@@ -47,13 +53,16 @@ class Config:
         def _version_to_path_format(v):
             return 'v' + v.replace('.', '-')
 
-        version_path = _version_to_path_format(self.version)
-        csie_version_path = _version_to_path_format(self.csie_version)
-        self.bus_ctdb_path = os.path.join(ctdb_base, 'suncet_ctdb', f'suncet_{version_path}')
-        self.csie_ctdb_path = os.path.join(ctdb_base, 'suncet_ctdb', f'suncet_csie_ctdb_{csie_version_path}')
-        self.packet_definitions_path = os.path.join(
-            self.bus_ctdb_path, f'suncet_{version_path}_decoders'
-        )
+        bus_version_path = _version_to_path_format(self.version_bus)
+        csie_version_path = _version_to_path_format(self.version_csie)
+
+        # CTDB directory layout (2026-04):
+        # - bus:  <ctdb_base>/suncet_vX-Y-Z/{decoders,packet_definitions}
+        # - csie: <ctdb_base>/suncet_csie_vA-B-C/{decoders,packet_definitions}
+        self.bus_ctdb_path = os.path.join(ctdb_base, f"suncet_{bus_version_path}")
+        self.csie_ctdb_path = os.path.join(ctdb_base, f"suncet_csie_{csie_version_path}")
+        # Historical name: this is the path used to import gen_pkts.py and dsps_decoders.py for bus.
+        self.packet_definitions_path = os.path.join(self.bus_ctdb_path, "decoders")
 
         # calibration
         self.calibration_path = config['calibration']['calibration_path']
@@ -66,4 +75,4 @@ class Config:
 if __name__ == "__main__":
     filename = os.getcwd() + '/suncet_processing_pipeline/config_files/config_default.ini'
     config = Config(filename)
-    print(config.example_behavior)  # Just an example to see something return when running as a script
+    print(config.example_limit)  # Just an example to see something return when running as a script

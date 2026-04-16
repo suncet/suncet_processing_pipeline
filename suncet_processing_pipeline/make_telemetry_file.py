@@ -103,7 +103,7 @@ class TelemetryProcessor:
             config = configparser.ConfigParser()
             config_path = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
             config.read(config_path)
-            self.version = config['structure']['version']
+            self.version = config["structure"]["version_pipeline"]
         else:
             self.version = version
             

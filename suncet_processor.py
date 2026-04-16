@@ -9,6 +9,7 @@ import sunpy.map
 from astropy.io import fits
 from suncet_processing_pipeline import config_parser
 from suncet_processing_pipeline.make_level0_5 import Level0_5
+from suncet_processing_pipeline.make_level0_5 import discover_level0_5_input_files
 from suncet_processing_pipeline.make_level1 import Level1
 
 class Processor:
@@ -39,12 +40,28 @@ class Processor:
 
     def run(self):
         if self.config.make_level0_5:
-            # Path to packet definitions
-            packet_definitions_path = '~/Library/CloudStorage/Box-Box/SunCET Private/suncet_ctdb/suncet_bus_v1-0-0'
-            # TODO: Update to pass actual file_paths instead of self.config
-            # For now, this will need to be fixed based on how file paths should be obtained
-            level0_5 = Level0_5(self.config, packet_definitions_path)
-            level0_5.run()
+            data_path = self.config.data_to_process_path
+            # Resolve path: absolute (~ or /) use as-is; otherwise relative to suncet_data
+            if data_path.startswith('/') or data_path.startswith('~'):
+                folder = os.path.expanduser(data_path)
+            else:
+                folder = os.path.join(os.getenv('suncet_data', ''), data_path)
+
+            file_paths = discover_level0_5_input_files(
+                folder, ignore_realtime=getattr(self.config, "ignore_realtime", False)
+            )
+
+            processor = Level0_5(
+                file_paths,
+                self.config.packet_definitions_path,
+                self.config.bus_ctdb_path,
+                self.config.csie_ctdb_path,
+                output_base_folder=folder,
+                processing_config=self.config,
+                save_png=getattr(self.config, "save_png", False),
+                save_jpeg2000=getattr(self.config, "save_jpeg2000", False),
+            )
+            processor.process()
 
         if self.config.make_level1:
             level1 = Level1(self.config)
