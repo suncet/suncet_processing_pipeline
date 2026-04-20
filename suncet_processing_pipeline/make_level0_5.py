@@ -135,6 +135,7 @@ class Level0_5:
         
         # Initialize counters for statistics
         self.bad_checksum_counter = 0
+        self.skipped_false_csie_data_rows = 0
         self.vcdu_headers = []
         self.retransmit_headers = []
 
@@ -267,6 +268,105 @@ class Level0_5:
             'primary_header_length_bytes': self.PRIMARY_HDR_LEN
         }
 
+    def _hardline_playback_merged_filepath(self, paths):
+        """Directory: ``output_base_folder`` when set, else dirname of first input path."""
+        base = self.output_base_folder
+        if not base:
+            base = os.path.dirname(os.path.abspath(paths[0]))
+        return os.path.join(base, HARDLINE_PLAYBACK_MERGED_ARTIFACT_BASENAME)
+
+    def write_hardline_playback_fix_ccsds_merged(self, paths, out_path):
+        """
+        Hydra ``fixCCSDS`` merge: sequential CCSDS read from the start of each file (no sync).
+        For each primary header, read the data field; if APID == 72, append ``payload[10:]``,
+        else discard. Matches ``read(6)`` + ``read(length)`` + ``bites[10:]`` for APID 72.
+        """
+        out_abs = os.path.abspath(out_path)
+        out_dir = os.path.dirname(out_abs)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        with open(out_path, "wb") as writefile:
+            for path in paths:
+                with open(path, "rb") as readfile:
+                    while True:
+                        header = readfile.read(self.PRIMARY_HDR_LEN)
+                        if len(header) < self.PRIMARY_HDR_LEN:
+                            break
+                        apid, length, _seqnum, _ = self.parse_header(header)
+                        bites = readfile.read(length)
+                        if len(bites) < length:
+                            break
+                        if apid == 72:
+                            writefile.write(bites[10:])
+
+    def _process_one_telemetry_path(
+        self, path, source, metadata_dict, data_dict, telemetry_dict, dsps_dict
+    ):
+        """Extract and process a single input file (non-merged hardline and all other sources)."""
+        print(f"Processing file: {path}")
+        filename = os.path.basename(path)
+        packets = self.extract_packets(path, source=source)
+        if not packets:
+            print(f"No packets found in {path}")
+            return 0
+
+        print(f"Extracted {len(packets)} packets")
+        if source in ("uhf_playback", "hardline_playback"):
+            used_playback_pipeline = self.process_playback_outer_packets(
+                packets, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename
+            )
+            if not used_playback_pipeline:
+                print(
+                    f"No APID 68/72/73 playback payloads in {filename}; "
+                    "falling back to per-packet processing."
+                )
+                for packet in tqdm(
+                    packets, desc=f"Processing packets in {filename}"
+                ):
+                    self.process_packet(
+                        packet,
+                        metadata_dict,
+                        data_dict,
+                        telemetry_dict,
+                        dsps_dict,
+                        filename,
+                    )
+        else:
+            for packet in tqdm(packets, desc=f"Processing packets in {filename}"):
+                self.process_packet(
+                    packet,
+                    metadata_dict,
+                    data_dict,
+                    telemetry_dict,
+                    dsps_dict,
+                    filename,
+                )
+        return len(packets)
+
+    def _process_hardline_playback_path_group(
+        self, paths, metadata_dict, data_dict, telemetry_dict, dsps_dict
+    ):
+        """
+        Write a Hydra-style ``fixCCSDS`` merge to ``hardline_playback_merged`` (sequential
+        CCSDS per file, APID 72 → ``payload[10:]``), then process that single file normally.
+        """
+        paths = sorted(paths, key=lambda p: os.path.basename(p))
+        total = sum(os.path.getsize(p) for p in paths)
+        merged_path = self._hardline_playback_merged_filepath(paths)
+        print(
+            f"Hardline playback: merging {len(paths)} file(s) ({total} bytes) via fixCCSDS "
+            f"→ {merged_path}"
+        )
+        self.write_hardline_playback_fix_ccsds_merged(paths, merged_path)
+        return self._process_one_telemetry_path(
+            merged_path,
+            "hardline_playback",
+            metadata_dict,
+            data_dict,
+            telemetry_dict,
+            dsps_dict,
+        )
+
     def process(self):
         """Main processing function."""
         start_time = time.time()
@@ -278,67 +378,31 @@ class Level0_5:
         processed_images = 0
         total_packets_processed = 0
         
-        for path in self.ABSOLUTE_FILE_PATH:
-            print(f"Processing file: {path}")
-            
+        paths = self.ABSOLUTE_FILE_PATH
+        i = 0
+        while i < len(paths):
+            path = paths[i]
             filename = os.path.basename(path)
-            from_hydra_realtime = filename.startswith('ccsds_')
-            from_xband_gse = filename.startswith('suncet_')
-            from_xband_flight = self.XBAND_FLIGHT_FILENAME_RE.match(filename) is not None
-            from_uhf_playback = filename.startswith('pbk_')
-            from_hardline_playback = filename.startswith('hardline_playback_')
+            source = _level0_5_source_type_for_basename(filename)
 
-            source = (
-                "hydra_realtime"
-                if from_hydra_realtime
-                else "xband_gse"
-                if from_xband_gse
-                else "xband_flight"
-                if from_xband_flight
-                else "uhf_playback"
-                if from_uhf_playback
-                else "hardline_playback"
-                if from_hardline_playback
-                else "csie"
-            )
-            packets = self.extract_packets(path, source=source)
-            if not packets:
-                print(f"No packets found in {path}")
-                continue
-                
-            print(f"Extracted {len(packets)} packets")
-            total_packets_processed += len(packets)
-
-            if source in ("uhf_playback", "hardline_playback"):
-                used_playback_pipeline = self.process_playback_outer_packets(
-                    packets, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename
+            if source == "hardline_playback":
+                group = [path]
+                j = i + 1
+                while j < len(paths) and _level0_5_source_type_for_basename(
+                    os.path.basename(paths[j])
+                ) == "hardline_playback":
+                    group.append(paths[j])
+                    j += 1
+                total_packets_processed += self._process_hardline_playback_path_group(
+                    group, metadata_dict, data_dict, telemetry_dict, dsps_dict
                 )
-                if not used_playback_pipeline:
-                    print(
-                        f"No APID 68/72/73 playback payloads in {filename}; "
-                        "falling back to per-packet processing."
-                    )
-                    for packet in tqdm(
-                        packets, desc=f"Processing packets in {filename}"
-                    ):
-                        self.process_packet(
-                            packet,
-                            metadata_dict,
-                            data_dict,
-                            telemetry_dict,
-                            dsps_dict,
-                            filename,
-                        )
-            else:
-                for packet in tqdm(packets, desc=f"Processing packets in {filename}"):
-                    self.process_packet(
-                        packet,
-                        metadata_dict,
-                        data_dict,
-                        telemetry_dict,
-                        dsps_dict,
-                        filename,
-                    )
+                i = j
+                continue
+
+            total_packets_processed += self._process_one_telemetry_path(
+                path, source, metadata_dict, data_dict, telemetry_dict, dsps_dict
+            )
+            i += 1
 
         elapsed_time = time.time() - start_time
         
@@ -350,6 +414,11 @@ class Level0_5:
         print(f"Data for {len(data_dict)} different image IDs collected")
         print(f"DSPS packets found: {len(dsps_dict)}")
         print(f"Packets with invalid checksums: {self.bad_checksum_counter}")
+        if self.skipped_false_csie_data_rows:
+            print(
+                f"Skipped {self.skipped_false_csie_data_rows} csie_data packet(s) with "
+                f"wrong uncompressed row payload size (coincidental CCSDS-like headers in TM)."
+            )
         
         # Process and save images to FITS files
         if data_dict:
@@ -405,8 +474,8 @@ class Level0_5:
             metadata_dict[image_id_meta] = meta_packet
             
         elif packet_name == 'csie_data':
-            # Parse the secondary header to get image_id
-            image_id_data, packet_num, secondary_header = self.parse_secondary_header(packet)
+            # Six-byte CSIE_DATA secondary after primary: U32 image_id, U16 (ICD); row index is CCSDS seq.
+            image_id_data, _secondary_aux_u16, secondary_header = self.parse_secondary_header(packet)
 
             # Calculate the total header size (primary + secondary)
             total_header_size = self.PRIMARY_HDR_LEN + self.SECONDARY_HDR_LEN
@@ -415,7 +484,10 @@ class Level0_5:
             data_length = length - self.PRIMARY_HDR_LEN - self.CHECKSUM_LEN  # secondary header length isn't counted for this purpose
             
             # Extract just the data portion of the packet (after both headers)
-            data = packet[total_header_size:total_header_size + data_length] 
+            data = packet[total_header_size:total_header_size + data_length]
+            if len(data) != data_length:
+                self.skipped_false_csie_data_rows += 1
+                return
 
             # Check if we have metadata for this image to determine compression
             compression_enabled = False
@@ -432,6 +504,10 @@ class Level0_5:
                 else:
                     data_dict[image_id_data] = data
             else:
+                row_bytes = self.CSIE_COLS * 2
+                if len(data) != row_bytes:
+                    self.skipped_false_csie_data_rows += 1
+                    return
                 try:
                     new_data = np.frombuffer(data, dtype=np.uint16).byteswap()
                 except Exception as e:
@@ -515,26 +591,21 @@ class Level0_5:
         with open(file_path, 'rb') as file_obj:
             return self._extract_ccsds_packets_from_fileobj(file_obj)
 
-    def extract_hardline_playback_packets(self, file_path):
+    def find_all_sync_markers_in_bytes(self, data):
         """
-        Extract CCSDS packets from hardline playback files.
+        Locate ``SYNC_MARKER`` indices in an in-memory byte string.
 
-        Files use the same 4-byte sync marker (``SYNC_MARKER``) between frames as direct
-        CSIE captures. Each inter-sync region is the raw CCSDS Space Packet bytes (one
-        packet per frame in test data). Reading the file sequentially from offset 0
-        mis-frames packets because the sync is not a CCSDS primary header.
+        Returns:
+            tuple: (list of start indices, ``data`` unchanged). Empty list if ``data`` is empty.
         """
-        sync_indices, data = self.find_all_sync_markers(file_path)
-        if not sync_indices:
-            return []
-        if data is None:
-            print(
-                "Warning: hardline playback file too large to load for sync-based framing; "
-                "falling back to sequential CCSDS read (may mis-parse)."
-            )
-            with open(file_path, "rb") as file_obj:
-                return self._extract_ccsds_packets_from_fileobj(file_obj)
+        if not data:
+            return [], data
+        sync_pattern = b"".join(self.SYNC_MARKER)
+        sync_indices = [m.start() for m in re.finditer(re.escape(sync_pattern), data)]
+        return sync_indices, data
 
+    def _extract_hardline_ccsds_packets_from_sync_data(self, sync_indices, data):
+        """Given sync indices and full file bytes, return outer CCSDS packets (same as legacy hardline path)."""
         packets = []
         frame_boundaries = sync_indices + [len(data)]
         for current_index, next_index in zip(sync_indices, frame_boundaries[1:]):
@@ -545,6 +616,32 @@ class Level0_5:
                 continue
             packets.extend(self._extract_ccsds_packets_from_bytes(frame))
         return packets
+
+    def extract_hardline_playback_packets(self, file_path):
+        """
+        Extract CCSDS packets from hardline playback files.
+
+        Files use the same 4-byte sync marker (``SYNC_MARKER``) between frames as direct
+        CSIE captures. Each inter-sync region is the raw CCSDS Space Packet bytes (one
+        packet per frame in test data). Reading the file sequentially from offset 0
+        mis-frames packets because the sync is not a CCSDS primary header.
+
+        If no sync markers are present (e.g. ``hardline_playback_merged`` from ``fixCCSDS``),
+        fall back to sequential CCSDS read of the whole file, same as UHF playback.
+        """
+        sync_indices, data = self.find_all_sync_markers(file_path)
+        if not sync_indices:
+            with open(file_path, "rb") as file_obj:
+                return self._extract_ccsds_packets_from_fileobj(file_obj)
+        if data is None:
+            print(
+                "Warning: hardline playback file too large to load for sync-based framing; "
+                "falling back to sequential CCSDS read (may mis-parse)."
+            )
+            with open(file_path, "rb") as file_obj:
+                return self._extract_ccsds_packets_from_fileobj(file_obj)
+
+        return self._extract_hardline_ccsds_packets_from_sync_data(sync_indices, data)
 
     def extract_xband_packets(self, file_path):
         """Extract CCSDS packets from X-band GSE VCDU formatted files."""
@@ -854,16 +951,27 @@ class Level0_5:
         self, packets, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename
     ):
         """
-        Decode UHF/hardline playback files: collect inner byte stream, then unaligned CCSDS
-        extract and process each inner packet.
+        Decode UHF/hardline playback files: collect inner byte stream, then **sequential**
+        CCSDS framing (same as ``_extract_ccsds_packets_from_bytes`` / Hydra-style sequential
+        read), not ``extract_ccsds_packets_unaligned``.
+
+        The inner stream from APID 68/72/73 unwrap is already packet-aligned; walking it with
+        a sliding-window unaligned search could accept false primary headers and splice stray
+        bytes (e.g. APID-72-shaped runs) into ``csie_data`` payloads. Sequential parse matches
+        the ``fixCCSDS``-style strip-then-concatenate contract.
         """
         concatenated = self._collect_playback_inner_stream_bytes(packets)
         if not concatenated:
+            # Outer CCSDS between sync markers is often already APID 536/538 (no 68/72/73 wrappers).
+            # In that case this method returns False and callers use per-packet fallback; inner
+            # stream parsing (sequential or unaligned) never runs.
+            if packets:
+                print(
+                    f"Note: playback inner stream empty ({filename}): no outer APID 68/72/73 "
+                    f"among {len(packets)} packet(s); per-packet fallback (inner reassembly skipped)."
+                )
             return False
-        valid_apids = set(self.apid_df["APID"].astype(int))
-        inner_packets = self.extract_ccsds_packets_unaligned(
-            concatenated, valid_apids=valid_apids
-        )
+        inner_packets = self._extract_ccsds_packets_from_bytes(concatenated)
         for pkt in inner_packets:
             self.process_packet(
                 pkt, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename
@@ -875,13 +983,7 @@ class Level0_5:
         if self.has_sufficient_memory(file_path):
             with open(file_path, 'rb') as file:
                 data = file.read()  # Read the entire file into memory
-            
-            sync_pattern = b''.join(self.SYNC_MARKER)
-            sync_indices = []
-            for match in re.finditer(re.escape(sync_pattern), data):
-                sync_indices.append(match.start())
-                
-            return sync_indices, data
+            return self.find_all_sync_markers_in_bytes(data)
         else:
             print("Not enough memory to load the file into memory. Processing in chunks.")
             sync_indices = self.process_file_in_chunks(file_path)
@@ -929,11 +1031,20 @@ class Level0_5:
         return apid, length, sequence_number, header_data
 
     def parse_secondary_header(self, packet):
-        """Extract image ID and packet number from the secondary header."""
+        """
+        CSIE_DATA only: six bytes immediately after the CCSDS primary header (before pixel payload).
+
+        SunCET layout: U32 big-endian ``image_id`` (same id family as ``csie_meta_img_id``), then U16
+        auxiliary (per ICD — not used for row placement here). Row index comes from the CCSDS primary
+        header ``sequence_number``, not from this U16.
+
+        This is not the generic CCSDS time secondary (SHCOARSE/SHFINE) used on some other APIDs;
+        those names in CTDB spreadsheets often refer to a different packet layout.
+        """
         secondary_header = packet[self.PRIMARY_HDR_LEN:self.PRIMARY_HDR_LEN + self.SECONDARY_HDR_LEN]
         image_id = int.from_bytes(secondary_header[0:4], 'big')
-        packet_num = int.from_bytes(secondary_header[4:6], 'big')
-        return image_id, packet_num, secondary_header
+        secondary_aux_u16 = int.from_bytes(secondary_header[4:6], 'big')
+        return image_id, secondary_aux_u16, secondary_header
 
     def strip_playback_header(self, packet):
         """Strip the playback header and return the remaining data."""
@@ -1156,7 +1267,7 @@ class Level0_5:
             metadata_dict (dict): Dictionary containing metadata packets by image_id
         """
         processed_images = 0
-        
+
         # Images are bigger than packets, so we can only process an image once we've received all the packets for that image
         for image_id, data_packets in data_dict.items():
             if image_id in metadata_dict:
@@ -1676,6 +1787,9 @@ LEVEL0_5_TELEMETRY_PREFIXES = (
     "hardline_playback_",
 )
 
+# Written by fixCCSDS merge; basename still matches ``hardline_playback_*`` — exclude from discovery.
+HARDLINE_PLAYBACK_MERGED_ARTIFACT_BASENAME = "hardline_playback_merged"
+
 
 def _level0_5_source_type_for_basename(filename):
     """Same source labels as Level0_5.process() uses (basename only)."""
@@ -1693,6 +1807,8 @@ def _level0_5_source_type_for_basename(filename):
 
 
 def _basename_matches_level0_5_telemetry(filename):
+    if filename == HARDLINE_PLAYBACK_MERGED_ARTIFACT_BASENAME:
+        return False
     if filename.startswith(LEVEL0_5_TELEMETRY_PREFIXES):
         return True
     return Level0_5.XBAND_FLIGHT_FILENAME_RE.match(filename) is not None
