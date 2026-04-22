@@ -504,7 +504,13 @@ class Level0_5:
                 else:
                     data_dict[image_id_data] = data
             else:
-                row_bytes = self.CSIE_COLS * 2
+                # Binned ROI: bytes per row = meta cols × uint16; full frame falls back when meta not yet seen.
+                meta_for_row = metadata_dict.get(image_id_data)
+                if meta_for_row is not None:
+                    _, cols_expect, *_ = self.get_image_meta(meta_for_row)
+                    row_bytes = int(cols_expect) * 2
+                else:
+                    row_bytes = self.CSIE_COLS * 2
                 if len(data) != row_bytes:
                     self.skipped_false_csie_data_rows += 1
                     return
@@ -1139,12 +1145,11 @@ class Level0_5:
 
     def _preview_image_array_for_raster(self, image_array):
         """
-        Rotate the CSIE frame 90° clockwise so PNG/JP2 previews are landscape (wide).
+        Rotate the CSIE frame 90° counter-clockwise for PNG/JP2 previews (landscape aspect).
 
-        CSIE arrays are typically taller than wide; Helioviewer-style side previews expect
-        a horizontal aspect.
+        Uses ``np.rot90(..., k=1)``, which is one 90° CCW step in the default (row, col) plane.
         """
-        return np.rot90(image_array, k=-1)
+        return np.rot90(np.asanyarray(image_array), k=1)
 
     def _preview_rgb_uint8_inferno(self, preview_2d):
         """
