@@ -138,3 +138,4 @@ dmypy.json
 # Private packet definitions (keep local only)
 suncet_processing_pipeline/packet_definitions/
 .vscode/launch.json
+/.vscode
