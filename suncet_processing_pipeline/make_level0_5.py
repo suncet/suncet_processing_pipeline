@@ -17,8 +17,10 @@ from pillow_jpls import Image
 from io import BytesIO
 from tqdm import tqdm
 import importlib.util
+import types
 import configparser
 import json
+from collections import Counter
 
 
 class Level0_5:
@@ -34,9 +36,13 @@ class Level0_5:
     REBOOT_TIME_ASSUMED_SEC = 5.0
     # Treat a backward jump in timestamp ≥ this many seconds as a reboot (resets may not return to 0).
     BOOT_TIME_RESET_MIN_DROP_SEC = 1.0
-    VCDU_HEADER_LEN = 8
+    VCDU_HEADER_LEN = 6
     RETRANSMIT_HEADER_LEN = 16 # TODO: think this will be one just for xband?
     PLAYBACK_HEADER_LEN = 10 # Consistent with the documentaiton https://docs.google.com/presentation/d/1DNZaUyqBdebCL-kyPS6qJhq_GaYo6934/edit?usp=sharing&ouid=112151199578775100472&rtpof=true&sd=true
+    # JPEG/JPEG-LS End Of Image (EOI); used to strip trailing telemetry/padding after codestream
+    JPEG_LS_EOI = b'\xff\xd9'
+    # NUL runs this long (or longer) are removed when attempting decode after EOI trim
+    JPEG_LS_STRIP_ZERO_RUN_MIN_LEN = 1
     # X-band flight filename: ISO8601-style timestamp (filesystem-safe), then hashid, then ".tm"
     # e.g. 2026-02-19T12-30-45_abc123.tm or 2026-02-19_123045_a1b2c3d4.tm
     XBAND_FLIGHT_FILENAME_RE = re.compile(
@@ -60,7 +66,8 @@ class Level0_5:
 
         Args:
             file_paths (list): List of paths to the binary files to process
-            packet_definitions_path (str): Path to folder containing gen_pkts.py and dsps_decoders.py.
+            packet_definitions_path (str): Path to the bus ``decoders`` folder: ``gen_pkts.py`` plus
+                subfolder ``dsps_decoders/`` with ``gen_eus.py``, ``gen_states.py``, and ``gen_pkts.py``.
                 Must be provided. Path will be expanded (e.g., ~ will be expanded to home directory).
             bus_ctdb_path (str): Path to the bus CTDB root folder (e.g. .../suncet_v1-0-0).
             csie_ctdb_path (str): Path to the CSIE CTDB root folder (e.g. .../suncet_csie_v1-0-0).
@@ -137,7 +144,6 @@ class Level0_5:
         self.bad_checksum_counter = 0
         self.skipped_false_csie_data_rows = 0
         self.vcdu_headers = []
-        self.retransmit_headers = []
 
     def _default_output_base_path(self):
         """Parent directory for ``level0_5`` outputs (HDF5)."""
@@ -151,46 +157,97 @@ class Level0_5:
 
     def _import_packet_definitions(self, packet_definitions_path):
         """
-        Import gen_pkts and dsps_decoders from a specified path.
+        Import bus ``gen_pkts.py`` plus DSPS codegen from ``dsps_decoders/``.
+        
+        DSPS codegen lives under ``dsps_decoders/`` as ``gen_eus.py``, ``gen_states.py``,
+        and ``gen_pkts.py`` (those files may cross-import while ``dsps_decoders/`` is on
+        ``sys.path``). DSPS ``gen_pkts`` is executed while temporarily registered as
+        ``sys.modules['gen_pkts']`` so a self-import inside that file resolves correctly;
+        bus ``gen_pkts`` is loaded immediately afterward and replaces that registry entry.
+        Public attributes from the three DSPS modules are merged into a façade module
+        named ``dsps_decoders`` for ``getattr(self.dsps_decoders, …)`` (later modules win
+        on name collisions).
         
         Args:
-            packet_definitions_path (str): Path to folder containing gen_pkts.py and dsps_decoders.py
+            packet_definitions_path (str): Bus ``decoders`` directory (``gen_pkts.py`` plus
+                ``dsps_decoders/*.py``).
             
         Returns:
-            tuple: (gen_pkts module, dsps_decoders module)
+            tuple: (gen_pkts module, dsps_decoders façade module)
         """
         # Check if path exists
         if not os.path.isdir(packet_definitions_path):
             raise ValueError(f"Packet definitions path does not exist: {packet_definitions_path}")
         
-        # Check if required files exist
         gen_pkts_path = os.path.join(packet_definitions_path, 'gen_pkts.py')
-        dsps_decoders_path = os.path.join(packet_definitions_path, 'dsps_decoders.py')
-        
+        dsps_dir = os.path.join(packet_definitions_path, 'dsps_decoders')
+
+        dsps_extra = (
+            ('gen_eus', 'gen_eus.py'),
+            ('gen_states', 'gen_states.py'),
+        )
+        dsps_gen_pkts_path = os.path.join(dsps_dir, 'gen_pkts.py')
         if not os.path.isfile(gen_pkts_path):
             raise ValueError(f"gen_pkts.py not found at: {gen_pkts_path}")
-        if not os.path.isfile(dsps_decoders_path):
-            raise ValueError(f"dsps_decoders.py not found at: {dsps_decoders_path}")
-        
-        # Add the path to sys.path temporarily for imports
+        if not os.path.isdir(dsps_dir):
+            raise ValueError(f"DSPS decoders folder not found: {dsps_dir}")
+
+        dsps_parts = []
+        for mod_name, filename in dsps_extra:
+            p = os.path.join(dsps_dir, filename)
+            if not os.path.isfile(p):
+                raise ValueError(f"DSPS decoder file not found: {p}")
+            dsps_parts.append((mod_name, p))
+        if not os.path.isfile(dsps_gen_pkts_path):
+            raise ValueError(f"DSPS decoder file not found: {dsps_gen_pkts_path}")
+
+        def _exec_registered(name: str, path: str):
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Cannot load codegen module from {path!r}")
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[name] = mod
+            spec.loader.exec_module(mod)
+            return mod
+
         original_path = sys.path.copy()
         try:
             if packet_definitions_path not in sys.path:
                 sys.path.insert(0, packet_definitions_path)
-            
-            # Import using importlib to avoid module name conflicts
+            if dsps_dir not in sys.path:
+                sys.path.insert(0, dsps_dir)
+
+            dsps_modules = [_exec_registered(n, p) for n, p in dsps_parts]
+
+            spec_dsps_pkts = importlib.util.spec_from_file_location(
+                "gen_pkts", dsps_gen_pkts_path
+            )
+            if spec_dsps_pkts is None or spec_dsps_pkts.loader is None:
+                raise ImportError(
+                    f"Cannot load DSPS gen_pkts from {dsps_gen_pkts_path!r}"
+                )
+            dsps_gen_pkts_mod = importlib.util.module_from_spec(spec_dsps_pkts)
+            sys.modules["gen_pkts"] = dsps_gen_pkts_mod
+            spec_dsps_pkts.loader.exec_module(dsps_gen_pkts_mod)
+            dsps_modules.append(dsps_gen_pkts_mod)
+
             spec_gen_pkts = importlib.util.spec_from_file_location("gen_pkts", gen_pkts_path)
+            if spec_gen_pkts is None or spec_gen_pkts.loader is None:
+                raise ImportError(f"Cannot load gen_pkts from {gen_pkts_path!r}")
             gen_pkts = importlib.util.module_from_spec(spec_gen_pkts)
+            sys.modules["gen_pkts"] = gen_pkts
             spec_gen_pkts.loader.exec_module(gen_pkts)
-            
-            spec_dsps_decoders = importlib.util.spec_from_file_location("dsps_decoders", dsps_decoders_path)
-            dsps_decoders = importlib.util.module_from_spec(spec_dsps_decoders)
-            spec_dsps_decoders.loader.exec_module(dsps_decoders)
-            
+
+            dsps_decoders = types.ModuleType('dsps_decoders')
+            for mod in dsps_modules:
+                for attr, value in mod.__dict__.items():
+                    if attr.startswith('_'):
+                        continue
+                    setattr(dsps_decoders, attr, value)
+
             return gen_pkts, dsps_decoders
-            
+
         finally:
-            # Restore original sys.path
             sys.path[:] = original_path
 
     def _import_csie_gen_pkts(self):
@@ -311,7 +368,12 @@ class Level0_5:
             return 0
 
         print(f"Extracted {len(packets)} packets")
-        if source in ("uhf_playback", "hardline_playback"):
+        if source in (
+            "uhf_playback",
+            "hardline_playback",
+            "xband_gse",
+            "xband_flight",
+        ):
             used_playback_pipeline = self.process_playback_outer_packets(
                 packets, metadata_dict, data_dict, telemetry_dict, dsps_dict, filename
             )
@@ -419,7 +481,9 @@ class Level0_5:
                 f"Skipped {self.skipped_false_csie_data_rows} csie_data packet(s) with "
                 f"wrong uncompressed row payload size (coincidental CCSDS-like headers in TM)."
             )
-        
+
+        self._print_vcdu_statistics_summary()
+
         # Process and save images to FITS files
         if data_dict:
             self.process_images(data_dict, metadata_dict)
@@ -650,100 +714,117 @@ class Level0_5:
         return self._extract_hardline_ccsds_packets_from_sync_data(sync_indices, data)
 
     def extract_xband_packets(self, file_path):
-        """Extract CCSDS packets from X-band GSE VCDU formatted files."""
-        sync_indices, data = self.find_all_sync_markers(file_path)
-        if not sync_indices or data is None:
-            if data is None:
-                print("Warning: X-band file too large to load into memory for VCDU stripping.")
+        """
+        Extract outer CCSDS Space Packets from X-band GSE / flight TM.
+        """
+        # 1. Load the raw file into memory
+        with open(file_path, 'rb') as f:
+            raw_data = f.read()
+
+        sync_pattern = b"".join(self.SYNC_MARKER)
+        
+        # 2. Find every single ASM (both outer valid ones, and inner FSW bugs)
+        all_sync_indices = [m.start() for m in re.finditer(re.escape(sync_pattern), raw_data)]
+        
+        if not all_sync_indices:
             return []
 
-        ccsds_packets = []
-        frame_boundaries = sync_indices + [len(data)]
+        # =====================================================================
+        # TEMPORARY FSW BUG WORKAROUND
+        # Delete ASMs embedded inside payloads, keep ASMs for outer frames
+        # =====================================================================
+        cleaned_data = bytearray()
+        last_idx = 0
+        stripped_asms = 0
+        
+        for idx in all_sync_indices:
+            # Keep all the payload data between the last marker and this one
+            cleaned_data.extend(raw_data[last_idx:idx])
+            
+            # Check the 2 bytes immediately following this ASM
+            if idx + 6 <= len(raw_data):
+                b0, b1 = raw_data[idx + 4], raw_data[idx + 5]
+                version = (b0 >> 6) & 0x03
+                scid = ((b0 & 0x3F) << 4) | (b1 >> 4)
+                
+                if version == 0 and scid == 66:
+                    # VALID OUTER ASM: Keep the sync marker
+                    cleaned_data.extend(sync_pattern)
+                else:
+                    # INVALID INNER ASM: FSW failed to strip this. 
+                    # Do not extend sync_pattern (effectively deleting the 4 bytes)
+                    stripped_asms += 1
+            else:
+                # End of file edge case
+                cleaned_data.extend(sync_pattern)
+                
+            last_idx = idx + self.SYNC_MARKER_LEN
+            
+        # Add the remaining tail of the file
+        cleaned_data.extend(raw_data[last_idx:])
+        
+        if stripped_asms > 0:
+            print(f"TEMPORARY FSW FIX: Stripped {stripped_asms} internal ASMs from payloads in {os.path.basename(file_path)}")
+        # =====================================================================
 
-        for current_index, next_index in zip(sync_indices, frame_boundaries[1:]):
+        # 3. Now that the stream is perfectly clean, find the sync indices again
+        # (This will only find the valid, outer ASMs we kept)
+        clean_sync_indices = [m.start() for m in re.finditer(re.escape(sync_pattern), cleaned_data)]
+        
+        FHP_ALL_IDLE = 0x7FF
+        payload_parts = []
+        frame_boundaries = clean_sync_indices + [len(cleaned_data)]
+
+        for current_index, next_index in zip(clean_sync_indices, frame_boundaries[1:]):
             frame_start = current_index + self.SYNC_MARKER_LEN
             frame_end = next_index
-            frame = data[frame_start:frame_end]
-            minimum_frame_len = self.VCDU_HEADER_LEN + self.SYNC_MARKER_LEN + self.RETRANSMIT_HEADER_LEN
-            if len(frame) < minimum_frame_len:
+            frame = cleaned_data[frame_start:frame_end]
+            if len(frame) < self.VCDU_HEADER_LEN:
                 continue
 
-            vcdu_header = frame[:self.VCDU_HEADER_LEN]
+            vcdu_header = frame[: self.VCDU_HEADER_LEN]
             interpreted_header = self.parse_vcdu_header(vcdu_header)
-            interpreted_header["file_path"] = file_path
+            
+            interpreted_header["file_path"] = file_path 
+            interpreted_header["sync_marker_byte_offset"] = current_index
+            interpreted_header["vcdu_header_byte_offset"] = frame_start
+            interpreted_header["vcdu_header_hex"] = bytes(vcdu_header).hex()
             self.vcdu_headers.append(interpreted_header)
 
-            frame_payload = frame[self.VCDU_HEADER_LEN:]
-            swapped_payload = self.swap_bytes_in_words(frame_payload, word_size=4)
-
-            retransmit_segments = self.segment_data_by_sync(swapped_payload)
-            if not retransmit_segments:
-                print("Warning: No retransmit segments found within VCDU payload.")
+            fhp = interpreted_header.get("first_header_pointer", 0)
+            if fhp == FHP_ALL_IDLE:
                 continue
+            payload_parts.append(frame[self.VCDU_HEADER_LEN :])
 
-            for segment in retransmit_segments:
-                if len(segment) < self.RETRANSMIT_HEADER_LEN:
-                    continue
-
-                retrans_header_bytes = segment[:self.RETRANSMIT_HEADER_LEN]
-                retrans_header = self.parse_retransmit_header(retrans_header_bytes)
-                retrans_header["file_path"] = file_path
-                retrans_header["vcdu_master_frame_count"] = interpreted_header.get("master_channel_frame_count")
-                retrans_header["vcdu_virtual_channel_id"] = interpreted_header.get("virtual_channel_id")
-                self.retransmit_headers.append(retrans_header)
-
-                ccsds_payload = segment[self.RETRANSMIT_HEADER_LEN:]
-                if not ccsds_payload:
-                    continue
-
-                ccsds_packets.extend(self.extract_ccsds_packets(ccsds_payload))
-
-        return ccsds_packets
-
-    @staticmethod
-    def swap_bytes_in_words(data, word_size=4):
-        """Swap each word to big-endian order (default 4-byte words)."""
-        swapped = bytearray()
-        for i in range(0, len(data), word_size):
-            chunk = data[i:i + word_size]
-            swapped.extend(chunk[::-1])
-        return bytes(swapped)
-
-    def find_sync_markers_in_bytes(self, data):
-        """Find sync marker indices within a bytes-like object."""
-        sync_pattern = b''.join(self.SYNC_MARKER)
-        return [match.start() for match in re.finditer(re.escape(sync_pattern), data)]
-
-    def segment_data_by_sync(self, data):
-        """Split bytes on sync markers, returning the payload segments between markers."""
-        indices = self.find_sync_markers_in_bytes(data)
-        if not indices:
+        concatenated = b"".join(payload_parts)
+        if not concatenated:
             return []
-
-        segments = []
-        boundaries = indices + [len(data)]
-        for start_idx, end_idx in zip(indices, boundaries[1:]):
-            payload_start = start_idx + self.SYNC_MARKER_LEN
-            if payload_start >= end_idx:
-                continue
-            segments.append(data[payload_start:end_idx])
-        return segments
+            
+        # Because the stripped payload STILL contains random debug strings and garbage, 
+        # we MUST use the unaligned parser to gracefully slide over the noise.
+        valid_apids = self.apid_df['APID'].tolist() if hasattr(self, 'apid_df') else None
+        return self.extract_ccsds_packets_unaligned(concatenated, valid_apids=valid_apids)
 
     def parse_vcdu_header(self, header_bytes):
-        """Parse an 8-byte VCDU header and return a dictionary of fields."""
+        """Parse the 6-byte CCSDS TM transfer-frame primary header (and data-field status word)."""
         if len(header_bytes) != self.VCDU_HEADER_LEN:
-            raise ValueError("VCDU header must be 8 bytes long")
+            raise ValueError("VCDU / TM primary header must be 6 bytes long")
 
-        primary = header_bytes[:6]
+        primary = header_bytes
         data_field_status = primary[4:6]
-        padding = header_bytes[6:8]
 
         # Primary header
         first_two = int.from_bytes(primary[0:2], "big")
+        
+        # Bits 15-14 (2 bits)
         transfer_frame_version = (first_two >> 14) & 0x03
+        # Bits 13-4 (10 bits)
         spacecraft_id = (first_two >> 4) & 0x03FF
-        virtual_channel_id = first_two & 0x0F
-        ocf_flag = (primary[2] >> 7) & 0x01
+        # Bits 3-1 (3 bits) - FIXED
+        virtual_channel_id = (first_two >> 1) & 0x07
+        # Bit 0 (1 bit) - FIXED
+        ocf_flag = first_two & 0x01
+        
         master_channel_frame_count = primary[2]
         virtual_channel_frame_count = primary[3]
 
@@ -767,35 +848,59 @@ class Level0_5:
             "packet_order_flag": packet_order_flag,
             "segment_length_id": segment_length_id,
             "first_header_pointer": first_header_pointer,
-            "padding": padding,
         }
 
-    def parse_retransmit_header(self, header_bytes):
-        """Parse a 16-byte retransmit header and return a dictionary of fields."""
-        if len(header_bytes) != self.RETRANSMIT_HEADER_LEN:
-            raise ValueError("Retransmit header must be 16 bytes long")
+    def _print_vcdu_statistics_summary(self):
+        """Print VCDU / TM transfer-frame statistics after all inputs are parsed."""
+        headers = self.vcdu_headers
+        if not headers:
+            return
 
-        packet_id = int.from_bytes(header_bytes[0:2], "little")
-        seq_count = int.from_bytes(header_bytes[2:4], "little")
-        pkt_length = int.from_bytes(header_bytes[4:6], "little")
-        partition_id = int.from_bytes(header_bytes[6:8], "little")
-        page = int.from_bytes(header_bytes[8:12], "little")
-        record_num = header_bytes[12]
-        record_total = header_bytes[13]
-        pad1 = header_bytes[14]
-        pad2 = header_bytes[15]
+        n = len(headers)
+        vc_ids = {h["virtual_channel_id"] for h in headers}
+        mfc = [h["master_channel_frame_count"] for h in headers]
+        vcf = [h["virtual_channel_frame_count"] for h in headers]
+        fhps = [h["first_header_pointer"] for h in headers]
+        idle_frames = sum(1 for fp in fhps if fp == 0x7FF)
 
-        return {
-            "packet_id": packet_id,
-            "sequence_count": seq_count,
-            "packet_length": pkt_length,
-            "partition_id": partition_id,
-            "page": page,
-            "record_number": record_num,
-            "record_total": record_total,
-            "pad1": pad1,
-            "pad2": pad2,
-        }
+        print(f"\nVCDU / TM transfer frames (from X-band inputs): {n} frame(s) recorded")
+        print(
+            f"  master_channel_frame_count: min={min(mfc)} max={max(mfc)} "
+            f"(byte values as stored, incl. OCF bit in octet 2 per parser)"
+        )
+        print(f"  virtual_channel_frame_count: min={min(vcf)} max={max(vcf)}")
+        print(f"  first_header_pointer == 0x7FF (all-idle) on {idle_frames} frame(s)")
+        fhp_non_idle = Counter(fp for fp in fhps if fp != 0x7FF)
+        if fhp_non_idle:
+            common = fhp_non_idle.most_common(8)
+            formatted = ", ".join(f"0x{fp:03X}×{cnt}" for fp, cnt in common)
+            print(f"  first_header_pointer (non-idle) top values: {formatted}")
+
+        print(f"  distinct virtual_channel_id: {sorted(vc_ids)}")
+        if len(vc_ids) > 1:
+            print(
+                "  Warning: multiple virtual_channel_id values present; "
+                "concatenation assumes a single VC stream — verify with ICD."
+            )
+            # TEMP: dump 6-byte TM primary header for each frame (offsets = indices into loaded file bytes).
+            print("  TEMP VCDU header hex (file, sync_ofs, vcdu_ofs, virtual_channel_id, hex6):")
+            _rows = sorted(
+                enumerate(headers),
+                key=lambda t: (t[1].get("file_path", ""), t[1].get("vcdu_header_byte_offset", -1), t[0]),
+            )
+            for _, h in _rows:
+                _fp = h.get("file_path", "")
+                _sync = h.get("sync_marker_byte_offset")
+                _vofs = h.get("vcdu_header_byte_offset")
+                _vc = h.get("virtual_channel_id")
+                _hx = h.get("vcdu_header_hex")
+                if _sync is None or _vofs is None or _hx is None:
+                    continue
+                _spaced = " ".join(_hx[i : i + 2] for i in range(0, len(_hx), 2))
+                print(
+                    f"    {os.path.basename(_fp)!r}  sync@{_sync}  vcdu@{_vofs}  "
+                    f"vcid={_vc}  {_hx}  ({_spaced})"
+                )
 
     def extract_ccsds_packets(self, data_source):
         """Extract packets from CCSDS data using header length."""
@@ -1586,13 +1691,27 @@ class Level0_5:
                     try:
                         value = getattr(packet, attr_name)
                         # Convert value to a simple type if possible
-                        if isinstance(value, (np.ndarray, list)):
-                            # For arrays/lists, take the first value if it's a single value
-                            if len(value) == 1:
-                                value = value[0]
-                            else:
-                                # Skip arrays/lists with multiple values
+                        if isinstance(value, (np.ndarray, list, tuple)):
+                            arr = np.asarray(value)
+                            if arr.dtype.names is not None:
                                 continue
+                            n = int(arr.size)
+                            if n == 0:
+                                continue
+                            # Single scalar under attr_name
+                            if n == 1:
+                                value = arr.reshape(-1)[0]
+                                packet_dict_row[attr_name] = value
+                                continue
+                            # Small vectors (e.g. DSPS quad diode currents dsps_sps_1_diodes -> *_0..*_3)
+                            _max_vec = 32
+                            if n <= _max_vec:
+                                flat = arr.reshape(-1)
+                                for i in range(n):
+                                    packet_dict_row[f"{attr_name}_{i}"] = flat[i]
+                                continue
+                            # Large arrays: skip (images, long payload words, etc.)
+                            continue
                         packet_dict_row[attr_name] = value
                     except (AttributeError, TypeError):
                         continue
@@ -1740,8 +1859,8 @@ class Level0_5:
         # Bits 6-7: Position selection
         
         encoding_mode = config_value & 0x03  # Bits 0-1
-        pixel_threshold = (config_value >> 4) & 0x03  # Bits 4-5
-        position_selection = (config_value >> 6) & 0x03  # Bits 6-7
+        pixel_threshold = (config_value) & 0x03  # Bits 4-5
+        position_selection = (config_value) & 0x03  # Bits 6-7
         
         # Determine bit depth and compression based on encoding mode
         if encoding_mode == 0:
@@ -1762,6 +1881,82 @@ class Level0_5:
         
         return compression_enabled, bit_depth, pixel_threshold, position_selection
 
+    def _truncate_jpegls_at_eoi(self, data: bytes) -> tuple[bytes, bool]:
+        """Trim trailing bytes after the first JPEG/JPEG-LS End Of Image marker ``FF D9``."""
+        idx = data.find(self.JPEG_LS_EOI)
+        if idx < 0:
+            return data, False
+        end = idx + len(self.JPEG_LS_EOI)
+        return data[:end], True
+
+    def _debug_report_zero_byte_runs(
+        self,
+        buf: bytes,
+        *,
+        label: str,
+        min_run_length: int = 5,
+        max_reports: int = 32,
+    ) -> None:
+        """Print start offset and length for runs of NUL bytes (``min_run_length`` or longer)."""
+        n = len(buf)
+        runs = []
+        i = 0
+        while i < n:
+            if buf[i] != 0:
+                i += 1
+                continue
+            start = i
+            while i < n and buf[i] == 0:
+                i += 1
+            leng = i - start
+            if leng >= min_run_length:
+                runs.append((start, leng))
+        total_zero_bytes = sum(l for _, l in runs)
+        print(
+            f"JPEG-LS debug ({label}): len={n} bytes, "
+            f"zero-runs (len>={min_run_length}): {len(runs)} run(s), "
+            f"{total_zero_bytes} zero bytes inside those runs"
+        )
+        for k, (start, leng) in enumerate(runs[:max_reports]):
+            print(f"  zero_run[{k}]: offset={start} length={leng}")
+        if len(runs) > max_reports:
+            print(f"  ... {len(runs) - max_reports} more run(s) omitted (max_reports={max_reports})")
+
+    def _strip_long_zero_byte_runs(self, buf: bytes, min_run_length: int) -> bytes:
+        """Remove contiguous ``0x00`` regions of length ``min_run_length`` or more; keep shorter runs."""
+        if min_run_length <= 0:
+            return buf
+        out = bytearray()
+        n = len(buf)
+        i = 0
+        while i < n:
+            if buf[i] != 0:
+                out.append(buf[i])
+                i += 1
+                continue
+            start = i
+            while i < n and buf[i] == 0:
+                i += 1
+            run_len = i - start
+            if run_len < min_run_length:
+                out.extend(buf[start:i])
+        return bytes(out)
+
+    def _load_jpegls_to_uint16_array(self, buf: bytes):
+        """
+        Decode JPEG-LS bytes to a numpy uint16 image, or return (None, exc) on failure.
+        Returns:
+            tuple: (np.ndarray | None, Exception | None)
+        """
+        try:
+            with BytesIO(buf) as bio:
+                img = Image.open(bio)
+                img.load()
+                arr = np.asarray(img, dtype=np.uint16)
+            return arr, None
+        except Exception as exc:
+            return None, exc
+
     def decompress_jpegls_image(self, compressed_data):
         """
         Decompress JPEG-LS compressed image data using pillow_jpls.Image.
@@ -1770,10 +1965,78 @@ class Level0_5:
         Returns:
             np.ndarray: The decompressed image as a numpy array
         """
-        with BytesIO(compressed_data) as bio:
-            img = Image.open(bio)
-            arr = np.array(img)
-        return arr
+        data = (
+            compressed_data
+            if isinstance(compressed_data, (bytes, bytearray))
+            else bytes(compressed_data)
+        )
+        original_len = len(data)
+        trimmed, had_eoi = self._truncate_jpegls_at_eoi(data)
+        if had_eoi and len(trimmed) < original_len:
+            print(
+                f"JPEG-LS debug: truncated buffer {original_len} → {len(trimmed)} bytes "
+                f"at first EOI (0xFF 0xD9)"
+            )
+        elif not had_eoi:
+            print(
+                "JPEG-LS debug: no EOI marker 0xFF 0xD9 found; "
+                f"decompressing full buffer ({original_len} bytes)"
+            )
+        self._debug_report_zero_byte_runs(
+            trimmed,
+            label="post-EOI-truncation",
+            min_run_length=self.JPEG_LS_STRIP_ZERO_RUN_MIN_LEN,
+        )
+
+        min_run = self.JPEG_LS_STRIP_ZERO_RUN_MIN_LEN
+        stripped = self._strip_long_zero_byte_runs(trimmed, min_run)
+        if len(stripped) != len(trimmed):
+            print(
+                f"JPEG-LS debug: removed zero-byte runs (len>={min_run}): "
+                f"{len(trimmed)} → {len(stripped)} bytes"
+            )
+
+        def _nonzero_pixels(a):
+            return a is not None and a.size and bool(np.any(a != 0))
+
+        arr_stripped, err_stripped = self._load_jpegls_to_uint16_array(stripped)
+        if _nonzero_pixels(arr_stripped):
+            print("JPEG-LS debug: decode OK on stripped buffer (non-flat array)")
+            return arr_stripped
+
+        if arr_stripped is not None and not _nonzero_pixels(arr_stripped):
+            print(
+                "JPEG-LS debug: stripped buffer decoded but array is all zeros; "
+                "trying EOI-truncated buffer without zero-run removal"
+            )
+
+        arr_trimmed, err_trimmed = self._load_jpegls_to_uint16_array(trimmed)
+        if arr_trimmed is not None:
+            if not _nonzero_pixels(arr_trimmed):
+                print(
+                    "JPEG-LS warning: decoded array is all zeros with EOI-truncated buffer "
+                    "(stripping zero runs did not yield a usable image)"
+                )
+            else:
+                print("JPEG-LS debug: decode OK on EOI-truncated buffer (non-flat array)")
+            return arr_trimmed
+
+        # Neither path produced a loadable image, or both failed before return above
+        if arr_stripped is not None:
+            print(
+                "JPEG-LS debug: returning stripped decode (all-zero) because "
+                "EOI-truncated decode failed"
+            )
+            return arr_stripped
+
+        msgs = []
+        if err_stripped is not None:
+            msgs.append(f"stripped: {err_stripped!r}")
+        if err_trimmed is not None:
+            msgs.append(f"EOI-truncated: {err_trimmed!r}")
+        raise RuntimeError(
+            "JPEG-LS decode failed after EOI trim and zero-run stripping. " + "; ".join(msgs)
+        ) from err_trimmed
 
 
 def _version_to_path_format(version_str):
@@ -1787,7 +2050,7 @@ def _version_to_path_format(version_str):
 # to be discovered (mirrors the named branches in Level0_5.process).
 LEVEL0_5_TELEMETRY_PREFIXES = (
     "ccsds_",
-    "suncet_",
+    "xband_gse",
     "pbk_",
     "hardline_playback_",
 )
@@ -1800,7 +2063,7 @@ def _level0_5_source_type_for_basename(filename):
     """Same source labels as Level0_5.process() uses (basename only)."""
     if filename.startswith("ccsds_"):
         return "hydra_realtime"
-    if filename.startswith("suncet_"):
+    if filename.startswith("xband_gse"):
         return "xband_gse"
     if Level0_5.XBAND_FLIGHT_FILENAME_RE.match(filename):
         return "xband_flight"

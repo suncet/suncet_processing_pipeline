@@ -1,0 +1,179 @@
+<?xml version="1.0" ?>
+<hydraDef>
+  <color name="STALE" code="PURPLE"/>
+  <monitorStale item="ccsdsTlmHeader_count_beacon" interval="120000" enabled="true"/>
+  <monitorStale item="ccsdsSecHeader2_sec_beacon" interval="120000" enabled="true"/>
+  <monitorStale item="beac_time_since_boot" interval="120000" enabled="true"/>
+  <monitorStale item="beac_time_alive" interval="120000" enabled="true"/>
+  <monitorStale item="beac_time_mission_elapsed_time" interval="120000" enabled="true"/>
+  <monitorStale item="beac_mode_seconds_since_mode_change" interval="120000" enabled="true"/>
+  <monitorStale item="beac_mode_clt_hours_left" interval="120000" enabled="true"/>
+  <monitorStale item="beac_num_sc_resets" interval="120000" enabled="true"/>
+  <monitorStale item="beac_cmd_succ_count" interval="120000" enabled="true"/>
+  <monitorStale item="beac_cmd_rjct_count" interval="120000" enabled="true"/>
+  <monitorStale item="beac_cmd_recv_count" interval="120000" enabled="true"/>
+  <monitorStale item="beac_cmd_status_code" interval="120000" enabled="true"/>
+  <monitorStale item="beac_cmd_rjct_op" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_cmd_acpt" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_cmd_fail" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_cmd_code" interval="120000" enabled="true"/>
+  <monitorStale item="beac_csie_cmd_accpt_cnt" interval="120000" enabled="true"/>
+  <monitorStale item="beac_csie_cmd_rjct_cnt" interval="120000" enabled="true"/>
+  <monitorStale item="beac_dsps_cmd_accpt_cnt" interval="120000" enabled="true"/>
+  <monitorStale item="beac_dsps_cmd_rjct_cnt" interval="120000" enabled="true"/>
+  <monitorStale item="beac_mode_system_mode" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_mode" interval="120000" enabled="true"/>
+  <monitorStale item="beac_csie_cap_state" interval="120000" enabled="true"/>
+  <monitorStale item="beac_xband_data_src" interval="120000" enabled="true"/>
+  <monitorStale item="beac_cmd_arm_state_uhf" interval="120000" enabled="true"/>
+  <monitorStale item="beac_cmd_arm_state_seq" interval="120000" enabled="true"/>
+  <monitorStale item="beac_seq_state_auto" interval="120000" enabled="true"/>
+  <monitorStale item="beac_seq_exec_buf_auto" interval="120000" enabled="true"/>
+  <monitorStale item="beac_seq_state_op1" interval="120000" enabled="true"/>
+  <monitorStale item="beac_seq_exec_buf_op1" interval="120000" enabled="true"/>
+  <monitorStale item="beac_seq_state_op2" interval="120000" enabled="true"/>
+  <monitorStale item="beac_seq_exec_buf_op2" interval="120000" enabled="true"/>
+  <monitorStale item="beac_seq_state_op3" interval="120000" enabled="true"/>
+  <monitorStale item="beac_seq_exec_buf_op3" interval="120000" enabled="true"/>
+  <monitorStale item="beac_eps_pwr_state_adcs" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_alive" interval="120000" enabled="true"/>
+  <monitorStale item="beac_eps_pwr_state_uhf" interval="120000" enabled="true"/>
+  <monitorStale item="beac_uhf_alive" interval="120000" enabled="true"/>
+  <monitorStale item="beac_eps_pwr_state_xband" interval="120000" enabled="true"/>
+  <monitorStale item="beac_eps_pwr_state_csie" interval="120000" enabled="true"/>
+  <monitorStale item="beac_eps_pwr_state_dsps" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_sa_8_cell_str_v" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_sa_9_cell_str_v" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_eps_bus_v" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_bat1_v" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_bat2_v" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_3p3_v" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_cdh_3p3_ref" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_eps_3p3_ref" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_csie_volt" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_dsps_volt" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_xact_v" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_uhf_v" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_xband_v" interval="120000" enabled="true"/>
+  <monitorStale item="sw_store_partition_write_hk_beac" interval="120000" enabled="true"/>
+  <monitorStale item="sw_store_partition_read_hk_beac" interval="120000" enabled="true"/>
+  <monitorStale item="sw_store_partition_write_adcs_beac" interval="120000" enabled="true"/>
+  <monitorStale item="sw_store_partition_read_adcs_beac" interval="120000" enabled="true"/>
+  <monitorStale item="beac_store_partition_write_log" interval="120000" enabled="true"/>
+  <monitorStale item="sw_store_partition_write_dsps_beac" interval="120000" enabled="true"/>
+  <monitorStale item="sw_store_partition_read_dsps_beac" interval="120000" enabled="true"/>
+  <monitorStale item="sw_store_partition_write_sci_beac" interval="120000" enabled="true"/>
+  <monitorStale item="sw_store_partition_read_sci_beac" interval="120000" enabled="true"/>
+  <monitorStale item="beac_csie_nand_sci_write_ptr" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_att_vld" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_ref_vld" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_time_vld" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_sun_point_state" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_body_rt1" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_body_rt2" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_body_rt3" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_wheel_sp1" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_wheel_sp2" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_wheel_sp3" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_att_ctrl_sun_point_ang_err" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_sa_8_cell_str_i" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_sa_9_cell_str_i" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_eps_bus_i" interval="120000" enabled="true"/>
+  <monitorStale item="beac_batt1_charge_current" interval="120000" enabled="true"/>
+  <monitorStale item="beac_batt1_charging_state" interval="120000" enabled="true"/>
+  <monitorStale item="beac_batt2_charge_current" interval="120000" enabled="true"/>
+  <monitorStale item="beac_batt2_charging_state" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_3p3_i" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_csie_curr" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_dsps_curr" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_xact_i" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_uhf_i" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_xband_i" interval="120000" enabled="true"/>
+  <monitorStale item="beac_xband_pa_curr" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_sa_minus_y_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_sa_plus_y_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_batt1_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_batt_board_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_cdh_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_eps_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_ana_ifb_therm1" interval="120000" enabled="true"/>
+  <monitorStale item="beac_csie_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_dsps_sensor_board_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_adcs_ana_motor1_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_uhf_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_xband_pa_temp" interval="120000" enabled="true"/>
+  <monitorStale item="beac_battery1_heater_enable" interval="120000" enabled="true"/>
+  <monitorStale item="beac_battery2_heater_enable" interval="120000" enabled="true"/>
+  <monitorStale item="beac_csie_heater_enable" interval="120000" enabled="true"/>
+  <monitorStale item="beac_fp_resp_count" interval="120000" enabled="true"/>
+  <monitorStale item="beac_fp_task_state" interval="120000" enabled="true"/>
+  <monitorStale item="beac_fp_wp_state_wp0" interval="120000" enabled="true"/>
+  <monitorStale item="beac_fp_wp_state_wp1" interval="120000" enabled="true"/>
+  <monitorStale item="beac_fp_wp_state_wp2" interval="120000" enabled="true"/>
+  <monitorStale item="beac_fp_wp_state_wp3" interval="120000" enabled="true"/>
+  <monitorStale item="beac_fp_wp_state_wp4" interval="120000" enabled="true"/>
+  <monitorStale item="beac_fp_wp_state_wp5" interval="120000" enabled="true"/>
+  <monitorStale item="beac_fp_wp_state_wp6" interval="120000" enabled="true"/>
+  <monitorStale item="beac_csie_img_hist" interval="120000" enabled="true"/>
+  <monitorStale item="beac_dsps_flare_phase" interval="120000" enabled="true"/>
+  <monitorStale item="beac_dsps_flare_level" interval="120000" enabled="true"/>
+  <monitorStale item="beac_dsps_flare_magnitude" interval="120000" enabled="true"/>
+  <monitorStale item="beac_dsps_visible_sps_sun_pos_x" interval="120000" enabled="true"/>
+  <monitorStale item="beac_dsps_visible_sps_sun_pos_y" interval="120000" enabled="true"/>
+  <monitorStale item="beac_dsps_x_ray_sps_sun_pos_x" interval="120000" enabled="true"/>
+  <monitorStale item="beac_dsps_x_ray_sps_sun_pos_y" interval="120000" enabled="true"/>
+
+  <monitorRedYellow item="beac_ana_sa_8_cell_str_v" rl="10" yl="12" yh="24" rh="26" enabled="true"/>
+  <monitorRedYellow item="beac_ana_sa_9_cell_str_v" rl="10" yl="12" yh="24" rh="26" enabled="true"/>
+  <monitorRedYellow item="beac_ana_bat1_v" rl="13" yl="14" yh="16.9" rh="17.5" enabled="true"/>
+  <monitorRedYellow item="beac_ana_bat2_v" rl="13" yl="14" yh="16.9" rh="17.5" enabled="true"/>
+  <monitorRedYellow item="beac_ana_3p3_v" rl="3.0" yl="3.1" yh="3.5" rh="3.6" enabled="true"/>
+  <monitorRedYellow item="beac_ana_cdh_3p3_ref" rl="3.0" yl="3.1" yh="3.5" rh="3.6" enabled="true"/>
+  <monitorRedYellow item="beac_ana_eps_3p3_ref" rl="3.0" yl="3.1" yh="3.5" rh="3.6" enabled="true"/>
+  <monitorRedYellow item="beac_ana_csie_volt" rl="9.0" yl="9.5" yh="10.5" rh="11.0" enabled="true"/>
+  <monitorRedYellow item="beac_ana_dsps_volt" rl="9.0" yl="9.5" yh="10.5" rh="11.0" enabled="true"/>
+
+  <monitorRedYellow item="beac_ana_csie_curr" rl="0.32" yl="0.36" yh="0.44" rh="0.48" enabled="true"/>
+  <monitorRedYellow item="beac_ana_dsps_curr" rl="0.032" yl="0.036" yh="0.044" rh="0.048" enabled="true"/>
+  <monitorRedYellow item="beac_xband_pa_curr" rl="1.0" yl="1.15" yh="1.35" rh="1.5" enabled="true"/>
+
+  <monitorRedYellow item="beac_ana_cdh_temp" rl="5" yl="10" yh="35" rh="45" enabled="true"/>
+  <monitorRedYellow item="beac_ana_eps_temp" rl="5" yl="10" yh="35" rh="45" enabled="true"/>
+  <monitorRedYellow item="beac_csie_temp" rl="5" yl="10" yh="35" rh="45" enabled="true"/>
+  <monitorRedYellow item="beac_dsps_sensor_board_temp" rl="5" yl="10" yh="35" rh="45" enabled="true"/>
+  <monitorRedYellow item="beac_ana_sa_minus_y_temp" rl="5" yl="10" yh="35" rh="45" enabled="true"/>
+  <monitorRedYellow item="beac_ana_sa_plus_y_temp" rl="5" yl="10" yh="35" rh="45" enabled="true"/>
+  <monitorRedYellow item="beac_batt1_temp" rl="5" yl="10" yh="35" rh="40" enabled="true"/>
+  <monitorRedYellow item="beac_batt_board_temp" rl="5" yl="10" yh="35" rh="40" enabled="true"/>
+  <monitorRedYellow item="beac_xband_pa_temp" rl="5" yl="10" yh="40" rh="60" enabled="true"/>
+
+  <monitorRedYellow name="sp1_range" item="beac_adcs_wheel_sp1" yl="-100" yh="100" enabled="true"/>
+  <monitorRedYellow name="sp2_range" item="beac_adcs_wheel_sp2" yl="-100" yh="100" enabled="true"/>
+  <monitorRedYellow name="sp3_range" item="beac_adcs_wheel_sp3" yl="-100" yh="100" enabled="true"/>
+  <monitorRedYellow item="beac_adcs_body_rt1" yh="0.01" enabled="true"/>
+  <monitorRedYellow item="beac_adcs_body_rt2" yh="0.01" enabled="true"/>
+  <monitorRedYellow item="beac_adcs_body_rt3" yh="0.01" enabled="true"/>
+
+  <monitorValue name="cdh_mode_0" item="beac_mode_system_mode" operator="==" value="0" color="red" enabled="true"/>
+  <monitorValue name="cdh_mode_1" item="beac_mode_system_mode" operator="==" value="1" color="yellow" enabled="true"/>
+  <monitorValue name="cdh_mode_2" item="beac_mode_system_mode" operator="==" value="2" color="green" enabled="true"/>
+
+  <monitorValue name="arm_uhf_0" item="beac_cmd_arm_state_uhf" operator="==" value="0" color="green" enabled="true"/>
+  <monitorValue name="arm_uhf_1" item="beac_cmd_arm_state_uhf" operator="==" value="1" color="red" enabled="true"/>
+
+  <monitorValue name="pwr_adcs_0" item="beac_eps_pwr_state_adcs" operator="==" value="0" color="red" enabled="true"/>
+  <monitorValue name="pwr_adcs_1" item="beac_eps_pwr_state_adcs" operator="==" value="1" color="green" enabled="true"/>
+  
+  <monitorValue name="pwr_uhf_0" item="beac_eps_pwr_state_uhf" operator="==" value="0" color="red" enabled="true"/>
+  <monitorValue name="pwr_uhf_1" item="beac_eps_pwr_state_uhf" operator="==" value="1" color="green" enabled="true"/>
+  
+  <monitorValue name="pwr_xband_0" item="beac_eps_pwr_state_xband" operator="==" value="0" color="red" enabled="true"/>
+  <monitorValue name="pwr_xband_1" item="beac_eps_pwr_state_xband" operator="==" value="1" color="green" enabled="true"/>
+  
+  <monitorValue name="pwr_csie_0" item="beac_eps_pwr_state_csie" operator="==" value="0" color="red" enabled="true"/>
+  <monitorValue name="pwr_csie_1" item="beac_eps_pwr_state_csie" operator="==" value="1" color="green" enabled="true"/>
+  
+  <monitorValue name="pwr_dsps_0" item="beac_eps_pwr_state_dsps" operator="==" value="0" color="red" enabled="true"/>
+  <monitorValue name="pwr_dsps_1" item="beac_eps_pwr_state_dsps" operator="==" value="1" color="green" enabled="true"/>
+
+</hydraDef>

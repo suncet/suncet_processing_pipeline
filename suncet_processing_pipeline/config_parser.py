@@ -64,7 +64,7 @@ class Config:
         # - csie: <ctdb_base>/suncet_csie_vA-B-C/{decoders,packet_definitions}
         self.bus_ctdb_path = os.path.join(ctdb_base, f"suncet_{bus_version_path}")
         self.csie_ctdb_path = os.path.join(ctdb_base, f"suncet_csie_{csie_version_path}")
-        # Historical name: this is the path used to import gen_pkts.py and dsps_decoders.py for bus.
+        # Historical name: bus ``decoders/`` folder (gen_pkts.py + dsps_decoders/ codegen).
         self.packet_definitions_path = os.path.join(self.bus_ctdb_path, "decoders")
 
         # calibration
