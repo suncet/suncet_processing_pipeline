@@ -33,6 +33,7 @@ J2000_UTC_EPOCH = datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 DEFAULT_MIN_PLOT_TIME_UTC = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 DEFAULT_BEACON_CSV = "decoded_apid_0001_beacon.csv"
 DEFAULT_CSIE_HK_CSV = "decoded_apid_0537_csie_hk.csv"
+DEFAULT_DSPS_CSV = "decoded_apid_0035_dsps_data.csv"
 DEFAULT_PLOT_DIR = "sanity_plots"
 DEFAULT_TIME_COLUMN = None
 
@@ -65,6 +66,18 @@ CATEGORICAL_BEACON_FIELDS = [
 
 CSIE_HK_NUMERIC_FIELDS = [
     "csie_det0_therm",
+]
+
+DSPS_QUAD_SUM_FIELDS = [
+    "dsps_visible_sps_sum",
+    "dsps_x_ray_sps_sum",
+]
+
+DSPS_VISIBLE_DIODE_FIELDS = [
+    "dsps_visible_sps_diodes_0",
+    "dsps_visible_sps_diodes_1",
+    "dsps_visible_sps_diodes_2",
+    "dsps_visible_sps_diodes_3",
 ]
 
 PLOT_VALUE_LIMITS = {
@@ -206,7 +219,15 @@ def _setup_time_axis(ax) -> None:
     ax.grid(True, alpha=0.28)
 
 
-def _filtered_numeric_series(df: pd.DataFrame, field: str) -> tuple[pd.Series, pd.Series, int]:
+def _setup_sample_axis(ax) -> None:
+    ax.grid(True, alpha=0.28)
+
+
+def _filtered_numeric_series_for_x(
+    df: pd.DataFrame,
+    field: str,
+    x_column: str,
+) -> tuple[pd.Series, pd.Series, int]:
     values = pd.to_numeric(df[field], errors="coerce")
     mask = values.notna()
     limits = PLOT_VALUE_LIMITS.get(field, {})
@@ -216,7 +237,11 @@ def _filtered_numeric_series(df: pd.DataFrame, field: str) -> tuple[pd.Series, p
         mask &= values <= limits["max"]
     if limits.get("drop_zero"):
         mask &= values != 0
-    return df.loc[mask, "plot_time_utc"], values.loc[mask], int(values.notna().sum() - mask.sum())
+    return df.loc[mask, x_column], values.loc[mask], int(values.notna().sum() - mask.sum())
+
+
+def _filtered_numeric_series(df: pd.DataFrame, field: str) -> tuple[pd.Series, pd.Series, int]:
+    return _filtered_numeric_series_for_x(df, field, "plot_time_utc")
 
 
 def _smooth_numeric_values(values: pd.Series, smooth_window_points: int | None) -> pd.Series:
@@ -299,6 +324,86 @@ def _plot_numeric_series(
             color="#7f1d1d",
         )
     _setup_time_axis(ax)
+
+
+def _plot_numeric_series_with_x(
+    ax,
+    df: pd.DataFrame,
+    field: str,
+    *,
+    x_column: str,
+    x_is_time: bool,
+    color: str = "#1f77b4",
+) -> pd.Series:
+    plot_x, plot_values, dropped = _filtered_numeric_series_for_x(df, field, x_column)
+    ax.plot(
+        plot_x,
+        plot_values,
+        marker=".",
+        markersize=1.4,
+        linewidth=0.65,
+        alpha=0.72,
+        color=color,
+    )
+    ax.set_ylabel("\n".join(textwrap.wrap(field, width=22)), fontsize=8)
+    if dropped:
+        ax.text(
+            0.99,
+            0.92,
+            f"{dropped} clipped",
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+            fontsize=7,
+            color="#7f1d1d",
+        )
+    if x_is_time:
+        _setup_time_axis(ax)
+    else:
+        _setup_sample_axis(ax)
+    return plot_values
+
+
+def _plot_overlaid_numeric_fields(
+    ax,
+    df: pd.DataFrame,
+    fields: list[str],
+    *,
+    x_column: str,
+    x_is_time: bool,
+    ylabel: str,
+) -> None:
+    colors = ["#1f77b4", "#d95f02", "#2ca02c", "#9467bd", "#8c564b"]
+    plotted_values: list[pd.Series] = []
+    for index, field in enumerate(fields):
+        if field not in df.columns:
+            continue
+        plot_x, plot_values, _dropped = _filtered_numeric_series_for_x(
+            df,
+            field,
+            x_column,
+        )
+        if plot_values.empty:
+            continue
+        plotted_values.append(plot_values)
+        ax.plot(
+            plot_x,
+            plot_values,
+            marker=".",
+            markersize=1.2,
+            linewidth=0.65,
+            alpha=0.72,
+            color=colors[index % len(colors)],
+            label=field,
+        )
+    ax.set_ylabel(ylabel, fontsize=8)
+    if plotted_values:
+        _set_robust_ylim(ax, pd.concat(plotted_values, ignore_index=True))
+    ax.legend(loc="best", fontsize=7)
+    if x_is_time:
+        _setup_time_axis(ax)
+    else:
+        _setup_sample_axis(ax)
 
 
 def _category_mapping(values: pd.Series) -> dict[str, int]:
@@ -474,6 +579,138 @@ def make_csie_power_temperature_stack(
     plt.close(fig)
 
 
+def prepare_sample_index_dataframe(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    if "packet_index" in df.columns:
+        df = df.sort_values("packet_index").reset_index(drop=True)
+        df["plot_sample_index"] = pd.to_numeric(
+            df["packet_index"],
+            errors="coerce",
+        )
+    else:
+        df = df.reset_index(drop=True)
+        df["plot_sample_index"] = df.index
+    return df
+
+
+def prepare_optional_packet_dataframe(
+    path: Path,
+    *,
+    label: str,
+    add_leap_seconds: bool,
+    min_time_utc: datetime | None,
+    median_window_days: float | None,
+) -> tuple[pd.DataFrame, str, bool, str]:
+    df, time_column = prepare_beacon_dataframe(
+        path,
+        time_column=None,
+        add_leap_seconds=add_leap_seconds,
+    )
+    print(f"Read {len(df):,} timestamped {label} rows from {path}")
+    print(f"Using {label} time column: {time_column}")
+    if len(df):
+        print(
+            f"{label} time range UTC: "
+            f"{df['plot_time_utc'].iloc[0].isoformat().replace('+00:00', 'Z')} to "
+            f"{df['plot_time_utc'].iloc[-1].isoformat().replace('+00:00', 'Z')}"
+        )
+    filtered_df, dropped_early_rows = filter_min_plot_time(
+        df,
+        min_time_utc=min_time_utc,
+    )
+    if min_time_utc is not None:
+        print(
+            f"{label} minimum UTC filter: "
+            f"{min_time_utc.isoformat().replace('+00:00', 'Z')}; "
+            f"dropped {dropped_early_rows:,} row(s)"
+        )
+    if median_window_days is not None and not filtered_df.empty:
+        filtered_df, dropped_rows = filter_to_median_time_window(
+            filtered_df,
+            window_days=median_window_days,
+        )
+        print(
+            f"{label} median time window: +/- {median_window_days:g} day(s); "
+            f"dropped {dropped_rows:,} row(s)"
+        )
+    if not filtered_df.empty:
+        return filtered_df, "plot_time_utc", True, "UTC time"
+
+    if df.empty:
+        return filtered_df, "plot_time_utc", True, "UTC time"
+
+    fallback_df = prepare_sample_index_dataframe(path)
+    print(
+        f"WARNING: no {label} rows remain after UTC filtering; writing {label} "
+        "diagnostic plots versus packet_index instead."
+    )
+    return fallback_df, "plot_sample_index", False, "packet_index"
+
+
+def make_dsps_quad_sum_plot(
+    df: pd.DataFrame,
+    output_path: Path,
+    *,
+    x_column: str,
+    x_is_time: bool,
+    x_label: str,
+) -> None:
+    plot_fields = [field for field in DSPS_QUAD_SUM_FIELDS if field in df.columns]
+    if not plot_fields:
+        raise RuntimeError("No DSPS quad-sum fields were present in the CSV.")
+    fig, axes = plt.subplots(
+        len(plot_fields),
+        1,
+        figsize=(13, max(5.4, 2.1 * len(plot_fields))),
+        sharex=True,
+        constrained_layout=True,
+    )
+    if len(plot_fields) == 1:
+        axes = [axes]
+    colors = ["#d95f02", "#1f77b4"]
+    for index, (ax, field) in enumerate(zip(axes, plot_fields)):
+        values = _plot_numeric_series_with_x(
+            ax,
+            df,
+            field,
+            x_column=x_column,
+            x_is_time=x_is_time,
+            color=colors[index % len(colors)],
+        )
+        _set_robust_ylim(ax, values)
+    axes[-1].set_xlabel(x_label)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
+def make_dsps_visible_diodes_overplot(
+    df: pd.DataFrame,
+    output_path: Path,
+    *,
+    x_column: str,
+    x_is_time: bool,
+    x_label: str,
+) -> None:
+    plot_fields = [field for field in DSPS_VISIBLE_DIODE_FIELDS if field in df.columns]
+    if not plot_fields:
+        raise RuntimeError("No DSPS visible diode fields were present in the CSV.")
+    fig, ax = plt.subplots(figsize=(13, 5.0), constrained_layout=True)
+    _plot_overlaid_numeric_fields(
+        ax,
+        df,
+        plot_fields,
+        x_column=x_column,
+        x_is_time=x_is_time,
+        ylabel="dsps_visible_sps_diodes",
+    )
+    ax.set_title("dsps_visible_sps_diodes", fontsize=11)
+    ax.set_xlabel(x_label)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
 def default_decoded_folder(config: Config) -> Path:
     return resolve_config_data_folder(config) / DEFAULT_DECODED_DIR_BASENAME
 
@@ -505,6 +742,11 @@ def main(argv: list[str] | None = None) -> None:
         "--csie-hk-csv",
         default=DEFAULT_CSIE_HK_CSV,
         help=f"CSIE HK decoded CSV basename. Default: {DEFAULT_CSIE_HK_CSV}.",
+    )
+    parser.add_argument(
+        "--dsps-csv",
+        default=DEFAULT_DSPS_CSV,
+        help=f"DSPS decoded CSV basename. Default: {DEFAULT_DSPS_CSV}.",
     )
     parser.add_argument(
         "--plot-dir",
@@ -566,6 +808,16 @@ def main(argv: list[str] | None = None) -> None:
         "--csie-stack-name",
         default="csie_power_det0_therm_stack.png",
         help="CSIE power/detector-temperature stacked plot output filename.",
+    )
+    parser.add_argument(
+        "--dsps-quad-sum-name",
+        default="dsps_quad_sums.png",
+        help="DSPS visible/X-ray quad-sum plot output filename.",
+    )
+    parser.add_argument(
+        "--dsps-visible-diodes-name",
+        default="dsps_visible_sps_diodes_overplot.png",
+        help="DSPS visible diode overplot output filename.",
     )
     parser.add_argument(
         "--smooth-window-points",
@@ -750,6 +1002,42 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Wrote CSIE power/det0 stack plot: {csie_stack_path}")
     else:
         print(f"CSIE HK CSV not found; skipped CSIE HK plots: {csie_hk_csv_path}")
+
+    dsps_csv_path = decoded_folder / args.dsps_csv
+    if dsps_csv_path.is_file():
+        dsps_df, dsps_x_column, dsps_x_is_time, dsps_x_label = (
+            prepare_optional_packet_dataframe(
+                dsps_csv_path,
+                label="DSPS",
+                add_leap_seconds=add_leap_seconds,
+                min_time_utc=min_time_utc,
+                median_window_days=args.median_window_days,
+            )
+        )
+        if dsps_df.empty:
+            print("WARNING: no DSPS rows available; DSPS plots skipped.")
+        else:
+            dsps_quad_sum_path = plot_dir / args.dsps_quad_sum_name
+            make_dsps_quad_sum_plot(
+                dsps_df,
+                dsps_quad_sum_path,
+                x_column=dsps_x_column,
+                x_is_time=dsps_x_is_time,
+                x_label=dsps_x_label,
+            )
+            print(f"Wrote DSPS quad-sum plot: {dsps_quad_sum_path}")
+
+            dsps_diodes_path = plot_dir / args.dsps_visible_diodes_name
+            make_dsps_visible_diodes_overplot(
+                dsps_df,
+                dsps_diodes_path,
+                x_column=dsps_x_column,
+                x_is_time=dsps_x_is_time,
+                x_label=dsps_x_label,
+            )
+            print(f"Wrote DSPS visible diode overplot: {dsps_diodes_path}")
+    else:
+        print(f"DSPS CSV not found; skipped DSPS plots: {dsps_csv_path}")
 
 
 if __name__ == "__main__":

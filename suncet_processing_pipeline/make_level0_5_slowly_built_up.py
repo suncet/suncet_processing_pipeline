@@ -79,6 +79,13 @@ CSIE_META_APID = 538
 CSIE_SECONDARY_HEADER_LEN = 6
 CSIE_ROW_CHECKSUM_LEN = 4
 JPEG_LS_EOI = b"\xff\xd9"
+# FIXME(FSW/CTDB): APID 35 is present in current hardline data and is named
+# APID_TLM_DSPS_DATA_PKT in generated CTDB constants/state maps, but it is missing
+# from suncet_v2-0-1 packet_definitions/ct_pkt.csv and ct_tlm.csv. Treat it as
+# dsps_data until the CTDB packet definitions carry the real row.
+TEMP_DSPS_DATA_APID = 35
+TEMP_DSPS_DATA_PACKET_NAME = "dsps_data"
+TEMP_DSPS_DATA_PACKET_BYTES = 124
 SYNTHETIC_XBAND_APID_NAMES = {
     68: "xband_playback",
 }
@@ -388,6 +395,8 @@ def read_apid_names_from_config(config: Config) -> dict[int, str]:
                 apids.setdefault(apid, row.get("Name", "").strip())
     if not apids:
         raise RuntimeError("No APIDs were loaded from the configured CTDBs.")
+    # FIXME(FSW/CTDB): Remove this once APID 35 is restored to ct_pkt.csv.
+    apids.setdefault(TEMP_DSPS_DATA_APID, TEMP_DSPS_DATA_PACKET_NAME)
     return apids
 
 
@@ -436,6 +445,9 @@ def read_expected_packet_bytes_from_config(config: Config) -> dict[int, int]:
         if bits % 8 != 0:
             continue
         expected[apid] = bits // 8
+    # FIXME(FSW/CTDB): Remove this once APID 35 has ct_tlm rows. Current packets
+    # carry CCSDS length 117, so the total wire packet size is 6 + 117 + 1 = 124.
+    expected.setdefault(TEMP_DSPS_DATA_APID, TEMP_DSPS_DATA_PACKET_BYTES)
     return expected
 
 
@@ -1730,6 +1742,13 @@ def _select_generated_decoder(
         packet_class = getattr(bundle.dsps_decoders, class_name, None)
         if packet_class is not None:
             return packet_class, "generated_dsps"
+        # FIXME(FSW/CTDB): APID 35 is temporarily named dsps_data here because
+        # that is the generated constant/state-map name, but v2.0.1 codegen
+        # currently exposes the packet class as DSPS_PASS.
+        if packet_name == TEMP_DSPS_DATA_PACKET_NAME:
+            packet_class = getattr(bundle.dsps_decoders, "DSPS_PASS", None)
+            if packet_class is not None:
+                return packet_class, "generated_dsps_temp_dsps_data_alias"
     if packet_name.startswith("csie") and bundle.csie_pkts is not None:
         packet_class = getattr(bundle.csie_pkts, class_name, None)
         if packet_class is not None:
@@ -3283,6 +3302,13 @@ def main(argv: list[str] | None = None) -> None:
     apid_names = read_apid_names_from_config(config)
     valid_apids = set(apid_names)
     print(f"Loaded {len(valid_apids)} valid APIDs from configured CTDBs.")
+    if TEMP_DSPS_DATA_APID in apid_names:
+        print(
+            "WARNING: FIXME temporary CTDB workaround active: treating APID "
+            f"{TEMP_DSPS_DATA_APID} as {TEMP_DSPS_DATA_PACKET_NAME!r} with "
+            f"{TEMP_DSPS_DATA_PACKET_BYTES} total packet bytes until ct_pkt.csv "
+            "and ct_tlm.csv include DSPS data."
+        )
     expected_packet_bytes = read_expected_packet_bytes_from_config(config)
     print(
         f"Loaded fixed packet byte sizes for {len(expected_packet_bytes)} APIDs "
