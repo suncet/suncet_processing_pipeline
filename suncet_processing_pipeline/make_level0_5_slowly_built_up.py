@@ -10,7 +10,12 @@ Current first milestones:
    - remove out-of-phase X-band frame seams that look like RF lapse/resync artifacts.
    - undo the FPGA/VCDU 32-bit endian swap on the remaining frame payload stream.
    - for hardline realtime CCSDS input:
-     pass the merged stream through unchanged because it is already a CCSDS packet stream.
+     unwrap validated direct APID 72 playback chains; otherwise pass through unchanged.
+   - for UHF/Hydra CCSDS input:
+     recursively merge nested ``ccsds_*`` files; ordinary direct CCSDS captures pass
+     through unchanged, while APID 73 segmented playback captures are de-duplicated,
+     reassembled into APID 72 packets, and stripped to their inner playback payload;
+     validated direct APID 72 chains are also unwrapped.
 3. Recover structurally plausible CCSDS packets from ``merged_fixed.bin`` and write
    them to ``packets_valid.bin``. Packet checksum validation can be re-enabled once
    the flight software checksum contract is nailed down.
@@ -28,6 +33,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import csv
+import hashlib
 import importlib.util
 import io
 import json
@@ -46,6 +52,7 @@ from suncet_processing_pipeline.config_parser import Config
 SYNC_MARKER = b"\x1a\xcf\xfc\x1d"
 DEFAULT_XBAND_PREFIX = "xband_gse"
 DEFAULT_HARDLINE_CCSDS_PREFIX = "ccsds"
+DEFAULT_UHF_SUBDIR_BASENAME = "hydra_uhf_rundirs"
 DEFAULT_MERGED_BASENAME = "merged.bin"
 DEFAULT_FIXED_BASENAME = "merged_fixed.bin"
 DEFAULT_PACKETS_VALID_BASENAME = "packets_valid.bin"
@@ -54,6 +61,12 @@ DEFAULT_PACKET_MANIFEST_BASENAME = "packets_manifest.csv"
 DEFAULT_DECODE_SUMMARY_BASENAME = "decoded_packet_summary.csv"
 DEFAULT_CSIE_IMAGE_DIR_BASENAME = "csie_images"
 DEFAULT_CSIE_INVENTORY_BASENAME = "csie_image_inventory.csv"
+DEFAULT_SOURCE_PRODUCTS_DIR_BASENAME = "source_products"
+COMBINED_PACKETS_VALID_BASENAME = "combined_packets_valid.bin"
+COMBINED_DECODED_DIR_BASENAME = "combined_decoded_packets"
+COMBINED_PACKET_MANIFEST_BASENAME = "combined_packet_manifest.csv"
+COMBINED_DECODE_SUMMARY_BASENAME = "combined_decode_summary.csv"
+COMBINED_SOURCE_SUMMARY_BASENAME = "combined_source_summary.csv"
 
 # The attached X-band frame definition and the current GSE files agree on this:
 #   4-byte ASM + 6-byte TM primary header + 2-byte padding + 2044-byte data field.
@@ -68,16 +81,33 @@ TRANSFER_FRAME_DATA_LEN = TRANSFER_FRAME_SIZE - TRANSFER_FRAME_DATA_START
 TRANSFER_FRAME_TRAILER_LEN = 4
 PLAYBACK_PRIMARY_HEADER_LEN = 6
 PLAYBACK_METADATA_LEN = 10
+UHF_SEGMENTED_APID = 73
+UHF_PLAYBACK_APID = 72
+UHF_SEGMENT_HEADER_LEN = 6
+UHF_MAX_SEGMENT_PAYLOAD_LEN = 244
+UHF_MAX_SEGMENT_PACKET_LEN = (
+    PLAYBACK_PRIMARY_HEADER_LEN
+    + UHF_SEGMENT_HEADER_LEN
+    + UHF_MAX_SEGMENT_PAYLOAD_LEN
+)
+UHF_SEGMENT_FLAG_MIDDLE = 0
+UHF_SEGMENT_FLAG_START = 1
+UHF_SEGMENT_FLAG_END = 2
+MIN_DIRECT_PLAYBACK_CHAIN_PACKETS = 2
 
 DEFAULT_SPACECRAFT_ID = 66
 INPUT_MODE_AUTO = "auto"
 INPUT_MODE_XBAND = "xband"
 INPUT_MODE_CCSDS = "ccsds"
 INPUT_MODE_HARDLINE = "hardline"
+INPUT_MODE_UHF = "uhf"
+INPUT_MODE_COMBINED = "combined"
 CSIE_DATA_APID = 536
 CSIE_META_APID = 538
 CSIE_SECONDARY_HEADER_LEN = 6
 CSIE_ROW_CHECKSUM_LEN = 4
+CSIE_MAX_SENSOR_ROWS = 2000
+CSIE_MAX_SENSOR_COLS = 1504
 JPEG_LS_EOI = b"\xff\xd9"
 # FIXME(FSW/CTDB): APID 35 is present in current hardline data and is named
 # APID_TLM_DSPS_DATA_PKT in generated CTDB constants/state maps, but it is missing
@@ -136,6 +166,56 @@ class TransferFrameStripStats:
     vcdu_word32_words_reversed: int = 0
     vcdu_word32_bytes_reversed: int = 0
     passthrough_bytes: int = 0
+
+
+@dataclass
+class UhfPlaybackReassemblyStats:
+    segment_packets_seen: int = 0
+    segment_packet_bytes_seen: int = 0
+    segment_groups_seen: int = 0
+    unique_segments_seen: int = 0
+    duplicate_segment_packets: int = 0
+    conflicting_segment_indices: int = 0
+    complete_playback_packets: int = 0
+    incomplete_playback_packets: int = 0
+    orphan_segment_groups: int = 0
+    segment_wrapper_bytes_removed: int = 0
+    playback_header_bytes_removed: int = 0
+    playback_payload_bytes_emitted: int = 0
+    non_wrapper_bytes_seen: int = 0
+    non_wrapper_bytes_preserved: int = 0
+    non_wrapper_bytes_dropped: int = 0
+    direct_packets_preserved: int = 0
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DirectPlaybackUnwrapStats:
+    candidates_found: int = 0
+    validated_chains: int = 0
+    wrappers_stripped: int = 0
+    wrapper_bytes_removed: int = 0
+    payload_bytes_emitted: int = 0
+    first_wrapper_offset: int | None = None
+    last_wrapper_offset: int | None = None
+
+
+@dataclass(frozen=True)
+class UhfSegmentCandidate:
+    offset: int
+    packet_len: int
+    payload_apid: int
+    payload_sequence_count: int
+    segment_index: int
+    segment_flags: int
+    payload: bytes = field(repr=False)
+
+
+@dataclass(frozen=True)
+class DirectPlaybackWrapperCandidate:
+    offset: int
+    packet_len: int
+    sequence_count: int
 
 
 @dataclass
@@ -198,6 +278,45 @@ class PacketRecord:
     primary_header_normalized: bool
     payload_16bit_words_swapped: bool
     packet: bytes = field(repr=False)
+    source_id: str = ""
+    source_mode: str = ""
+    source_root: str = ""
+    input_file_relative_path: str = ""
+    source_packet_index: int | None = None
+    source_acceptance_mode: str = ""
+    source_provenance_quality: str = ""
+    source_output_dir: str = ""
+    packet_hash: str = ""
+    duplicate_group_id: str = ""
+    duplicate_group_size: int = 1
+    is_duplicate_packet: bool = False
+    combined_time_source: str = ""
+    combined_time_coarse: int | None = None
+    combined_time_fine: int | None = None
+
+
+@dataclass
+class SourceSpec:
+    source_id: str
+    input_mode: str
+    search_root: Path
+    input_paths: list[Path]
+    output_dir: Path
+    prefix: str
+
+
+@dataclass
+class SourceProduct:
+    spec: SourceSpec
+    packets_valid_path: Path
+    output_dir: Path
+    records: list[PacketRecord]
+    reused: bool
+    merged_path: Path | None = None
+    fixed_path: Path | None = None
+    packet_bytes: int = 0
+    raw_bytes: int = 0
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -242,9 +361,12 @@ class CsieImageStats:
     images_complete: int = 0
     images_partial: int = 0
     compressed_images_written: int = 0
+    compressed_images_decoded: int = 0
+    compressed_decode_failures: int = 0
     images_written: int = 0
     fits_written: int = 0
     jp2_written: int = 0
+    png_written: int = 0
     jpegls_written: int = 0
     checksum_valid_rows: int = 0
     checksum_failed_rows: int = 0
@@ -260,6 +382,8 @@ class FixStats:
     transfer_frame_strip: TransferFrameStripStats
     packetize: PacketizeStats | None
     fixed_bytes: int
+    uhf_playback: UhfPlaybackReassemblyStats | None = None
+    direct_playback: DirectPlaybackUnwrapStats | None = None
 
 
 def resolve_config_data_folder(config: Config) -> Path:
@@ -298,6 +422,43 @@ def discover_prefixed_binary_files(folder: Path, prefix: str) -> list[Path]:
     return sorted(paths, key=lambda p: p.name)
 
 
+def resolve_uhf_search_root(folder: Path) -> Path:
+    """Return the recursive UHF search root for a data folder or UHF child folder."""
+    uhf_child = folder / DEFAULT_UHF_SUBDIR_BASENAME
+    if uhf_child.is_dir():
+        return uhf_child
+    return folder
+
+
+def _uhf_timestamp_sort_parts(path: Path) -> tuple[int, int, int, int, int]:
+    """Return sortable ccsds_yyyy_doy_hh_mm_ss parts when present."""
+    match = re.match(
+        r"^ccsds_(\d{4})_(\d{3})_(\d{2})_(\d{2})_(\d{2})$",
+        path.name,
+    )
+    if match is None:
+        return (9999, 999, 99, 99, 99)
+    year, doy, hour, minute, second = (int(value) for value in match.groups())
+    return (year, doy, hour, minute, second)
+
+
+def discover_uhf_binary_files(folder: Path, prefix: str) -> list[Path]:
+    """Return recursively discovered Hydra UHF files whose basename starts with prefix."""
+    search_root = resolve_uhf_search_root(folder)
+    paths = [
+        path
+        for path in search_root.rglob("*")
+        if path.is_file() and path.name.startswith(prefix)
+    ]
+    return sorted(
+        paths,
+        key=lambda path: (
+            _uhf_timestamp_sort_parts(path),
+            str(path.relative_to(search_root)),
+        ),
+    )
+
+
 def resolve_input_files_and_mode(
     folder: Path,
     *,
@@ -306,7 +467,12 @@ def resolve_input_files_and_mode(
 ) -> tuple[str, str, list[Path]]:
     """Resolve input mode, prefix, and files for staged ingest."""
     normalized_mode = INPUT_MODE_CCSDS if input_mode == INPUT_MODE_HARDLINE else input_mode
-    if normalized_mode not in {INPUT_MODE_AUTO, INPUT_MODE_XBAND, INPUT_MODE_CCSDS}:
+    if normalized_mode not in {
+        INPUT_MODE_AUTO,
+        INPUT_MODE_XBAND,
+        INPUT_MODE_CCSDS,
+        INPUT_MODE_UHF,
+    }:
         raise ValueError(f"unsupported input mode: {input_mode}")
 
     if normalized_mode == INPUT_MODE_AUTO and prefix is None:
@@ -340,9 +506,12 @@ def resolve_input_files_and_mode(
     if effective_prefix is None:
         effective_prefix = (
             DEFAULT_HARDLINE_CCSDS_PREFIX
-            if normalized_mode == INPUT_MODE_CCSDS
+            if normalized_mode in {INPUT_MODE_CCSDS, INPUT_MODE_UHF}
             else DEFAULT_XBAND_PREFIX
         )
+    if normalized_mode == INPUT_MODE_UHF:
+        paths = discover_uhf_binary_files(folder, effective_prefix)
+        return normalized_mode, effective_prefix, paths
     paths = discover_prefixed_binary_files(folder, effective_prefix)
     return normalized_mode, effective_prefix, paths
 
@@ -364,6 +533,373 @@ def write_merged_binary(input_paths: list[Path], output_path: Path) -> MergeStat
         input_bytes=total,
         output_path=output_path,
     )
+
+
+def uhf_segment_candidate_at(data: bytes, offset: int) -> UhfSegmentCandidate | None:
+    """Parse one direct APID 73 UHF segment wrapper at ``offset`` when present."""
+    minimum_len = PLAYBACK_PRIMARY_HEADER_LEN + UHF_SEGMENT_HEADER_LEN + 1
+    if offset < 0 or offset + minimum_len > len(data):
+        return None
+
+    first_word = int.from_bytes(data[offset : offset + 2], "big")
+    if first_word != UHF_SEGMENTED_APID:
+        return None
+
+    packet_len = int.from_bytes(data[offset + 4 : offset + 6], "big") + 7
+    if (
+        packet_len < minimum_len
+        or packet_len > UHF_MAX_SEGMENT_PACKET_LEN
+        or offset + packet_len > len(data)
+    ):
+        return None
+
+    segment_start = offset + PLAYBACK_PRIMARY_HEADER_LEN
+    payload_apid = int.from_bytes(data[segment_start : segment_start + 2], "big")
+    if payload_apid != UHF_PLAYBACK_APID:
+        return None
+    payload_sequence_count = int.from_bytes(
+        data[segment_start + 2 : segment_start + 4], "big"
+    )
+    segment_index = data[segment_start + 4]
+    segment_flags = data[segment_start + 5]
+    if segment_flags not in {
+        UHF_SEGMENT_FLAG_MIDDLE,
+        UHF_SEGMENT_FLAG_START,
+        UHF_SEGMENT_FLAG_END,
+    }:
+        return None
+
+    payload_start = segment_start + UHF_SEGMENT_HEADER_LEN
+    payload = data[payload_start : offset + packet_len]
+    if not payload or len(payload) > UHF_MAX_SEGMENT_PAYLOAD_LEN:
+        return None
+    return UhfSegmentCandidate(
+        offset=offset,
+        packet_len=packet_len,
+        payload_apid=payload_apid,
+        payload_sequence_count=payload_sequence_count,
+        segment_index=segment_index,
+        segment_flags=segment_flags,
+        payload=payload,
+    )
+
+
+def direct_playback_wrapper_candidate_at(
+    data: bytes,
+    offset: int,
+) -> DirectPlaybackWrapperCandidate | None:
+    """Parse one complete, unsegmented APID 72 playback packet at ``offset``."""
+    wrapper_header_len = PLAYBACK_PRIMARY_HEADER_LEN + PLAYBACK_METADATA_LEN
+    if offset < 0 or offset + wrapper_header_len > len(data):
+        return None
+
+    first_word = int.from_bytes(data[offset : offset + 2], "big")
+    if first_word != UHF_PLAYBACK_APID:
+        return None
+
+    sequence_word = int.from_bytes(data[offset + 2 : offset + 4], "big")
+    if sequence_word >> 14 != 0b11:
+        return None
+
+    packet_len = int.from_bytes(data[offset + 4 : offset + 6], "big") + 7
+    if packet_len < wrapper_header_len or offset + packet_len > len(data):
+        return None
+    return DirectPlaybackWrapperCandidate(
+        offset=offset,
+        packet_len=packet_len,
+        sequence_count=sequence_word & 0x3FFF,
+    )
+
+
+def _discover_direct_playback_wrapper_candidates(
+    data: bytes,
+) -> list[DirectPlaybackWrapperCandidate]:
+    candidates: list[DirectPlaybackWrapperCandidate] = []
+    marker = UHF_PLAYBACK_APID.to_bytes(2, "big")
+    search_at = 0
+    while True:
+        offset = data.find(marker, search_at)
+        if offset < 0:
+            break
+        candidate = direct_playback_wrapper_candidate_at(data, offset)
+        if candidate is not None:
+            candidates.append(candidate)
+        search_at = offset + 1
+    return candidates
+
+
+def unwrap_direct_playback_stream(
+    data: bytes,
+) -> tuple[bytes, DirectPlaybackUnwrapStats]:
+    """
+    Strip primary headers and playback metadata from validated APID 72 chains.
+
+    Playback payload is a continuous inner CCSDS byte stream, so packet boundaries
+    inside it need not line up with the outer APID 72 boundaries. Requiring adjacent
+    wrappers with incrementing sequence counts avoids treating an APID-like byte
+    pattern inside science data as a wrapper.
+    """
+    stats = DirectPlaybackUnwrapStats()
+    candidates = _discover_direct_playback_wrapper_candidates(data)
+    stats.candidates_found = len(candidates)
+    if not candidates:
+        return data, stats
+
+    candidate_by_offset = {candidate.offset: candidate for candidate in candidates}
+    successor_offsets: dict[int, int] = {}
+    offsets_with_predecessors: set[int] = set()
+    for candidate in candidates:
+        next_offset = candidate.offset + candidate.packet_len
+        successor = candidate_by_offset.get(next_offset)
+        if (
+            successor is not None
+            and successor.sequence_count
+            == ((candidate.sequence_count + 1) & 0x3FFF)
+        ):
+            successor_offsets[candidate.offset] = next_offset
+            offsets_with_predecessors.add(next_offset)
+
+    validated: list[DirectPlaybackWrapperCandidate] = []
+    for candidate in candidates:
+        if candidate.offset in offsets_with_predecessors:
+            continue
+        chain = [candidate]
+        while chain[-1].offset in successor_offsets:
+            chain.append(candidate_by_offset[successor_offsets[chain[-1].offset]])
+        if len(chain) >= MIN_DIRECT_PLAYBACK_CHAIN_PACKETS:
+            stats.validated_chains += 1
+            validated.extend(chain)
+
+    if not validated:
+        return data, stats
+
+    validated.sort(key=lambda candidate: candidate.offset)
+    wrapper_header_len = PLAYBACK_PRIMARY_HEADER_LEN + PLAYBACK_METADATA_LEN
+    fixed = bytearray()
+    cursor = 0
+    for candidate in validated:
+        fixed.extend(data[cursor : candidate.offset])
+        payload_start = candidate.offset + wrapper_header_len
+        packet_end = candidate.offset + candidate.packet_len
+        fixed.extend(data[payload_start:packet_end])
+        cursor = packet_end
+    fixed.extend(data[cursor:])
+
+    stats.wrappers_stripped = len(validated)
+    stats.wrapper_bytes_removed = wrapper_header_len * len(validated)
+    stats.payload_bytes_emitted = sum(
+        candidate.packet_len - wrapper_header_len for candidate in validated
+    )
+    stats.first_wrapper_offset = validated[0].offset
+    stats.last_wrapper_offset = validated[-1].offset
+    return bytes(fixed), stats
+
+
+def _discover_uhf_segment_candidates(data: bytes) -> list[UhfSegmentCandidate]:
+    candidates: list[UhfSegmentCandidate] = []
+    offset = 0
+    while offset + PLAYBACK_PRIMARY_HEADER_LEN + UHF_SEGMENT_HEADER_LEN < len(data):
+        candidate = uhf_segment_candidate_at(data, offset)
+        if candidate is None:
+            offset += 1
+            continue
+        candidates.append(candidate)
+        offset += candidate.packet_len
+    return candidates
+
+
+def _select_uhf_segment_copy(
+    copies: list[UhfSegmentCandidate],
+) -> tuple[UhfSegmentCandidate, bool]:
+    """Select the majority-identical copy, preferring earliest arrival on a tie."""
+    counts = Counter((copy.payload, copy.segment_flags) for copy in copies)
+    best_count = max(counts.values())
+    for copy in copies:
+        if counts[(copy.payload, copy.segment_flags)] == best_count:
+            return copy, len(counts) > 1
+    raise RuntimeError("UHF segment copy selection received no candidates")
+
+
+def unwrap_uhf_playback_stream(
+    data: bytes,
+    valid_apids: set[int] | None = None,
+    expected_packet_bytes: dict[int, int] | None = None,
+) -> tuple[bytes, UhfPlaybackReassemblyStats]:
+    """
+    Replace APID 73 segment wrappers with reconstructed APID 72 playback payloads.
+
+    APID 73 packets may be repeated by the radio/Hydra path. Copies are grouped by
+    the advertised inner APID/sequence and segment index, then majority-selected.
+    A complete APID 72 packet is emitted once, without its six-byte primary header
+    or ten-byte playback metadata. Incomplete groups are dropped with warnings.
+    """
+    stats = UhfPlaybackReassemblyStats()
+    candidates = _discover_uhf_segment_candidates(data)
+    if not candidates:
+        stats.non_wrapper_bytes_preserved = len(data)
+        return data, stats
+
+    stats.segment_packets_seen = len(candidates)
+    stats.segment_packet_bytes_seen = sum(candidate.packet_len for candidate in candidates)
+    groups: dict[tuple[int, int], list[UhfSegmentCandidate]] = {}
+    for candidate in candidates:
+        key = (candidate.payload_apid, candidate.payload_sequence_count)
+        groups.setdefault(key, []).append(candidate)
+    stats.segment_groups_seen = len(groups)
+
+    replacements: dict[int, bytes] = {}
+    for key, group in sorted(
+        groups.items(),
+        key=lambda item: min(candidate.offset for candidate in item[1]),
+    ):
+        copies_by_index: dict[int, list[UhfSegmentCandidate]] = {}
+        for candidate in group:
+            copies_by_index.setdefault(candidate.segment_index, []).append(candidate)
+
+        stats.unique_segments_seen += len(copies_by_index)
+        stats.duplicate_segment_packets += sum(
+            max(0, len(copies) - 1) for copies in copies_by_index.values()
+        )
+        selected_by_index: dict[int, UhfSegmentCandidate] = {}
+        for segment_index, copies in sorted(copies_by_index.items()):
+            selected, conflicting = _select_uhf_segment_copy(copies)
+            selected_by_index[segment_index] = selected
+            if conflicting:
+                stats.conflicting_segment_indices += 1
+
+        first_segment = selected_by_index.get(0)
+        if first_segment is None:
+            stats.incomplete_playback_packets += 1
+            stats.orphan_segment_groups += 1
+            stats.warnings.append(
+                f"UHF APID 73 group payload_apid={key[0]} sequence={key[1]} "
+                "has no segment 0; incomplete fragments were dropped"
+            )
+            continue
+        if first_segment.segment_flags != UHF_SEGMENT_FLAG_START:
+            stats.incomplete_playback_packets += 1
+            stats.warnings.append(
+                f"UHF APID 73 group payload_apid={key[0]} sequence={key[1]} "
+                f"segment 0 has flag {first_segment.segment_flags}, not start flag "
+                f"{UHF_SEGMENT_FLAG_START}; fragments were dropped"
+            )
+            continue
+        if len(first_segment.payload) < PLAYBACK_PRIMARY_HEADER_LEN:
+            stats.incomplete_playback_packets += 1
+            stats.warnings.append(
+                f"UHF APID 73 group payload_apid={key[0]} sequence={key[1]} "
+                "has a short segment 0; fragments were dropped"
+            )
+            continue
+
+        inner_first_word = int.from_bytes(first_segment.payload[0:2], "big")
+        inner_version = (inner_first_word >> 13) & 0x07
+        inner_apid = inner_first_word & 0x07FF
+        expected_len = int.from_bytes(first_segment.payload[4:6], "big") + 7
+        if (
+            inner_version != 0
+            or inner_apid != key[0]
+            or expected_len < PLAYBACK_PRIMARY_HEADER_LEN + PLAYBACK_METADATA_LEN
+            or expected_len > UHF_MAX_SEGMENT_PAYLOAD_LEN * 256
+        ):
+            stats.incomplete_playback_packets += 1
+            stats.warnings.append(
+                f"UHF APID 73 group payload_apid={key[0]} sequence={key[1]} "
+                "does not begin with a matching, bounded CCSDS packet; fragments were dropped"
+            )
+            continue
+
+        final_index = (expected_len - 1) // UHF_MAX_SEGMENT_PAYLOAD_LEN
+        required_indices = set(range(final_index + 1))
+        missing_indices = sorted(required_indices - set(selected_by_index))
+        bad_layout = False
+        if missing_indices:
+            bad_layout = True
+        for segment_index in sorted(required_indices & set(selected_by_index)):
+            segment = selected_by_index[segment_index]
+            expected_payload_len = (
+                expected_len - UHF_MAX_SEGMENT_PAYLOAD_LEN * final_index
+                if segment_index == final_index
+                else UHF_MAX_SEGMENT_PAYLOAD_LEN
+            )
+            expected_flag = (
+                UHF_SEGMENT_FLAG_START
+                if segment_index == 0
+                else UHF_SEGMENT_FLAG_END
+                if segment_index == final_index
+                else UHF_SEGMENT_FLAG_MIDDLE
+            )
+            if (
+                len(segment.payload) != expected_payload_len
+                or segment.segment_flags != expected_flag
+            ):
+                bad_layout = True
+
+        if bad_layout:
+            stats.incomplete_playback_packets += 1
+            detail = (
+                f"missing segment indices {missing_indices}"
+                if missing_indices
+                else "segment lengths/flags do not match the advertised packet length"
+            )
+            stats.warnings.append(
+                f"UHF APID 73 group payload_apid={key[0]} sequence={key[1]} "
+                f"is incomplete ({detail}); fragments were dropped"
+            )
+            continue
+
+        assembled = b"".join(
+            selected_by_index[index].payload for index in range(final_index + 1)
+        )
+        assembled = assembled[:expected_len]
+        playback_payload = assembled[
+            PLAYBACK_PRIMARY_HEADER_LEN + PLAYBACK_METADATA_LEN :
+        ]
+        replacements[min(candidate.offset for candidate in group)] = playback_payload
+        stats.complete_playback_packets += 1
+        stats.playback_header_bytes_removed += (
+            PLAYBACK_PRIMARY_HEADER_LEN + PLAYBACK_METADATA_LEN
+        )
+        stats.playback_payload_bytes_emitted += len(playback_payload)
+
+    if stats.conflicting_segment_indices:
+        stats.warnings.append(
+            f"{stats.conflicting_segment_indices} UHF segment index/indices had "
+            "non-identical copies; the majority copy was selected"
+        )
+
+    candidate_by_offset = {candidate.offset: candidate for candidate in candidates}
+    non_wrapper = bytearray()
+    offset = 0
+    while offset < len(data):
+        candidate = candidate_by_offset.get(offset)
+        if candidate is not None:
+            stats.segment_wrapper_bytes_removed += candidate.packet_len
+            offset += candidate.packet_len
+            continue
+        non_wrapper.append(data[offset])
+        offset += 1
+
+    stats.non_wrapper_bytes_seen = len(non_wrapper)
+    if valid_apids is None:
+        direct_packets = bytes(non_wrapper)
+        stats.non_wrapper_bytes_preserved = len(direct_packets)
+    else:
+        direct_packets, direct_stats = packetize_checksum_valid_ccsds(
+            bytes(non_wrapper),
+            valid_apids,
+            expected_packet_bytes=expected_packet_bytes,
+            bypass_packet_checksums=True,
+            extract_playback_wrappers=False,
+        )
+        stats.direct_packets_preserved = direct_stats.packets
+        stats.non_wrapper_bytes_preserved = len(direct_packets)
+        stats.non_wrapper_bytes_dropped = len(non_wrapper) - len(direct_packets)
+
+    playback_payloads = b"".join(
+        replacements[offset] for offset in sorted(replacements)
+    )
+    return direct_packets + playback_payloads, stats
 
 
 def _ct_pkt_candidates(ctdb_path: str) -> tuple[Path, ...]:
@@ -1323,6 +1859,7 @@ def packetize_checksum_valid_ccsds(
 def build_fixed_binary(
     merged_data: bytes,
     valid_apids: set[int] | None = None,
+    expected_packet_bytes: dict[int, int] | None = None,
     *,
     input_mode: str = INPUT_MODE_XBAND,
     spacecraft_id: int = DEFAULT_SPACECRAFT_ID,
@@ -1330,15 +1867,52 @@ def build_fixed_binary(
     strip_out_of_phase_xband_artifacts: bool = True,
 ) -> tuple[bytes, FixStats]:
     """Run the first-stage cleaning pipeline and return ``merged_fixed`` bytes."""
-    if input_mode == INPUT_MODE_CCSDS:
-        tf_stats = TransferFrameStripStats(
-            mode="hardline_ccsds_passthrough",
-            passthrough_bytes=len(merged_data),
+    if input_mode == INPUT_MODE_UHF:
+        uhf_fixed, uhf_stats = unwrap_uhf_playback_stream(
+            merged_data,
+            valid_apids=valid_apids,
+            expected_packet_bytes=expected_packet_bytes,
         )
-        return merged_data, FixStats(
+        fixed, direct_playback_stats = unwrap_direct_playback_stream(uhf_fixed)
+        if uhf_stats.segment_packets_seen:
+            tf_stats = TransferFrameStripStats(
+                mode="uhf_apid73_playback_reassembly",
+                passthrough_bytes=uhf_stats.non_wrapper_bytes_preserved,
+            )
+        elif direct_playback_stats.wrappers_stripped:
+            tf_stats = TransferFrameStripStats(
+                mode="uhf_apid72_playback_unwrap",
+                passthrough_bytes=len(fixed),
+            )
+        else:
+            tf_stats = TransferFrameStripStats(
+                mode="uhf_ccsds_passthrough",
+                passthrough_bytes=len(merged_data),
+            )
+        return fixed, FixStats(
             transfer_frame_strip=tf_stats,
             packetize=None,
-            fixed_bytes=len(merged_data),
+            fixed_bytes=len(fixed),
+            uhf_playback=uhf_stats,
+            direct_playback=direct_playback_stats,
+        )
+
+    if input_mode == INPUT_MODE_CCSDS:
+        fixed, direct_playback_stats = unwrap_direct_playback_stream(merged_data)
+        strip_mode = (
+            "hardline_apid72_playback_unwrap"
+            if direct_playback_stats.wrappers_stripped
+            else "hardline_ccsds_passthrough"
+        )
+        tf_stats = TransferFrameStripStats(
+            mode=strip_mode,
+            passthrough_bytes=len(fixed),
+        )
+        return fixed, FixStats(
+            transfer_frame_strip=tf_stats,
+            packetize=None,
+            fixed_bytes=len(fixed),
+            direct_playback=direct_playback_stats,
         )
 
     payload_stream, tf_stats = strip_xband_payload_stream(
@@ -1346,6 +1920,7 @@ def build_fixed_binary(
         spacecraft_id=spacecraft_id,
         strip_out_of_phase_xband_artifacts=strip_out_of_phase_xband_artifacts,
     )
+    payload_stream, direct_playback_stats = unwrap_direct_playback_stream(payload_stream)
     if packetize_checksum_valid:
         if valid_apids is None:
             raise ValueError("valid_apids is required when packetization is enabled")
@@ -1361,26 +1936,85 @@ def build_fixed_binary(
         transfer_frame_strip=tf_stats,
         packetize=packet_stats,
         fixed_bytes=len(fixed),
+        direct_playback=direct_playback_stats,
     )
 
 
-def print_input_file_summary(paths: list[Path], *, input_mode: str) -> None:
+def print_input_file_summary(
+    paths: list[Path],
+    *,
+    input_mode: str,
+    relative_to: Path | None = None,
+) -> None:
     print("Input files:")
     for path in paths:
         size = path.stat().st_size
         frame_note = ""
         if input_mode == INPUT_MODE_XBAND and size % TRANSFER_FRAME_SIZE == 0:
             frame_note = f" ({size // TRANSFER_FRAME_SIZE} x {TRANSFER_FRAME_SIZE}-byte frames)"
-        print(f"  {path.name}: {size:,} bytes{frame_note}")
+        display_name = path.name
+        if relative_to is not None:
+            try:
+                display_name = str(path.relative_to(relative_to))
+            except ValueError:
+                display_name = str(path)
+        print(f"  {display_name}: {size:,} bytes{frame_note}")
 
 
 def print_fix_summary(stats: FixStats) -> None:
     tf = stats.transfer_frame_strip
     pkt = stats.packetize
+    uhf = stats.uhf_playback
+    direct = stats.direct_playback
     print("\nFix summary:")
     print(f"  strip mode:                            {tf.mode}")
-    if tf.mode == "hardline_ccsds_passthrough":
-        print("  hardline realtime CCSDS input:         no ASM or transfer-frame wrapper stripped")
+    if uhf is not None and uhf.segment_packets_seen:
+        print(f"  APID 73 segment packets seen:          {uhf.segment_packets_seen:,}")
+        print(f"  APID 73 segment packet bytes seen:     {uhf.segment_packet_bytes_seen:,}")
+        print(f"  UHF playback groups seen:              {uhf.segment_groups_seen:,}")
+        print(f"  unique UHF segments seen:              {uhf.unique_segments_seen:,}")
+        print(f"  duplicate segment packets removed:     {uhf.duplicate_segment_packets:,}")
+        print(f"  conflicting segment indices:           {uhf.conflicting_segment_indices:,}")
+        print(f"  complete APID 72 packets rebuilt:      {uhf.complete_playback_packets:,}")
+        print(f"  incomplete APID 72 packets dropped:    {uhf.incomplete_playback_packets:,}")
+        print(f"  orphan segment groups dropped:         {uhf.orphan_segment_groups:,}")
+        print(f"  APID 73 wrapper bytes removed:         {uhf.segment_wrapper_bytes_removed:,}")
+        print(f"  APID 72 header/metadata bytes removed: {uhf.playback_header_bytes_removed:,}")
+        print(f"  playback payload bytes emitted:        {uhf.playback_payload_bytes_emitted:,}")
+        print(f"  non-wrapper bytes examined:            {uhf.non_wrapper_bytes_seen:,}")
+        print(f"  direct CCSDS packets preserved:        {uhf.direct_packets_preserved:,}")
+        print(f"  direct CCSDS packet bytes preserved:   {uhf.non_wrapper_bytes_preserved:,}")
+        print(f"  non-packet side-channel bytes dropped: {uhf.non_wrapper_bytes_dropped:,}")
+        print(f"  merged_fixed.bin bytes:                {stats.fixed_bytes:,}")
+        if uhf.duplicate_segment_packets:
+            print(
+                "WARNING: UHF segment retransmissions were de-duplicated by inner "
+                "APID/sequence and segment index."
+            )
+        for warning in uhf.warnings:
+            print(f"WARNING: {warning}")
+        return
+    if direct is not None and direct.wrappers_stripped:
+        print(f"  APID 72 wrapper candidates found:      {direct.candidates_found:,}")
+        print(f"  validated APID 72 wrapper chains:      {direct.validated_chains:,}")
+        print(f"  APID 72 wrappers stripped:             {direct.wrappers_stripped:,}")
+        print(f"  APID 72 header/metadata bytes removed: {direct.wrapper_bytes_removed:,}")
+        print(f"  playback payload bytes emitted:        {direct.payload_bytes_emitted:,}")
+        print(f"  first APID 72 wrapper offset:          {direct.first_wrapper_offset:,}")
+        print(f"  last APID 72 wrapper offset:           {direct.last_wrapper_offset:,}")
+        if tf.mode in {
+            "hardline_apid72_playback_unwrap",
+            "uhf_apid72_playback_unwrap",
+        }:
+            print(f"  merged_fixed.bin bytes:                {stats.fixed_bytes:,}")
+            return
+    if tf.mode in {"hardline_ccsds_passthrough", "uhf_ccsds_passthrough"}:
+        label = (
+            "UHF/Hydra CCSDS input"
+            if tf.mode == "uhf_ccsds_passthrough"
+            else "hardline realtime CCSDS input"
+        )
+        print(f"  {label}:         no ASM or transfer-frame wrapper stripped")
         print(f"  bytes passed through unchanged:        {tf.passthrough_bytes:,}")
         print(f"  merged_fixed.bin bytes:                {stats.fixed_bytes:,}")
         return
@@ -1859,11 +2493,13 @@ def decode_packet_records_to_csv(
     *,
     manifest_name: str = DEFAULT_PACKET_MANIFEST_BASENAME,
     summary_name: str = DEFAULT_DECODE_SUMMARY_BASENAME,
+    manifest_path_override: Path | None = None,
+    summary_path_override: Path | None = None,
 ) -> DecodeStats:
     decoded_dir.mkdir(parents=True, exist_ok=True)
     _clean_generated_decode_csvs(decoded_dir)
-    manifest_path = decoded_dir / manifest_name
-    summary_path = decoded_dir / summary_name
+    manifest_path = manifest_path_override or decoded_dir / manifest_name
+    summary_path = summary_path_override or decoded_dir / summary_name
     stats = DecodeStats(
         manifest_path=manifest_path,
         summary_path=summary_path,
@@ -1891,6 +2527,21 @@ def decode_packet_records_to_csv(
         base_row: dict[str, object] = {
             "packet_index": record.packet_index,
             "source_offset": record.source_offset,
+            "source_id": record.source_id,
+            "source_mode": record.source_mode,
+            "source_root": record.source_root,
+            "input_file_relative_path": record.input_file_relative_path,
+            "source_packet_index": record.source_packet_index,
+            "source_acceptance_mode": record.source_acceptance_mode,
+            "source_provenance_quality": record.source_provenance_quality,
+            "source_output_dir": record.source_output_dir,
+            "packet_hash": record.packet_hash,
+            "duplicate_group_id": record.duplicate_group_id,
+            "duplicate_group_size": record.duplicate_group_size,
+            "is_duplicate_packet": record.is_duplicate_packet,
+            "combined_time_source": record.combined_time_source,
+            "combined_time_coarse": record.combined_time_coarse,
+            "combined_time_fine": record.combined_time_fine,
             "source": record.source,
             "acceptance_mode": record.acceptance_mode,
             "checksum_validated": record.checksum_validated,
@@ -1975,6 +2626,19 @@ def decode_packet_records_to_csv(
     manifest_fields = [
         "packet_index",
         "source_offset",
+        "source_id",
+        "source_mode",
+        "input_file_relative_path",
+        "source_packet_index",
+        "source_acceptance_mode",
+        "source_provenance_quality",
+        "packet_hash",
+        "duplicate_group_id",
+        "duplicate_group_size",
+        "is_duplicate_packet",
+        "combined_time_source",
+        "combined_time_coarse",
+        "combined_time_fine",
         "apid",
         "packet_name",
         "packet_len",
@@ -1996,6 +2660,19 @@ def decode_packet_records_to_csv(
     per_packet_fields = [
         "packet_index",
         "source_offset",
+        "source_id",
+        "source_mode",
+        "input_file_relative_path",
+        "source_packet_index",
+        "source_acceptance_mode",
+        "source_provenance_quality",
+        "packet_hash",
+        "duplicate_group_id",
+        "duplicate_group_size",
+        "is_duplicate_packet",
+        "combined_time_source",
+        "combined_time_coarse",
+        "combined_time_fine",
         "apid",
         "packet_name",
         "packet_len",
@@ -2277,6 +2954,46 @@ def _csie_preview_rgb_uint8(image_array):
     return (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
 
 
+def _decode_csie_jpegls_uint16(codestream: bytes):
+    """Decode one JPEG-LS codestream as a detached two-dimensional uint16 array."""
+    from pillow_jpls import Image as JpegLsImage
+    import numpy as np
+
+    with io.BytesIO(codestream) as buffer:
+        with JpegLsImage.open(buffer) as image:
+            image.load()
+            decoded = np.asarray(image, dtype=np.uint16).copy()
+    if decoded.ndim != 2:
+        raise ValueError(
+            f"expected a two-dimensional CSIE JPEG-LS image, got shape {decoded.shape}"
+        )
+    return decoded
+
+
+def assemble_csie_uncompressed_image(
+    rows: dict[int, object],
+    selected_quality: dict[int, object],
+    *,
+    expected_rows: int,
+    expected_cols: int,
+):
+    """Build a zero-filled image, excluding rows with failed additive checksums."""
+    import numpy as np
+
+    image = np.zeros((expected_rows, expected_cols), dtype=np.uint16)
+    for row_index, row_pixels in rows.items():
+        row_number = int(row_index)
+        if row_number < 1 or row_number > expected_rows:
+            continue
+        if selected_quality.get(row_index) == "failed":
+            continue
+        row_array = np.asarray(row_pixels, dtype=np.uint16)
+        if row_array.size != expected_cols:
+            continue
+        image[row_number - 1, :] = row_array
+    return image
+
+
 def _write_csie_fits(
     path: Path,
     image,
@@ -2303,7 +3020,11 @@ def _write_csie_fits(
     header["SELFAIL"] = int(inventory_row.get("selected_checksum_failed_rows", 0) or 0)
     header["SELMISS"] = int(inventory_row.get("selected_checksum_missing_rows", 0) or 0)
     header["PARTIAL"] = bool(inventory_row.get("partial_uncompressed_image", False))
-    header["ZEROFILL"] = int(inventory_row.get("zero_filled_missing_rows", 0) or 0)
+    header["ZEROFILL"] = int(inventory_row.get("zero_filled_total_rows", 0) or 0)
+    header["MISZERO"] = int(inventory_row.get("zero_filled_missing_rows", 0) or 0)
+    header["CHKZERO"] = int(
+        inventory_row.get("zero_filled_checksum_failed_rows", 0) or 0
+    )
     header["OUTRANGE"] = int(inventory_row.get("out_of_range_rows", 0) or 0)
 
     used_keys = set(header)
@@ -2342,6 +3063,14 @@ def _write_csie_jpeg2000(path: Path, image) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     rgb = _csie_preview_rgb_uint8(image)
     Image.fromarray(rgb, mode="RGB").save(path, format="JPEG2000")
+
+
+def _write_csie_png(path: Path, image) -> None:
+    from PIL import Image
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rgb = _csie_preview_rgb_uint8(image)
+    Image.fromarray(rgb, mode="RGB").save(path, format="PNG")
 
 
 def _write_csie_meta_json(path: Path, image_id: int, meta: dict[str, object]) -> None:
@@ -2471,6 +3200,47 @@ def _metadata_expectations_from_records(
     return image_ids, expected_cols_by_image, warnings
 
 
+def _filter_plausible_csie_meta_records(
+    records: list[PacketRecord],
+    field_definitions: dict[int, list[dict[str, str]]],
+) -> tuple[list[PacketRecord], list[str]]:
+    """Reject APID-shaped payload coincidences with impossible detector dimensions."""
+    accepted: list[PacketRecord] = []
+    warnings: list[str] = []
+    rejected_dimensions = 0
+    rejected_decode = 0
+    for record in records:
+        try:
+            meta = decode_csie_meta_packet(record.packet, field_definitions)
+        except Exception:
+            rejected_decode += 1
+            continue
+        roi_rows = _first_int(meta, "csie_meta_fpm_row_per_frame")
+        roi_cols = _first_int(meta, "csie_meta_fpm_pix_per_row")
+        if (
+            roi_rows is None
+            or roi_cols is None
+            or not 1 <= roi_rows <= CSIE_MAX_SENSOR_ROWS
+            or not 1 <= roi_cols <= CSIE_MAX_SENSOR_COLS
+        ):
+            rejected_dimensions += 1
+            continue
+        accepted.append(record)
+
+    if rejected_dimensions:
+        warnings.append(
+            f"Discarded {rejected_dimensions} APID 538-shaped stream candidate(s) "
+            "whose decoded detector dimensions were outside the physical "
+            f"{CSIE_MAX_SENSOR_ROWS}x{CSIE_MAX_SENSOR_COLS} sensor bounds."
+        )
+    if rejected_decode:
+        warnings.append(
+            f"Discarded {rejected_decode} APID 538-shaped stream candidate(s) that "
+            "could not be decoded by the configured CSIE CTDB."
+        )
+    return accepted, warnings
+
+
 def _scan_csie_data_records_in_stream(
     stream: bytes,
     *,
@@ -2569,6 +3339,11 @@ def scan_csie_records_from_fixed_stream(
             source=source,
             expected_meta_len=expected_meta_len,
         )
+        meta_records, meta_filter_warnings = _filter_plausible_csie_meta_records(
+            meta_records,
+            field_definitions,
+        )
+        warnings.extend(meta_filter_warnings)
         known_image_ids, expected_cols_by_image, expectation_warnings = (
             _metadata_expectations_from_records(meta_records, field_definitions)
         )
@@ -2623,15 +3398,16 @@ def write_csie_image_products(
     fixed_payload_stream: bytes | None = None,
     output_suffix: str = "",
     write_jpeg2000: bool = True,
+    write_png: bool = True,
     write_meta_json: bool | None = None,
     inventory_name: str = DEFAULT_CSIE_INVENTORY_BASENAME,
 ) -> CsieImageStats:
     """
-    Inventory and assemble uncompressed CSIE images from the full fixed stream.
+    Inventory and assemble CSIE images from the full fixed stream.
 
-    This stage is intentionally conservative: it always writes an inventory CSV, writes
-    FITS/JP2 only when metadata and all expected uncompressed rows are present, and
-    records every assumption or skipped condition in the inventory/warnings.
+    Recovered JPEG-LS streams are preserved as ``.jls`` and decoded to native uint16
+    FITS plus rotated inferno PNG/JP2 previews. Uncompressed rows use the same product
+    writers. Every assumption or skipped condition is recorded in the inventory.
     """
     import numpy as np
 
@@ -2782,7 +3558,9 @@ def write_csie_image_products(
         valid_row_indices = [
             row_index
             for row_index in rows
-            if expected_rows is None or 1 <= int(row_index) <= expected_rows
+            if compression_enabled
+            or expected_rows is None
+            or 1 <= int(row_index) <= expected_rows
         ]
         out_of_range_rows = unique_rows - len(valid_row_indices)
         if out_of_range_rows:
@@ -2792,7 +3570,7 @@ def write_csie_image_products(
         row_length_max = max(row_lengths) if row_lengths else None
         row_length_mode = row_lengths.most_common(1)[0][0] if row_lengths else None
         bad_length_rows = 0
-        if expected_cols is not None:
+        if expected_cols is not None and not compression_enabled:
             bad_length_rows = sum(
                 count for row_len, count in row_lengths.items() if int(row_len) != expected_cols
             )
@@ -2803,7 +3581,7 @@ def write_csie_image_products(
 
         parsed_row_indices = {int(i) for i in rows}
         missing_rows = None
-        if expected_rows is not None:
+        if expected_rows is not None and not compression_enabled:
             missing_rows = len(set(range(1, expected_rows + 1)) - parsed_row_indices)
             if missing_rows:
                 warnings.append(f"{missing_rows} expected row(s) missing")
@@ -2841,17 +3619,21 @@ def write_csie_image_products(
                 f"{duplicate_rows} duplicate row packet(s); best checksum-ranked packet used"
             )
         if selected_checksum_failed:
-            warnings.append(
-                f"{selected_checksum_failed} selected row(s) still have additive checksum failures"
-            )
+            if compression_enabled:
+                warnings.append(
+                    f"{selected_checksum_failed} selected compressed chunk(s) still have "
+                    "additive checksum failures"
+                )
+            else:
+                warnings.append(
+                    f"{selected_checksum_failed} selected row(s) have additive checksum "
+                    "failures and will be zero-filled in uncompressed products"
+                )
         if selected_checksum_missing:
             warnings.append(
                 f"{selected_checksum_missing} selected row(s) still have missing additive checksums"
             )
         if compression_enabled:
-            warnings.append(
-                "JPEG-LS image bytes are preserved to disk without decompression in this staged path"
-            )
             warnings.append(
                 "for JPEG-LS, APID 536 sequence counts are treated as compressed chunk "
                 "indices for de-duplication, not image row numbers"
@@ -2869,9 +3651,16 @@ def write_csie_image_products(
             can_write_uncompressed
             and missing_rows == 0
             and out_of_range_rows == 0
+            and selected_checksum_failed == 0
         )
         partial_uncompressed = can_write_uncompressed and not complete
         zero_filled_missing_rows = missing_rows if partial_uncompressed and missing_rows else 0
+        zero_filled_checksum_failed_rows = (
+            selected_checksum_failed if can_write_uncompressed else 0
+        )
+        zero_filled_total_rows = (
+            (zero_filled_missing_rows or 0) + zero_filled_checksum_failed_rows
+        )
         if partial_uncompressed:
             stats.images_partial += 1
             if zero_filled_missing_rows:
@@ -2884,8 +3673,14 @@ def write_csie_image_products(
                     f"partial uncompressed image written while ignoring {out_of_range_rows} "
                     "out-of-range row index/indices"
                 )
+            if zero_filled_checksum_failed_rows:
+                warnings.append(
+                    f"partial uncompressed image written with "
+                    f"{zero_filled_checksum_failed_rows} checksum-failed row(s) left as zeros"
+                )
         fits_path = ""
         jp2_path = ""
+        png_path = ""
         jpegls_path = ""
         meta_json_path = ""
         jpegls_chunks = ""
@@ -2893,6 +3688,8 @@ def write_csie_image_products(
         jpegls_bytes = ""
         jpegls_eoi_found = ""
         jpegls_bytes_trimmed_after_eoi = ""
+        jpegls_decoded: bool | str = ""
+        jpegls_decode_error = ""
         suffix = format_product_suffix(output_suffix)
 
         if compression_enabled and meta is not None and compressed_chunks:
@@ -2937,6 +3734,65 @@ def write_csie_image_products(
                 warnings.append(
                     "JPEG-LS EOI marker 0xffd9 was not found; wrote recovered partial stream"
                 )
+
+            try:
+                image = _decode_csie_jpegls_uint16(codestream)
+            except Exception as exc:
+                jpegls_decoded = False
+                jpegls_decode_error = f"{type(exc).__name__}: {exc}"
+                stats.compressed_decode_failures += 1
+                warnings.append(f"JPEG-LS decode failed: {jpegls_decode_error}")
+            else:
+                jpegls_decoded = True
+                stats.compressed_images_decoded += 1
+                expected_shape = (
+                    (expected_rows, expected_cols)
+                    if expected_rows is not None and expected_cols is not None
+                    else None
+                )
+                if expected_shape is not None and image.shape != expected_shape:
+                    warnings.append(
+                        f"JPEG-LS decoded shape {image.shape} does not match metadata "
+                        f"shape {expected_shape}; codestream dimensions were preserved"
+                    )
+
+                fits_file = output_dir / f"image_{image_id}{suffix}.fits"
+                jp2_file = output_dir / f"image_{image_id}{suffix}.jp2"
+                png_file = output_dir / f"image_{image_id}{suffix}.png"
+                _write_csie_fits(
+                    fits_file,
+                    image,
+                    image_id=image_id,
+                    meta=meta,
+                    inventory_row={
+                        "unique_rows": len(selected_chunks),
+                        "missing_rows": 0,
+                        "duplicate_rows": duplicate_rows,
+                        "checksum_failed_rows": checksum_failed,
+                        "checksum_missing_rows": checksum_missing,
+                        "selected_checksum_valid_rows": selected_checksum_valid,
+                        "selected_checksum_failed_rows": selected_checksum_failed,
+                        "selected_checksum_missing_rows": selected_checksum_missing,
+                        "partial_uncompressed_image": False,
+                        "zero_filled_missing_rows": 0,
+                        "zero_filled_checksum_failed_rows": 0,
+                        "zero_filled_total_rows": 0,
+                        "out_of_range_rows": 0,
+                    },
+                )
+                fits_path = str(fits_file)
+                stats.fits_written += 1
+                stats.output_paths.append(fits_file)
+                if write_png:
+                    _write_csie_png(png_file, image)
+                    png_path = str(png_file)
+                    stats.png_written += 1
+                    stats.output_paths.append(png_file)
+                if write_jpeg2000:
+                    _write_csie_jpeg2000(jp2_file, image)
+                    jp2_path = str(jp2_file)
+                    stats.jp2_written += 1
+                    stats.output_paths.append(jp2_file)
             if write_meta_json:
                 meta_json_file = output_dir / f"image_{image_id}{suffix}_meta.json"
                 _write_csie_meta_json(meta_json_file, image_id, meta)
@@ -2946,17 +3802,15 @@ def write_csie_image_products(
         if can_write_uncompressed:
             if complete:
                 stats.images_complete += 1
-            image = np.zeros((expected_rows, expected_cols), dtype=np.uint16)
-            for row_index, row_pixels in rows.items():
-                row_number = int(row_index)
-                if row_number < 1 or row_number > expected_rows:
-                    continue
-                row_array = np.asarray(row_pixels, dtype=np.uint16)
-                if row_array.size != expected_cols:
-                    continue
-                image[row_number - 1, :] = row_array
+            image = assemble_csie_uncompressed_image(
+                rows,
+                selected_quality,
+                expected_rows=expected_rows,
+                expected_cols=expected_cols,
+            )
             fits_file = output_dir / f"image_{image_id}{suffix}.fits"
             jp2_file = output_dir / f"image_{image_id}{suffix}.jp2"
+            png_file = output_dir / f"image_{image_id}{suffix}.png"
             _write_csie_fits(
                 fits_file,
                 image,
@@ -2973,6 +3827,8 @@ def write_csie_image_products(
                     "selected_checksum_missing_rows": selected_checksum_missing,
                     "partial_uncompressed_image": partial_uncompressed,
                     "zero_filled_missing_rows": zero_filled_missing_rows or 0,
+                    "zero_filled_checksum_failed_rows": zero_filled_checksum_failed_rows,
+                    "zero_filled_total_rows": zero_filled_total_rows,
                     "out_of_range_rows": out_of_range_rows,
                 },
             )
@@ -2984,6 +3840,11 @@ def write_csie_image_products(
                 _write_csie_meta_json(meta_json_file, image_id, meta)
                 meta_json_path = str(meta_json_file)
                 stats.output_paths.append(meta_json_file)
+            if write_png:
+                _write_csie_png(png_file, image)
+                png_path = str(png_file)
+                stats.png_written += 1
+                stats.output_paths.append(png_file)
             if write_jpeg2000:
                 _write_csie_jpeg2000(jp2_file, image)
                 jp2_path = str(jp2_file)
@@ -3019,14 +3880,19 @@ def write_csie_image_products(
             "complete_uncompressed_image": complete,
             "partial_uncompressed_image": partial_uncompressed,
             "zero_filled_missing_rows": zero_filled_missing_rows or 0,
+            "zero_filled_checksum_failed_rows": zero_filled_checksum_failed_rows,
+            "zero_filled_total_rows": zero_filled_total_rows,
             "fits_path": fits_path,
             "jpeg2000_path": jp2_path,
+            "png_path": png_path,
             "jpegls_path": jpegls_path,
             "jpegls_chunks": jpegls_chunks,
             "jpegls_selected_chunks": jpegls_selected_chunks,
             "jpegls_bytes": jpegls_bytes,
             "jpegls_eoi_found": jpegls_eoi_found,
             "jpegls_bytes_trimmed_after_eoi": jpegls_bytes_trimmed_after_eoi,
+            "jpegls_decoded": jpegls_decoded,
+            "jpegls_decode_error": jpegls_decode_error,
             "meta_json_path": meta_json_path,
             "warnings": " | ".join(warnings),
         }
@@ -3063,14 +3929,19 @@ def write_csie_image_products(
             "complete_uncompressed_image",
             "partial_uncompressed_image",
             "zero_filled_missing_rows",
+            "zero_filled_checksum_failed_rows",
+            "zero_filled_total_rows",
             "fits_path",
             "jpeg2000_path",
+            "png_path",
             "jpegls_path",
             "jpegls_chunks",
             "jpegls_selected_chunks",
             "jpegls_bytes",
             "jpegls_eoi_found",
             "jpegls_bytes_trimmed_after_eoi",
+            "jpegls_decoded",
+            "jpegls_decode_error",
             "meta_json_path",
             "warnings",
         ],
@@ -3093,9 +3964,12 @@ def print_csie_image_summary(stats: CsieImageStats) -> None:
     print(f"  complete uncompressed images:          {stats.images_complete:,}")
     print(f"  partial uncompressed images:           {stats.images_partial:,}")
     print(f"  compressed JPEG-LS streams written:    {stats.compressed_images_written:,}")
+    print(f"  compressed JPEG-LS images decoded:     {stats.compressed_images_decoded:,}")
+    print(f"  compressed JPEG-LS decode failures:    {stats.compressed_decode_failures:,}")
     print(f"  images written:                        {stats.images_written:,}")
     print(f"    FITS files written:                  {stats.fits_written:,}")
     print(f"    JPEG2000 files written:              {stats.jp2_written:,}")
+    print(f"    PNG files written:                   {stats.png_written:,}")
     print(f"    JPEG-LS files written:               {stats.jpegls_written:,}")
     print(f"  CSIE row checksum-valid rows:          {stats.checksum_valid_rows:,}")
     print(f"  CSIE row checksum-failed rows:         {stats.checksum_failed_rows:,}")
@@ -3130,6 +4004,519 @@ def print_decode_summary(stats: DecodeStats) -> None:
         )
 
 
+def _relative_path_text(path: Path, root: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def _total_input_bytes(paths: list[Path]) -> int:
+    return sum(path.stat().st_size for path in paths)
+
+
+def _products_are_current(input_paths: list[Path], required_outputs: list[Path]) -> bool:
+    if not input_paths or not required_outputs:
+        return False
+    if any(not path.is_file() for path in required_outputs):
+        return False
+    newest_input = max(path.stat().st_mtime for path in input_paths)
+    oldest_output = min(path.stat().st_mtime for path in required_outputs)
+    return oldest_output >= newest_input
+
+
+def discover_combined_source_specs(folder: Path) -> list[SourceSpec]:
+    """Discover top-level X-band/hardline files and explicit nested UHF captures."""
+    source_products_root = folder / DEFAULT_SOURCE_PRODUCTS_DIR_BASENAME
+    specs: list[SourceSpec] = []
+
+    xband_paths = discover_prefixed_binary_files(folder, DEFAULT_XBAND_PREFIX)
+    if xband_paths:
+        specs.append(
+            SourceSpec(
+                source_id="xband",
+                input_mode=INPUT_MODE_XBAND,
+                search_root=folder,
+                input_paths=xband_paths,
+                output_dir=source_products_root / "xband",
+                prefix=DEFAULT_XBAND_PREFIX,
+            )
+        )
+
+    hardline_paths = discover_prefixed_binary_files(folder, DEFAULT_HARDLINE_CCSDS_PREFIX)
+    if hardline_paths:
+        specs.append(
+            SourceSpec(
+                source_id="hardline",
+                input_mode=INPUT_MODE_CCSDS,
+                search_root=folder,
+                input_paths=hardline_paths,
+                output_dir=source_products_root / "hardline",
+                prefix=DEFAULT_HARDLINE_CCSDS_PREFIX,
+            )
+        )
+
+    uhf_search_root = resolve_uhf_search_root(folder)
+    if uhf_search_root.name == DEFAULT_UHF_SUBDIR_BASENAME or (
+        folder / DEFAULT_UHF_SUBDIR_BASENAME
+    ).is_dir():
+        uhf_paths = discover_uhf_binary_files(folder, DEFAULT_HARDLINE_CCSDS_PREFIX)
+        if uhf_paths:
+            specs.append(
+                SourceSpec(
+                    source_id="uhf",
+                    input_mode=INPUT_MODE_UHF,
+                    search_root=uhf_search_root,
+                    input_paths=uhf_paths,
+                    output_dir=source_products_root / "uhf",
+                    prefix=DEFAULT_HARDLINE_CCSDS_PREFIX,
+                )
+            )
+
+    if not specs:
+        raise FileNotFoundError(
+            "Combined input mode found no top-level X-band/hardline files and no "
+            f"nested {DEFAULT_UHF_SUBDIR_BASENAME!r} CCSDS files under {folder}"
+        )
+    return specs
+
+
+def _source_file_for_record_offset(
+    spec: SourceSpec,
+    source_offset: int,
+    *,
+    packet_offsets_are_passthrough: bool,
+) -> str:
+    if len(spec.input_paths) == 1:
+        return _relative_path_text(spec.input_paths[0], spec.search_root)
+    if not packet_offsets_are_passthrough:
+        return ""
+
+    running = 0
+    for path in spec.input_paths:
+        size = path.stat().st_size
+        if running <= source_offset < running + size:
+            return _relative_path_text(path, spec.search_root)
+        running += size
+    return ""
+
+
+def annotate_records_with_source_metadata(
+    records: list[PacketRecord],
+    spec: SourceSpec,
+    *,
+    provenance_quality: str,
+    packet_offsets_are_passthrough: bool,
+) -> None:
+    for record in records:
+        record.source_packet_index = record.packet_index
+        record.source_id = spec.source_id
+        record.source_mode = spec.input_mode
+        record.source_root = str(spec.search_root)
+        record.input_file_relative_path = _source_file_for_record_offset(
+            spec,
+            record.source_offset,
+            packet_offsets_are_passthrough=packet_offsets_are_passthrough,
+        )
+        record.source_acceptance_mode = record.acceptance_mode
+        record.source_provenance_quality = provenance_quality
+        record.source_output_dir = str(spec.output_dir)
+
+
+def load_reusable_packet_records(
+    packets_valid_path: Path,
+    valid_apids: set[int],
+    expected_packet_bytes: dict[int, int],
+) -> tuple[bytes, list[PacketRecord], list[str]]:
+    data = packets_valid_path.read_bytes()
+    repacketized, stats = packetize_checksum_valid_ccsds(
+        data,
+        valid_apids,
+        expected_packet_bytes=expected_packet_bytes,
+        bypass_packet_checksums=True,
+        extract_playback_wrappers=False,
+    )
+    warnings: list[str] = []
+    if len(repacketized) != len(data):
+        warnings.append(
+            "Reused packets_valid.bin did not reparse byte-for-byte; combined mode "
+            f"kept {len(repacketized):,} of {len(data):,} bytes."
+        )
+    warnings.append(
+        "Reused packets_valid.bin for this source; source_offset values are offsets "
+        "within that compact packet stream, not the original merged_fixed.bin."
+    )
+    return repacketized, stats.records, warnings
+
+
+def process_source_product(
+    spec: SourceSpec,
+    args: argparse.Namespace,
+    *,
+    config: Config,
+    apid_names: dict[int, str],
+    valid_apids: set[int],
+    expected_packet_bytes: dict[int, int],
+) -> SourceProduct:
+    output_dir = spec.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    merged_path = output_dir / DEFAULT_MERGED_BASENAME
+    fixed_path = output_dir / DEFAULT_FIXED_BASENAME
+    packets_valid_path = output_dir / DEFAULT_PACKETS_VALID_BASENAME
+    csie_inventory_path = (
+        output_dir
+        / args.csie_dir_name
+        / DEFAULT_CSIE_INVENTORY_BASENAME
+    )
+    required_outputs = [packets_valid_path]
+    if not args.skip_csie_images:
+        required_outputs.append(csie_inventory_path)
+
+    print(f"\n=== Source {spec.source_id} ({spec.input_mode}) ===")
+    print(f"Search root: {spec.search_root}")
+    print(f"Product folder: {output_dir}")
+    print_input_file_summary(
+        spec.input_paths,
+        input_mode=spec.input_mode,
+        relative_to=spec.search_root,
+    )
+    if spec.input_mode == INPUT_MODE_UHF:
+        print(
+            "UHF/Hydra assumption: APID 73 segmented playback is de-duplicated and "
+            "reassembled, and validated direct APID 72 playback chains are unwrapped "
+            "before packet recovery."
+        )
+
+    if (
+        not args.force_source_reprocess
+        and _products_are_current(spec.input_paths, required_outputs)
+    ):
+        packets_valid_data, records, warnings = load_reusable_packet_records(
+            packets_valid_path,
+            valid_apids,
+            expected_packet_bytes,
+        )
+        annotate_records_with_source_metadata(
+            records,
+            spec,
+            provenance_quality="reused_packets_valid_only",
+            packet_offsets_are_passthrough=False,
+        )
+        print(
+            f"Reused current source products from {output_dir}: "
+            f"{len(records):,} packet(s), {len(packets_valid_data):,} packet byte(s)"
+        )
+        for warning in warnings:
+            print(f"WARNING: {warning}")
+        return SourceProduct(
+            spec=spec,
+            packets_valid_path=packets_valid_path,
+            output_dir=output_dir,
+            records=records,
+            reused=True,
+            merged_path=merged_path if merged_path.is_file() else None,
+            fixed_path=fixed_path if fixed_path.is_file() else None,
+            packet_bytes=len(packets_valid_data),
+            raw_bytes=_total_input_bytes(spec.input_paths),
+            warnings=warnings,
+        )
+
+    merge_stats = write_merged_binary(spec.input_paths, merged_path)
+    print(
+        f"Wrote {merge_stats.output_path} from {merge_stats.input_file_count} file(s): "
+        f"{merge_stats.input_bytes:,} bytes"
+    )
+
+    merged_data = merged_path.read_bytes()
+    fixed_data, fix_stats = build_fixed_binary(
+        merged_data,
+        valid_apids=valid_apids,
+        expected_packet_bytes=expected_packet_bytes,
+        input_mode=spec.input_mode,
+        spacecraft_id=args.spacecraft_id,
+        strip_out_of_phase_xband_artifacts=not args.preserve_rf_lapse_artifacts,
+    )
+    fixed_path.write_bytes(fixed_data)
+    print(f"Wrote {fixed_path}: {len(fixed_data):,} bytes")
+    print_fix_summary(fix_stats)
+
+    packets_valid_data, packet_stats = packetize_checksum_valid_ccsds(
+        fixed_data,
+        valid_apids,
+        expected_packet_bytes=expected_packet_bytes,
+        bypass_packet_checksums=not args.require_packet_checksums,
+        extract_playback_wrappers=spec.input_mode == INPUT_MODE_XBAND,
+    )
+    packets_valid_path.write_bytes(packets_valid_data)
+    print(f"Wrote {packets_valid_path}: {len(packets_valid_data):,} bytes")
+    print_packet_summary(packet_stats, apid_names)
+
+    annotate_records_with_source_metadata(
+        packet_stats.records,
+        spec,
+        provenance_quality="source_offset_from_merged_fixed_stream",
+        packet_offsets_are_passthrough=(
+            (
+                spec.input_mode == INPUT_MODE_CCSDS
+                and not (
+                    fix_stats.direct_playback
+                    and fix_stats.direct_playback.wrappers_stripped
+                )
+            )
+            or (
+                spec.input_mode == INPUT_MODE_UHF
+                and not (
+                    fix_stats.uhf_playback
+                    and fix_stats.uhf_playback.segment_packets_seen
+                )
+                and not (
+                    fix_stats.direct_playback
+                    and fix_stats.direct_playback.wrappers_stripped
+                )
+            )
+        ),
+    )
+
+    if not args.skip_csie_images:
+        csie_stats = write_csie_image_products(
+            packet_stats.records,
+            config,
+            output_dir / args.csie_dir_name,
+            fixed_payload_stream=fixed_data,
+            output_suffix=args.product_suffix,
+            write_jpeg2000=not args.skip_csie_jpeg2000,
+            write_png=not args.skip_csie_png,
+        )
+        print_csie_image_summary(csie_stats)
+
+    return SourceProduct(
+        spec=spec,
+        packets_valid_path=packets_valid_path,
+        output_dir=output_dir,
+        records=packet_stats.records,
+        reused=False,
+        merged_path=merged_path,
+        fixed_path=fixed_path,
+        packet_bytes=len(packets_valid_data),
+        raw_bytes=merge_stats.input_bytes,
+    )
+
+
+def _record_sort_time(record: PacketRecord) -> tuple[int, int] | None:
+    if record.apid == CSIE_DATA_APID or len(record.packet) < 12:
+        return None
+    first_word = int.from_bytes(record.packet[0:2], "big")
+    packet_version = (first_word >> 13) & 0x07
+    packet_type = (first_word >> 12) & 0x01
+    secondary_header_flag = (first_word >> 11) & 0x01
+    if packet_version != 0 or packet_type != 0 or secondary_header_flag != 1:
+        return None
+    coarse = int.from_bytes(record.packet[6:10], "big")
+    fine = int.from_bytes(record.packet[10:12], "big")
+    record.combined_time_source = "ccsds_secondary_header"
+    record.combined_time_coarse = coarse
+    record.combined_time_fine = fine
+    return coarse, fine
+
+
+def prepare_combined_records(source_products: list[SourceProduct]) -> list[PacketRecord]:
+    records: list[PacketRecord] = []
+    for product in source_products:
+        records.extend(product.records)
+
+    packet_hash_counts: Counter = Counter()
+    for record in records:
+        record.packet_hash = hashlib.blake2b(record.packet, digest_size=16).hexdigest()
+        packet_hash_counts[record.packet_hash] += 1
+
+    duplicate_hashes = sorted(
+        packet_hash for packet_hash, count in packet_hash_counts.items() if count > 1
+    )
+    duplicate_group_ids = {
+        packet_hash: f"dup_{index:06d}"
+        for index, packet_hash in enumerate(duplicate_hashes, start=1)
+    }
+    for record in records:
+        group_size = packet_hash_counts[record.packet_hash]
+        record.duplicate_group_size = group_size
+        record.is_duplicate_packet = group_size > 1
+        record.duplicate_group_id = duplicate_group_ids.get(record.packet_hash, "")
+        if _record_sort_time(record) is None:
+            record.combined_time_source = "source_order_fallback"
+            record.combined_time_coarse = None
+            record.combined_time_fine = None
+
+    def sort_key(record: PacketRecord) -> tuple[object, ...]:
+        source_packet_index = (
+            record.source_packet_index
+            if record.source_packet_index is not None
+            else record.packet_index
+        )
+        if record.combined_time_source == "ccsds_secondary_header":
+            return (
+                0,
+                record.combined_time_coarse or 0,
+                record.combined_time_fine or 0,
+                record.source_id,
+                record.input_file_relative_path,
+                source_packet_index,
+                record.source_offset,
+            )
+        return (
+            1,
+            record.source_id,
+            record.input_file_relative_path,
+            source_packet_index,
+            record.source_offset,
+        )
+
+    records.sort(key=sort_key)
+    for packet_index, record in enumerate(records):
+        record.packet_index = packet_index
+    return records
+
+
+def packetize_stats_from_records(records: list[PacketRecord]) -> PacketizeStats:
+    stats = PacketizeStats(records=records)
+    for record in records:
+        algorithm = record.acceptance_mode or "combined_record"
+        _record_candidate_packet(stats, record.apid, record.packet_len)
+        _record_valid_packet(stats, record.apid, record.packet_len, algorithm)
+    return stats
+
+
+def write_combined_source_summary(
+    path: Path,
+    source_products: list[SourceProduct],
+) -> None:
+    rows: list[dict[str, object]] = []
+    for product in source_products:
+        apids = Counter(record.apid for record in product.records)
+        rows.append(
+            {
+                "source_id": product.spec.source_id,
+                "source_mode": product.spec.input_mode,
+                "source_root": str(product.spec.search_root),
+                "source_output_dir": str(product.output_dir),
+                "input_files": len(product.spec.input_paths),
+                "input_bytes": product.raw_bytes,
+                "packets": len(product.records),
+                "packet_bytes": product.packet_bytes,
+                "reused": product.reused,
+                "packets_valid_path": str(product.packets_valid_path),
+                "top_apids": ", ".join(
+                    f"{apid}:{count}" for apid, count in apids.most_common(12)
+                ),
+                "warnings": " | ".join(product.warnings),
+            }
+        )
+    _write_csv_rows(
+        path,
+        rows,
+        [
+            "source_id",
+            "source_mode",
+            "source_root",
+            "source_output_dir",
+            "input_files",
+            "input_bytes",
+            "packets",
+            "packet_bytes",
+            "reused",
+            "packets_valid_path",
+            "top_apids",
+            "warnings",
+        ],
+    )
+
+
+def run_combined_pipeline(
+    args: argparse.Namespace,
+    *,
+    config: Config,
+    folder: Path,
+) -> None:
+    if args.prefix is not None:
+        print(
+            "WARNING: --prefix is ignored in combined mode; using default source "
+            "discovery for top-level X-band/hardline and nested UHF files."
+        )
+
+    specs = discover_combined_source_specs(folder)
+    print(f"Data folder: {folder}")
+    print(f"Input mode:  {INPUT_MODE_COMBINED}")
+    print("Combined sources:")
+    for spec in specs:
+        print(
+            f"  {spec.source_id}: {spec.input_mode}, "
+            f"{len(spec.input_paths):,} file(s), search root {spec.search_root}"
+        )
+
+    apid_names = read_apid_names_from_config(config)
+    valid_apids = set(apid_names)
+    print(f"Loaded {len(valid_apids)} valid APIDs from configured CTDBs.")
+    if TEMP_DSPS_DATA_APID in apid_names:
+        print(
+            "WARNING: FIXME temporary CTDB workaround active: treating APID "
+            f"{TEMP_DSPS_DATA_APID} as {TEMP_DSPS_DATA_PACKET_NAME!r} with "
+            f"{TEMP_DSPS_DATA_PACKET_BYTES} total packet bytes until ct_pkt.csv "
+            "and ct_tlm.csv include DSPS data."
+        )
+    expected_packet_bytes = read_expected_packet_bytes_from_config(config)
+    print(
+        f"Loaded fixed packet byte sizes for {len(expected_packet_bytes)} APIDs "
+        "from configured CTDB telemetry definitions."
+    )
+
+    source_products = [
+        process_source_product(
+            spec,
+            args,
+            config=config,
+            apid_names=apid_names,
+            valid_apids=valid_apids,
+            expected_packet_bytes=expected_packet_bytes,
+        )
+        for spec in specs
+    ]
+
+    combined_records = prepare_combined_records(source_products)
+    combined_data = b"".join(record.packet for record in combined_records)
+    combined_packets_path = folder / COMBINED_PACKETS_VALID_BASENAME
+    combined_packets_path.write_bytes(combined_data)
+    print(
+        f"\nWrote {combined_packets_path}: {len(combined_data):,} bytes from "
+        f"{len(combined_records):,} merged packet record(s)"
+    )
+
+    combined_stats = packetize_stats_from_records(combined_records)
+    print_packet_summary(combined_stats, apid_names)
+
+    source_summary_path = folder / COMBINED_SOURCE_SUMMARY_BASENAME
+    write_combined_source_summary(source_summary_path, source_products)
+    print(f"Wrote combined source summary: {source_summary_path}")
+
+    if not args.skip_decode_csv:
+        decode_stats = decode_packet_records_to_csv(
+            combined_records,
+            config,
+            apid_names,
+            folder / COMBINED_DECODED_DIR_BASENAME,
+            manifest_path_override=folder / COMBINED_PACKET_MANIFEST_BASENAME,
+            summary_path_override=folder / COMBINED_DECODE_SUMMARY_BASENAME,
+        )
+        print_decode_summary(decode_stats)
+
+    if args.skip_csie_images:
+        print("CSIE image assembly skipped for all source products.")
+    else:
+        print(
+            "CSIE image products remain source-specific under "
+            f"{folder / DEFAULT_SOURCE_PRODUCTS_DIR_BASENAME}/*/"
+            f"{args.csie_dir_name}."
+        )
+
+
 def main(argv: list[str] | None = None) -> None:
     default_config = Path(__file__).resolve().parent / "config_files" / "config_default.ini"
     parser = argparse.ArgumentParser(
@@ -3154,7 +4541,8 @@ def main(argv: list[str] | None = None) -> None:
         help=(
             "Input binary basename prefix. Default is mode-dependent: "
             f"{DEFAULT_XBAND_PREFIX!r} for X-band, {DEFAULT_HARDLINE_CCSDS_PREFIX!r} "
-            "for hardline CCSDS. In auto mode, both defaults are tried."
+            "for hardline CCSDS and UHF. In auto mode, only top-level X-band and "
+            "hardline defaults are tried."
         ),
     )
     parser.add_argument(
@@ -3164,12 +4552,26 @@ def main(argv: list[str] | None = None) -> None:
             INPUT_MODE_XBAND,
             INPUT_MODE_CCSDS,
             INPUT_MODE_HARDLINE,
+            INPUT_MODE_UHF,
+            INPUT_MODE_COMBINED,
         ),
         default=INPUT_MODE_AUTO,
         help=(
             "Input wrapper format. 'xband' strips X-band transfer frames; 'ccsds' "
             "or 'hardline' treats merged input as a direct CCSDS packet stream; "
-            "'auto' detects by default prefixes."
+            "'uhf' recursively reads Hydra UHF ccsds_* files, preserving direct "
+            "CCSDS packets and reassembling APID 73 segmented APID 72 playback; "
+            "'combined' processes top-level X-band/hardline plus nested UHF sources "
+            "separately, then merges recovered CCSDS packet records; "
+            "'auto' detects top-level default prefixes only."
+        ),
+    )
+    parser.add_argument(
+        "--force-source-reprocess",
+        action="store_true",
+        help=(
+            "Combined mode only: rebuild per-source products even when existing "
+            "source_products outputs are newer than the raw inputs."
         ),
     )
     parser.add_argument(
@@ -3229,7 +4631,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--skip-csie-images",
         action="store_true",
-        help="Skip CSIE image inventory and FITS/JPEG2000 product assembly.",
+        help="Skip CSIE image inventory and JLS/FITS/PNG/JPEG2000 product assembly.",
     )
     parser.add_argument(
         "--skip-csie-jpeg2000",
@@ -3237,11 +4639,16 @@ def main(argv: list[str] | None = None) -> None:
         help="Write CSIE FITS products but skip JPEG2000 preview products.",
     )
     parser.add_argument(
+        "--skip-csie-png",
+        action="store_true",
+        help="Write CSIE FITS products but skip inferno PNG preview products.",
+    )
+    parser.add_argument(
         "--product-suffix",
         default="",
         help=(
-            "Optional suffix for staged CSIE FITS/JPEG2000 filenames. Default is empty; "
-            "config structure.output_suffix is intentionally not used here."
+            "Optional suffix for staged CSIE image filenames. Default is empty; config "
+            "structure.output_suffix is intentionally not used here."
         ),
     )
     parser.add_argument(
@@ -3263,12 +4670,23 @@ def main(argv: list[str] | None = None) -> None:
     if not folder.is_dir():
         raise FileNotFoundError(f"Data folder does not exist: {folder}")
 
+    if args.input_mode == INPUT_MODE_COMBINED:
+        run_combined_pipeline(args, config=config, folder=folder)
+        return
+
     input_mode, input_prefix, input_paths = resolve_input_files_and_mode(
         folder,
         prefix=args.prefix,
         input_mode=args.input_mode,
     )
     if not input_paths:
+        if input_mode == INPUT_MODE_UHF:
+            uhf_search_root = resolve_uhf_search_root(folder)
+            raise FileNotFoundError(
+                f"No recursive UHF files starting with {input_prefix!r} under "
+                f"{uhf_search_root}. Pass --folder as either the parent folder "
+                f"containing {DEFAULT_UHF_SUBDIR_BASENAME!r} or the UHF folder itself."
+            )
         raise FileNotFoundError(
             f"No top-level files starting with {input_prefix!r} in {folder}"
         )
@@ -3276,17 +4694,31 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Data folder: {folder}")
     print(f"Input mode:  {input_mode}")
     print(f"Input prefix: {input_prefix!r}")
-    print_input_file_summary(input_paths, input_mode=input_mode)
+    uhf_search_root = resolve_uhf_search_root(folder) if input_mode == INPUT_MODE_UHF else None
+    if uhf_search_root is not None:
+        print(f"UHF search root: {uhf_search_root}")
+    print_input_file_summary(
+        input_paths,
+        input_mode=input_mode,
+        relative_to=uhf_search_root,
+    )
     if input_mode == INPUT_MODE_XBAND:
         print(
             "\nFrame assumption: 2056-byte records = 4-byte ASM + 6-byte TM primary "
             "+ 2-byte padding + 2044-byte data field."
         )
+    elif input_mode == INPUT_MODE_UHF:
+        print(
+            "\nUHF/Hydra assumption: ordinary captures are direct CCSDS streams and "
+            "pass through unchanged. APID 73 segmented playback is reassembled, and "
+            "validated direct APID 72 playback chains are unwrapped before packet "
+            "recovery."
+        )
     else:
         print(
-            "\nHardline realtime assumption: input files are already direct CCSDS "
-            "packet streams with no ASM, transfer-frame header, playback wrapper, "
-            "or frame trailer to strip."
+            "\nHardline assumption: input files contain CCSDS packets without ASM or "
+            "transfer-frame wrappers. Validated direct APID 72 playback chains are "
+            "unwrapped before inner packet recovery."
         )
 
     merged_path = folder / args.merged_name
@@ -3317,6 +4749,8 @@ def main(argv: list[str] | None = None) -> None:
     merged_data = merged_path.read_bytes()
     fixed_data, fix_stats = build_fixed_binary(
         merged_data,
+        valid_apids=valid_apids,
+        expected_packet_bytes=expected_packet_bytes,
         input_mode=input_mode,
         spacecraft_id=args.spacecraft_id,
         strip_out_of_phase_xband_artifacts=not args.preserve_rf_lapse_artifacts,
@@ -3335,6 +4769,43 @@ def main(argv: list[str] | None = None) -> None:
     packets_valid_path.write_bytes(packets_valid_data)
     print(f"\nWrote {packets_valid_path}: {len(packets_valid_data):,} bytes")
     print_packet_summary(packet_stats, apid_names)
+    single_source_spec = SourceSpec(
+        source_id=input_mode,
+        input_mode=input_mode,
+        search_root=uhf_search_root or folder,
+        input_paths=input_paths,
+        output_dir=folder,
+        prefix=input_prefix,
+    )
+    annotate_records_with_source_metadata(
+        packet_stats.records,
+        single_source_spec,
+        provenance_quality="source_offset_from_merged_fixed_stream",
+        packet_offsets_are_passthrough=(
+            (
+                input_mode == INPUT_MODE_CCSDS
+                and not (
+                    fix_stats.direct_playback
+                    and fix_stats.direct_playback.wrappers_stripped
+                )
+            )
+            or (
+                input_mode == INPUT_MODE_UHF
+                and not (
+                    fix_stats.uhf_playback
+                    and fix_stats.uhf_playback.segment_packets_seen
+                )
+                and not (
+                    fix_stats.direct_playback
+                    and fix_stats.direct_playback.wrappers_stripped
+                )
+            )
+        ),
+    )
+    for record in packet_stats.records:
+        record.packet_hash = hashlib.blake2b(record.packet, digest_size=16).hexdigest()
+        if _record_sort_time(record) is None:
+            record.combined_time_source = "single_source_order"
 
     if not args.skip_decode_csv:
         decoded_dir = folder / args.decoded_dir_name
@@ -3354,6 +4825,7 @@ def main(argv: list[str] | None = None) -> None:
             fixed_payload_stream=fixed_data,
             output_suffix=args.product_suffix,
             write_jpeg2000=not args.skip_csie_jpeg2000,
+            write_png=not args.skip_csie_png,
         )
         print_csie_image_summary(csie_stats)
 
