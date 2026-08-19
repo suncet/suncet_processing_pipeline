@@ -3,6 +3,7 @@ This is the main wrapper for most/all(?) of the other processor related python f
 """
 import os
 from glob import glob
+from pathlib import Path
 import pandas as pd
 import astropy.units as u
 import sunpy.map
@@ -11,12 +12,17 @@ from suncet_processing_pipeline import config_parser
 from suncet_processing_pipeline.make_level0_5 import Level0_5
 from suncet_processing_pipeline.make_level0_5 import discover_level0_5_input_files
 from suncet_processing_pipeline.make_level1 import Level1
+from suncet_processing_pipeline.run_provenance import (
+    ProcessingRunProvenance,
+    resolved_config_snapshot,
+)
 
 class Processor:
     def __init__(self, config_filename=None):
         if config_filename is None: 
             raise ValueError('It is important that you specify a path/filename to the config file you want to run with. That is your main method of interacting with the procesing.')
-        self.config = self.__read_config(config_filename)
+        self.config_filename = os.path.abspath(os.path.expanduser(config_filename))
+        self.config = self.__read_config(self.config_filename)
         self.metadata = self.__load_metadata_definition()
 
 
@@ -39,18 +45,32 @@ class Processor:
 
 
     def run(self):
-        if self.config.make_level0_5:
-            data_path = self.config.data_to_process_path
-            # Resolve path: absolute (~ or /) use as-is; otherwise relative to suncet_data
-            if data_path.startswith('/') or data_path.startswith('~'):
-                folder = os.path.expanduser(data_path)
-            else:
-                folder = os.path.join(os.getenv('suncet_data', ''), data_path)
+        data_path = self.config.data_to_process_path
+        if data_path.startswith('/') or data_path.startswith('~'):
+            folder = os.path.abspath(os.path.expanduser(data_path))
+        else:
+            folder = os.path.abspath(os.path.join(os.getenv('suncet_data', ''), data_path))
 
+        file_paths = []
+        if self.config.make_level0_5:
             file_paths = discover_level0_5_input_files(
                 folder, ignore_realtime=getattr(self.config, "ignore_realtime", False)
             )
 
+        provenance = ProcessingRunProvenance(
+            data_root=folder,
+            run_kind="suncet_processor",
+            config_path=self.config_filename,
+            resolved_config=resolved_config_snapshot(self.config, Path(folder)),
+            arguments={"config": self.config_filename},
+            repository_hint=Path(__file__).resolve().parent,
+        )
+        with provenance:
+            provenance.record_inputs(file_paths)
+            self._run_pipeline(folder, file_paths)
+
+    def _run_pipeline(self, folder, file_paths):
+        if self.config.make_level0_5:
             processor = Level0_5(
                 file_paths,
                 self.config.packet_definitions_path,
@@ -69,7 +89,6 @@ class Processor:
         if self.config.make_level1:
             level1 = Level1(self.config)
             level1.make(level0_5_to_process=os.getenv('suncet_data') + 'level0_5/')
-        pass
 
 
 if __name__ == "__main__":

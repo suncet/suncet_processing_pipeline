@@ -43,6 +43,21 @@ python -m pip install --no-deps -e .
 
 Developers using pip should install `requirements-dev.txt` instead. CUDA and JetPack are system-level Jetson dependencies and are intentionally not included in these portable Python environments.
 
+## Processing provenance
+
+Processing commands automatically write a unique JSON manifest under `<data folder>/processing_manifests/`. A manifest is written atomically when the run starts and finalized whether processing succeeds or raises an exception. Each manifest records:
+
+- UTC start/end times, duration, status, command line, and parsed arguments
+- Git commit, branch, dirty-tree state, and changed file names
+- configuration contents and SHA-256 checksum, with sensitive-looking values redacted
+- resolved data and CTDB paths plus pipeline, bus, and CSIE versions
+- hostname, operating system, CPU architecture, Python, Conda, and installed package versions
+- input file sizes, timestamps, and SHA-256 checksums
+- created, modified, or deleted outputs and SHA-256 checksums
+- exception type, message, and traceback for failed runs
+
+The manifests are deliberately stored with the processed data rather than in the Git repository. Re-running the pipeline creates a new manifest instead of overwriting previous provenance.
+
 ## Running the Code
 The code uses a lightweight run management system. First, a new run is created which makes a new directory for the run. Then, the user copies the input data (binary packet telemetary) to the input sub-directory for the run. When that is done, one or more commands are executed to perform the processing, which will leave data in output sub-directories.
 

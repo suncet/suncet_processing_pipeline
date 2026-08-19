@@ -16,6 +16,10 @@ sys.path.append(str(Path(__file__).parent.parent))
 from suncet_processing_pipeline import (
     config_parser, metadata_managers
 )
+from suncet_processing_pipeline.run_provenance import (
+    ProcessingRunProvenance,
+    resolved_config_snapshot,
+)
 
 
 class Level3:
@@ -121,17 +125,33 @@ def _get_parser():
     return parser
 
  
-def main():
+def main(argv=None):
     """Main method when running this script directly."""
-    args = _get_parser().parse_args()
+    args = _get_parser().parse_args(argv)
 
     # Load config
     config_filename = Path('processing_runs') / args.run_name / 'config.ini'
     config = config_parser.Config(config_filename)
+    run_dir = Path('processing_runs') / args.run_name
 
     # Call run() method on Level3 class
     level3 = Level3(args.run_name, config)
-    level3.run()
+    input_files = sorted(
+        path for path in (run_dir / 'level2').rglob('*') if path.is_file()
+    )
+    argv_list = list(argv) if argv is not None else sys.argv[1:]
+    provenance = ProcessingRunProvenance(
+        data_root=run_dir,
+        run_kind="make_level3",
+        config_path=config_filename,
+        resolved_config=resolved_config_snapshot(config, run_dir.resolve()),
+        arguments=vars(args),
+        argv=[str(Path(__file__).resolve()), *argv_list],
+        repository_hint=Path(__file__).resolve().parents[1],
+    )
+    with provenance:
+        provenance.record_inputs(input_files)
+        level3.run()
     
 
 if __name__ == '__main__':

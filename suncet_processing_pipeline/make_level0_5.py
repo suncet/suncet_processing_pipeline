@@ -11,6 +11,7 @@ import os
 import sys
 import time 
 from datetime import datetime
+from pathlib import Path
 import pandas as pd 
 import h5py 
 import imagecodecs
@@ -21,6 +22,10 @@ import types
 import configparser
 import json
 from collections import Counter
+from suncet_processing_pipeline.run_provenance import (
+    ProcessingRunProvenance,
+    resolved_config_snapshot,
+)
 
 
 class Level0_5:
@@ -2140,9 +2145,7 @@ def discover_level0_5_input_files(folder, ignore_realtime=False):
     return sorted(file_paths)
 
 
-def main():
-    from suncet_processing_pipeline.config_parser import Config
-
+def _build_argument_parser():
     default_config = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
     parser = argparse.ArgumentParser(description='SunCET Level 0.5 processing')
     parser.add_argument(
@@ -2160,23 +2163,34 @@ def main():
         action='store_true',
         help='Write JPEG2000 (.jp2) previews next to FITS (overrides config save_jpeg2000)',
     )
-    args = parser.parse_args()
-    config_path = os.path.abspath(os.path.expanduser(args.config))
-    if not os.path.isfile(config_path):
-        raise SystemExit(f'Config file not found: {config_path}')
-    config = Config(config_path)
+    return parser
+
+
+def _main_without_provenance(argv=None, *, _prepared=None):
+    from suncet_processing_pipeline.config_parser import Config
+
+    args = _build_argument_parser().parse_args(argv)
+    if _prepared is None:
+        config_path = os.path.abspath(os.path.expanduser(args.config))
+        if not os.path.isfile(config_path):
+            raise SystemExit(f'Config file not found: {config_path}')
+        config = Config(config_path)
+        data_path = config.data_to_process_path
+
+        # Resolve path: absolute (~ or /) use as-is; otherwise relative to suncet_data
+        if data_path.startswith('/') or data_path.startswith('~'):
+            folder = os.path.expanduser(data_path)
+        else:
+            folder = os.path.join(os.getenv('suncet_data', ''), data_path)
+        file_paths = discover_level0_5_input_files(
+            folder, ignore_realtime=config.ignore_realtime
+        )
+    else:
+        config, folder, file_paths = _prepared
     if args.save_png:
         config.save_png = True
     if args.save_jpeg2000:
         config.save_jpeg2000 = True
-    data_path = config.data_to_process_path
-
-    # Resolve path: absolute (~ or /) use as-is; otherwise relative to suncet_data
-    if data_path.startswith('/') or data_path.startswith('~'):
-        folder = os.path.expanduser(data_path)
-    else:
-        folder = os.path.join(os.getenv('suncet_data', ''), data_path)
-    file_paths = discover_level0_5_input_files(folder, ignore_realtime=config.ignore_realtime)
 
     processor = Level0_5(
         file_paths,
@@ -2191,6 +2205,50 @@ def main():
     )
 
     processor.process()
+
+
+def main(argv=None):
+    """Run Level 0.5 processing and retain an atomic provenance manifest."""
+    from suncet_processing_pipeline.config_parser import Config
+
+    argv_list = list(argv) if argv is not None else sys.argv[1:]
+    provenance_args = _build_argument_parser().parse_args(argv_list)
+    config_path = os.path.abspath(os.path.expanduser(provenance_args.config))
+    if not os.path.isfile(config_path):
+        return _main_without_provenance(argv_list)
+    config = Config(config_path)
+    if provenance_args.save_png:
+        config.save_png = True
+    if provenance_args.save_jpeg2000:
+        config.save_jpeg2000 = True
+    data_path = config.data_to_process_path
+    if data_path.startswith('/') or data_path.startswith('~'):
+        folder = os.path.abspath(os.path.expanduser(data_path))
+    else:
+        folder = os.path.abspath(os.path.join(os.getenv('suncet_data', ''), data_path))
+    file_paths = discover_level0_5_input_files(
+        folder, ignore_realtime=config.ignore_realtime
+    )
+    if not os.path.isdir(folder):
+        return _main_without_provenance(
+            argv_list, _prepared=(config, folder, file_paths)
+        )
+
+    provenance = ProcessingRunProvenance(
+        data_root=folder,
+        run_kind="make_level0_5",
+        config_path=config_path,
+        resolved_config=resolved_config_snapshot(config, Path(folder)),
+        arguments=vars(provenance_args),
+        argv=[os.path.abspath(__file__), *argv_list],
+        repository_hint=Path(__file__).resolve().parents[1],
+    )
+    with provenance:
+        provenance.record_inputs(file_paths)
+        _main_without_provenance(
+            argv_list, _prepared=(config, folder, file_paths)
+        )
+
 
 if __name__ == "__main__":
     main()

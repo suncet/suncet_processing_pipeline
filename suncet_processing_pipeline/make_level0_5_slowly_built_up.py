@@ -47,6 +47,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from suncet_processing_pipeline.config_parser import Config
+from suncet_processing_pipeline.run_provenance import (
+    ProcessingRunProvenance,
+    resolved_config_snapshot,
+)
 
 
 SYNC_MARKER = b"\x1a\xcf\xfc\x1d"
@@ -4514,7 +4518,7 @@ def run_combined_pipeline(
         )
 
 
-def main(argv: list[str] | None = None) -> None:
+def _build_argument_parser() -> argparse.ArgumentParser:
     default_config = Path(__file__).resolve().parent / "config_files" / "config_default.ini"
     parser = argparse.ArgumentParser(
         description=(
@@ -4656,14 +4660,25 @@ def main(argv: list[str] | None = None) -> None:
             "stripping them as RF-lapse/resync artifacts."
         ),
     )
-    args = parser.parse_args(argv)
+    return parser
 
-    config = Config(os.path.abspath(os.path.expanduser(args.config)))
-    folder = (
-        Path(args.folder).expanduser().resolve()
-        if args.folder is not None
-        else resolve_config_data_folder(config)
-    )
+
+def _main_without_provenance(
+    argv: list[str] | None = None,
+    *,
+    _prepared: tuple[Config, Path] | None = None,
+) -> None:
+    args = _build_argument_parser().parse_args(argv)
+
+    if _prepared is None:
+        config = Config(os.path.abspath(os.path.expanduser(args.config)))
+        folder = (
+            Path(args.folder).expanduser().resolve()
+            if args.folder is not None
+            else resolve_config_data_folder(config)
+        )
+    else:
+        config, folder = _prepared
     if not folder.is_dir():
         raise FileNotFoundError(f"Data folder does not exist: {folder}")
 
@@ -4825,6 +4840,45 @@ def main(argv: list[str] | None = None) -> None:
             write_png=not args.skip_csie_png,
         )
         print_csie_image_summary(csie_stats)
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Run the staged pipeline and retain an atomic provenance manifest."""
+    argv_list = list(argv) if argv is not None else sys.argv[1:]
+    provenance_args = _build_argument_parser().parse_args(argv_list)
+    config_path = Path(provenance_args.config).expanduser().resolve()
+    config = Config(str(config_path))
+    folder = (
+        Path(provenance_args.folder).expanduser().resolve()
+        if provenance_args.folder is not None
+        else resolve_config_data_folder(config)
+    )
+    if not folder.is_dir():
+        return _main_without_provenance(argv_list, _prepared=(config, folder))
+
+    provenance = ProcessingRunProvenance(
+        data_root=folder,
+        run_kind="make_level0_5_slowly_built_up",
+        config_path=config_path,
+        resolved_config=resolved_config_snapshot(config, folder),
+        arguments=vars(provenance_args),
+        argv=[str(Path(__file__).resolve()), *argv_list],
+        repository_hint=Path(__file__).resolve().parents[1],
+    )
+    with provenance:
+        if provenance_args.input_mode == INPUT_MODE_COMBINED:
+            specs = discover_combined_source_specs(folder)
+            provenance.record_inputs(
+                path for spec in specs for path in spec.input_paths
+            )
+        else:
+            _mode, _prefix, input_paths = resolve_input_files_and_mode(
+                folder,
+                prefix=provenance_args.prefix,
+                input_mode=provenance_args.input_mode,
+            )
+            provenance.record_inputs(input_paths)
+        _main_without_provenance(argv_list, _prepared=(config, folder))
 
 
 if __name__ == "__main__":

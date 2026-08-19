@@ -8,6 +8,7 @@ import argparse
 from pathlib import Path
 from glob import glob
 import os
+import sys
 
 from astropy.io import fits
 import numpy as np
@@ -15,6 +16,10 @@ from termcolor import cprint
 
 from suncet_processing_pipeline import config_parser
 from suncet_processing_pipeline import suncet_deconv
+from suncet_processing_pipeline.run_provenance import (
+    ProcessingRunProvenance,
+    resolved_config_snapshot,
+)
 
 
 class Level2:
@@ -177,14 +182,14 @@ def _get_parser():
     return parser
 
 
-def main():
+def main(argv=None):
     """Main method when running this script directly."""
-    args = _get_parser().parse_args()
+    args = _get_parser().parse_args(argv)
     
-    # Load config if provided
-    config = None
-    if args.config_file:
-        config = config_parser.Config(args.config_file)
+    config_path = Path(args.config_file).expanduser().resolve() if args.config_file else (
+        Path(__file__).resolve().parent / 'config_files' / 'config_default.ini'
+    )
+    config = config_parser.Config(str(config_path))
     
     # Create Level2 instance
     level2 = Level2(
@@ -196,10 +201,44 @@ def main():
         correction_factor=args.correction_factor,
     )
     
-    # Run processing
-    level2.run(args.input_path, args.output_path)
+    input_path = Path(args.input_path).expanduser().resolve()
+    if args.output_path is not None:
+        output_path = Path(args.output_path).expanduser().resolve()
+    else:
+        suncet_data = os.getenv('suncet_data')
+        if suncet_data is None:
+            raise ValueError("Environment variable 'suncet_data' is not set")
+        output_path = Path(suncet_data).expanduser().resolve() / (
+            'synthetic/level2' if 'synthetic' in str(input_path) else 'level2'
+        )
+
+    if input_path.is_dir():
+        input_files = sorted(input_path.glob('*.fits'))
+    else:
+        input_files = [input_path]
+    input_files.extend(
+        Path(path).expanduser().resolve()
+        for path in (
+            args.diffraction_psf_file,
+            args.scatter_psf_file,
+            args.spec_file,
+            args.resp_file,
+        )
+    )
+    argv_list = list(argv) if argv is not None else sys.argv[1:]
+    provenance = ProcessingRunProvenance(
+        data_root=output_path,
+        run_kind="make_level2",
+        config_path=config_path,
+        resolved_config=resolved_config_snapshot(config, output_path),
+        arguments=vars(args),
+        argv=[str(Path(__file__).resolve()), *argv_list],
+        repository_hint=Path(__file__).resolve().parents[1],
+    )
+    with provenance:
+        provenance.record_inputs(input_files)
+        level2.run(input_path, output_path)
 
 
 if __name__ == '__main__':
     main()
-
