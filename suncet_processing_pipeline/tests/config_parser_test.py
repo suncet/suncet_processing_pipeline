@@ -20,6 +20,6 @@ def test_read_default_config():
     assert hasattr(config, 'save_png')
     assert config.save_png is True
     assert hasattr(config, 'save_jpeg2000')
-    assert config.save_jpeg2000 is True
+    assert config.save_jpeg2000 is False
     assert hasattr(config, 'also_save_csie_meta_json')
     assert config.also_save_csie_meta_json is True

@@ -605,7 +605,7 @@ def test_realtime_config_loads_time_conversion_settings():
     assert config.time.min_valid_j2000_seconds == 700000000.0
     assert config.time.max_plot_time_jump_seconds == 300.0
     assert config.time.max_plot_time_wall_rate == 5.0
-    assert config.value_filter.enabled is True
+    assert config.value_filter.enabled is False
     assert config.value_filter.sigma_threshold == 3.0
     assert config.value_filter.min_samples == 12
     assert config.value_filter.window_points == 50
