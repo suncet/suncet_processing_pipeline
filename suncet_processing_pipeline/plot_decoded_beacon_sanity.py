@@ -54,6 +54,7 @@ NUMERIC_BEACON_FIELDS = [
     "beac_ana_csie_curr",
     "beac_ana_csie_power",
     "beac_ana_eps_bus_i",
+    "beac_ana_eps_bus_v",
     "beac_ana_xband_v",
     "beac_batt1_charge_current",
     "beac_batt1_temp",
@@ -80,10 +81,25 @@ DSPS_VISIBLE_DIODE_FIELDS = [
     "dsps_visible_sps_diodes_3",
 ]
 
+DSPS_X_RAY_DIODE_FIELDS = [
+    "dsps_x_ray_sps_diodes_0",
+    "dsps_x_ray_sps_diodes_1",
+    "dsps_x_ray_sps_diodes_2",
+    "dsps_x_ray_sps_diodes_3",
+]
+
 PLOT_VALUE_LIMITS = {
-    "beac_ana_bat1_v": {"max": 17.0},
-    "beac_ana_bat2_v": {"max": 17.0},
+    "beac_ana_bat1_v": {"min": 11.0, "max": 17.0},
+    "beac_ana_bat2_v": {"min": 11.0, "max": 17.0},
+    "beac_ana_cdh_temp": {"min": -100.0, "max": 100.0},
+    "beac_ana_csie_curr": {"min": 0.0, "max": 5.0},
+    "beac_ana_csie_volt": {"min": 0.0, "max": 17.0},
     "beac_ana_csie_power": {"min": 3.0},
+    "beac_ana_eps_bus_v": {"sigma": 3.0},
+    "beac_batt1_charge_current": {"sigma": 3.0},
+    "beac_batt1_temp": {"sigma": 3.0},
+    "beac_dsps_sensor_board_temp": {"sigma": 3.0},
+    "csie_det0_therm": {"sigma": 3.0},
 }
 
 DERIVED_NUMERIC_FIELDS = {
@@ -93,6 +109,18 @@ DERIVED_NUMERIC_FIELDS = {
 SMOOTHED_NUMERIC_FIELDS = {
     "beac_ana_csie_power",
 }
+
+
+def _apply_numeric_limits(values: pd.Series, field: str) -> pd.Series:
+    values = pd.to_numeric(values, errors="coerce")
+    limits = PLOT_VALUE_LIMITS.get(field, {})
+    if "min" in limits:
+        values = values.where(values >= limits["min"])
+    if "max" in limits:
+        values = values.where(values <= limits["max"])
+    if limits.get("drop_zero"):
+        values = values.where(values != 0)
+    return values
 
 
 def leap_seconds_after_j2000(seconds: float) -> int:
@@ -176,8 +204,8 @@ def add_derived_beacon_fields(df: pd.DataFrame) -> pd.DataFrame:
     for derived_field, (left_field, right_field) in DERIVED_NUMERIC_FIELDS.items():
         if left_field not in df.columns or right_field not in df.columns:
             continue
-        left = pd.to_numeric(df[left_field], errors="coerce")
-        right = pd.to_numeric(df[right_field], errors="coerce")
+        left = _apply_numeric_limits(df[left_field], left_field)
+        right = _apply_numeric_limits(df[right_field], right_field)
         df[derived_field] = left * right
     return df
 
@@ -228,16 +256,21 @@ def _filtered_numeric_series_for_x(
     field: str,
     x_column: str,
 ) -> tuple[pd.Series, pd.Series, int]:
-    values = pd.to_numeric(df[field], errors="coerce")
+    raw_values = pd.to_numeric(df[field], errors="coerce")
+    values = _apply_numeric_limits(raw_values, field)
     mask = values.notna()
     limits = PLOT_VALUE_LIMITS.get(field, {})
-    if "min" in limits:
-        mask &= values >= limits["min"]
-    if "max" in limits:
-        mask &= values <= limits["max"]
-    if limits.get("drop_zero"):
-        mask &= values != 0
-    return df.loc[mask, x_column], values.loc[mask], int(values.notna().sum() - mask.sum())
+    sigma = limits.get("sigma")
+    if sigma is not None:
+        sigma_values = values.loc[mask].dropna()
+        if len(sigma_values) > 1:
+            mean = sigma_values.mean()
+            std = sigma_values.std()
+            if pd.notna(std) and std > 0:
+                mask &= (values >= mean - float(sigma) * std) & (
+                    values <= mean + float(sigma) * std
+                )
+    return df.loc[mask, x_column], values.loc[mask], int(raw_values.notna().sum() - mask.sum())
 
 
 def _filtered_numeric_series(df: pd.DataFrame, field: str) -> tuple[pd.Series, pd.Series, int]:
@@ -313,10 +346,13 @@ def _plot_numeric_series(
             label.append(f"> {limits['max']:g}")
         if limits.get("drop_zero"):
             label.append("= 0")
+        if "sigma" in limits:
+            label.append(f"> {limits['sigma']:g} sigma")
+        label_text = " or ".join(label) if label else "filter"
         ax.text(
             0.99,
             0.92,
-            f"{dropped} clipped ({' or '.join(label)})",
+            f"{dropped} clipped ({label_text})",
             transform=ax.transAxes,
             ha="right",
             va="top",
@@ -579,6 +615,33 @@ def make_csie_power_temperature_stack(
     plt.close(fig)
 
 
+def make_eps_bus_voltage_det0_temperature_stack(
+    beacon_df: pd.DataFrame,
+    csie_hk_df: pd.DataFrame,
+    output_path: Path,
+) -> None:
+    eps_bus_v_field = "beac_ana_eps_bus_v"
+    det0_therm_field = "csie_det0_therm"
+    if eps_bus_v_field not in beacon_df.columns:
+        raise RuntimeError(f"Missing beacon field: {eps_bus_v_field}")
+    if det0_therm_field not in csie_hk_df.columns:
+        raise RuntimeError(f"Missing CSIE HK field: {det0_therm_field}")
+
+    fig, axes = plt.subplots(
+        2,
+        1,
+        figsize=(13, 6.8),
+        sharex=True,
+        constrained_layout=True,
+    )
+    _plot_numeric_series(axes[0], beacon_df, eps_bus_v_field)
+    _plot_numeric_series(axes[1], csie_hk_df, det0_therm_field)
+    axes[-1].set_xlabel("UTC time")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
 def prepare_sample_index_dataframe(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
     if "packet_index" in df.columns:
@@ -711,6 +774,33 @@ def make_dsps_visible_diodes_overplot(
     plt.close(fig)
 
 
+def make_dsps_x_ray_diodes_overplot(
+    df: pd.DataFrame,
+    output_path: Path,
+    *,
+    x_column: str,
+    x_is_time: bool,
+    x_label: str,
+) -> None:
+    plot_fields = [field for field in DSPS_X_RAY_DIODE_FIELDS if field in df.columns]
+    if not plot_fields:
+        raise RuntimeError("No DSPS X-ray diode fields were present in the CSV.")
+    fig, ax = plt.subplots(figsize=(13, 5.0), constrained_layout=True)
+    _plot_overlaid_numeric_fields(
+        ax,
+        df,
+        plot_fields,
+        x_column=x_column,
+        x_is_time=x_is_time,
+        ylabel="dsps_x_ray_sps_diodes",
+    )
+    ax.set_title("dsps_x_ray_sps_diodes", fontsize=11)
+    ax.set_xlabel(x_label)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
 def default_decoded_folder(config: Config) -> Path:
     return resolve_config_data_folder(config) / DEFAULT_DECODED_DIR_BASENAME
 
@@ -810,6 +900,11 @@ def main(argv: list[str] | None = None) -> None:
         help="CSIE power/detector-temperature stacked plot output filename.",
     )
     parser.add_argument(
+        "--eps-det0-stack-name",
+        default="eps_bus_v_det0_therm_stack.png",
+        help="EPS bus voltage/detector-temperature stacked plot output filename.",
+    )
+    parser.add_argument(
         "--dsps-quad-sum-name",
         default="dsps_quad_sums.png",
         help="DSPS visible/X-ray quad-sum plot output filename.",
@@ -818,6 +913,11 @@ def main(argv: list[str] | None = None) -> None:
         "--dsps-visible-diodes-name",
         default="dsps_visible_sps_diodes_overplot.png",
         help="DSPS visible diode overplot output filename.",
+    )
+    parser.add_argument(
+        "--dsps-x-ray-diodes-name",
+        default="dsps_x_ray_sps_diodes_overplot.png",
+        help="DSPS X-ray diode overplot output filename.",
     )
     parser.add_argument(
         "--smooth-window-points",
@@ -900,39 +1000,40 @@ def main(argv: list[str] | None = None) -> None:
                 f"{df['plot_time_utc'].iloc[0].isoformat().replace('+00:00', 'Z')} to "
                 f"{df['plot_time_utc'].iloc[-1].isoformat().replace('+00:00', 'Z')}"
             )
+    beacon_plots_available = not df.empty
     if df.empty:
-        raise RuntimeError("No beacon rows remain after time filtering; no plots written.")
-    if add_leap_seconds and "plot_leap_seconds_added" in df:
-        leap_counts = sorted(
-            int(value)
-            for value in df["plot_leap_seconds_added"].dropna().unique()
-        )
-        print(f"Leap seconds added in plotted rows: {leap_counts}")
+        print("WARNING: no beacon rows remain after time filtering; beacon plots skipped.")
+    else:
+        if add_leap_seconds and "plot_leap_seconds_added" in df:
+            leap_counts = sorted(
+                int(value)
+                for value in df["plot_leap_seconds_added"].dropna().unique()
+            )
+            print(f"Leap seconds added in plotted rows: {leap_counts}")
 
-    stack_path = plot_dir / args.stack_name
-    make_stacked_plot(
-        df,
-        stack_path,
-        numeric_fields=NUMERIC_BEACON_FIELDS,
-        categorical_fields=CATEGORICAL_BEACON_FIELDS,
-        time_column=time_column,
-        add_leap_seconds=add_leap_seconds,
-        smooth_window_points=args.smooth_window_points,
-    )
-    print(f"Wrote stacked plot: {stack_path}")
-
-    individual_paths: list[Path] = []
-    if not args.no_individual:
-        individual_paths = make_individual_plots(
+        stack_path = plot_dir / args.stack_name
+        make_stacked_plot(
             df,
-            plot_dir,
+            stack_path,
             numeric_fields=NUMERIC_BEACON_FIELDS,
             categorical_fields=CATEGORICAL_BEACON_FIELDS,
             time_column=time_column,
             add_leap_seconds=add_leap_seconds,
             smooth_window_points=args.smooth_window_points,
         )
-        print(f"Wrote {len(individual_paths)} individual plot(s) to: {plot_dir}")
+        print(f"Wrote stacked plot: {stack_path}")
+
+        if not args.no_individual:
+            individual_paths = make_individual_plots(
+                df,
+                plot_dir,
+                numeric_fields=NUMERIC_BEACON_FIELDS,
+                categorical_fields=CATEGORICAL_BEACON_FIELDS,
+                time_column=time_column,
+                add_leap_seconds=add_leap_seconds,
+                smooth_window_points=args.smooth_window_points,
+            )
+            print(f"Wrote {len(individual_paths)} individual plot(s) to: {plot_dir}")
 
     csie_hk_csv_path = decoded_folder / args.csie_hk_csv
     if csie_hk_csv_path.is_file():
@@ -992,14 +1093,28 @@ def main(argv: list[str] | None = None) -> None:
                     f"Wrote {len(csie_individual_paths)} CSIE HK individual plot(s) to: "
                     f"{plot_dir}"
                 )
-            csie_stack_path = plot_dir / args.csie_stack_name
-            make_csie_power_temperature_stack(
-                df,
-                csie_df,
-                csie_stack_path,
-                smooth_window_points=args.smooth_window_points,
-            )
-            print(f"Wrote CSIE power/det0 stack plot: {csie_stack_path}")
+            if beacon_plots_available:
+                csie_stack_path = plot_dir / args.csie_stack_name
+                make_csie_power_temperature_stack(
+                    df,
+                    csie_df,
+                    csie_stack_path,
+                    smooth_window_points=args.smooth_window_points,
+                )
+                print(f"Wrote CSIE power/det0 stack plot: {csie_stack_path}")
+
+                eps_det0_stack_path = plot_dir / args.eps_det0_stack_name
+                make_eps_bus_voltage_det0_temperature_stack(
+                    df,
+                    csie_df,
+                    eps_det0_stack_path,
+                )
+                print(f"Wrote EPS bus voltage/det0 stack plot: {eps_det0_stack_path}")
+            else:
+                print(
+                    "WARNING: skipped CSIE power/det0 and EPS bus voltage/det0 "
+                    "stacks because no beacon rows remain after time filtering."
+                )
     else:
         print(f"CSIE HK CSV not found; skipped CSIE HK plots: {csie_hk_csv_path}")
 
@@ -1036,6 +1151,16 @@ def main(argv: list[str] | None = None) -> None:
                 x_label=dsps_x_label,
             )
             print(f"Wrote DSPS visible diode overplot: {dsps_diodes_path}")
+
+            dsps_x_ray_diodes_path = plot_dir / args.dsps_x_ray_diodes_name
+            make_dsps_x_ray_diodes_overplot(
+                dsps_df,
+                dsps_x_ray_diodes_path,
+                x_column=dsps_x_column,
+                x_is_time=dsps_x_is_time,
+                x_label=dsps_x_label,
+            )
+            print(f"Wrote DSPS X-ray diode overplot: {dsps_x_ray_diodes_path}")
     else:
         print(f"DSPS CSV not found; skipped DSPS plots: {dsps_csv_path}")
 

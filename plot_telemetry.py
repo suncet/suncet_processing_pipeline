@@ -441,9 +441,8 @@ Examples:
     default_filepath = os.path.join(
         os.getenv('suncet_data', ''),
         'test_data',
-        '2026-02-25_playback_test',
-        '2026_056_15_35_11',
-        'telemetry',
+        '2026-05-01_fm_xband_downlink_all_data_types_test',
+        'level0_5',
         'suncet_telemetry_mission_length_v1.0.1-hardline_playback_test.h5'
     )
     
