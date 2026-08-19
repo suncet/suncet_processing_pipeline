@@ -1,6 +1,10 @@
 pillow-jpls>=1.2
 numpy==1.22
 matplotlib==3.5
+h5py>=3.7
+pandas>=1.4
+psutil>=5.9
+tqdm>=4.64
 pytest-cov==3.0
 jupyter==1.0
 scipy==1.8.1
