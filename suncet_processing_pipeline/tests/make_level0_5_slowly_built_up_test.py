@@ -1,10 +1,8 @@
 """Focused tests for staged UHF playback cleanup and CSIE row policy."""
 
-import io
-
+import imagecodecs
 import numpy as np
 from PIL import Image as PilImage
-from pillow_jpls import Image as JpegLsImage
 
 from ..make_level0_5_slowly_built_up import (
     INPUT_MODE_CCSDS,
@@ -143,10 +141,9 @@ def test_ccsds_fixed_binary_stage_unwraps_direct_apid72_chain():
 
 def test_csie_jpegls_decode_preserves_uint16_pixels():
     source = (np.arange(48, dtype=np.uint16).reshape(6, 8) * 997) % 65535
-    buffer = io.BytesIO()
-    JpegLsImage.fromarray(source).save(buffer, format="JPEG-LS")
+    codestream = imagecodecs.jpegls_encode(source)
 
-    decoded = _decode_csie_jpegls_uint16(buffer.getvalue())
+    decoded = _decode_csie_jpegls_uint16(codestream)
 
     assert decoded.dtype == np.uint16
     np.testing.assert_array_equal(decoded, source)

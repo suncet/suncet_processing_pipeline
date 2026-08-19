@@ -2956,13 +2956,10 @@ def _csie_preview_rgb_uint8(image_array):
 
 def _decode_csie_jpegls_uint16(codestream: bytes):
     """Decode one JPEG-LS codestream as a detached two-dimensional uint16 array."""
-    from pillow_jpls import Image as JpegLsImage
+    import imagecodecs
     import numpy as np
 
-    with io.BytesIO(codestream) as buffer:
-        with JpegLsImage.open(buffer) as image:
-            image.load()
-            decoded = np.asarray(image, dtype=np.uint16).copy()
+    decoded = np.asarray(imagecodecs.jpegls_decode(codestream), dtype=np.uint16).copy()
     if decoded.ndim != 2:
         raise ValueError(
             f"expected a two-dimensional CSIE JPEG-LS image, got shape {decoded.shape}"

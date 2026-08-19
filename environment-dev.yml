@@ -1,7 +1,6 @@
-name: suncet
+name: suncet-dev
 channels:
   - conda-forge
-
 dependencies:
   - python=3.14
   - pip
@@ -23,3 +22,7 @@ dependencies:
   - bottleneck>=1.4
   - termcolor>=2.4
   - pykdtree>=1.3.13
+  - pytest>=9.0
+  - pytest-cov>=7.0
+  - jupyter>=1.1
+  - seaborn>=0.13

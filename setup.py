@@ -17,7 +17,11 @@ import configparser
 
 # Read in dependencies
 with open('requirements.txt', 'r') as txt_file:
-    requirements = [line.strip() for line in txt_file]
+    requirements = [
+        line.strip()
+        for line in txt_file
+        if line.strip() and not line.lstrip().startswith('#')
+    ]
 
 config = configparser.ConfigParser()
 config.read('suncet_processing_pipeline/config_files/config_default.ini')
@@ -33,6 +37,7 @@ setup(
     description='Simulate the Sun Coronal Ejection Tracker observations',
     url='https://github.com/suncet/suncet_instrument_simulator',
     install_requires=requirements,
+    python_requires='>=3.12',
     packages=find_packages(),
     zip_safe=False,
 )

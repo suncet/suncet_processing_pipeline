@@ -1,22 +1,47 @@
-![Python 3.8 | 3.9 | 3.10](https://img.shields.io/badge/python-3.8_|_3.9|_3.10-blue)
+![Python 3.12 | 3.14](https://img.shields.io/badge/python-3.12_|_3.14-blue)
 [![Tests](https://github.com/suncet/suncet_processing_pipeline/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/suncet/suncet_processing_pipeline/actions/workflows/unit-tests.yml)
 
 # SunCET Data Processing Pipeline
 
 ## Instructions
-The SunCET Data Processing Pipeline is written in Python. To use the software, the first step is to clone the repository and install the dependencies. The dependencies may be installed through one of two routes. First, one may use the `environment.yml` file with [Anaconda](https://www.anaconda.com/) or a compatible replacement (such as [Miniconda](https://docs.anaconda.com/miniconda/), [Mamba](https://mamba.readthedocs.io/en/latest/) or [Micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html)). The `environment.yml` route only uses the free channels (conda-forge), which do not require a paid account. Alternatively, one can use the `requirements.txt` file directly with `pip` (Python 3.9 and 3.10 only).
+The SunCET Data Processing Pipeline supports Python 3.12 and the current Python 3.14 release on Intel and ARM systems. The environment specifications are architecture-neutral: Conda/Mamba or pip selects native packages for Intel/ARM macOS and Linux automatically.
+
+The recommended production/SOC environment contains only pipeline runtime dependencies:
 
 To use the `environment.yml` route, run the following line. The `conda` command can be replaced with `mamba` or `micromamba` as needed.
 
 ```
-$ conda env create -f environment.yml
-$ conda activate suncet
+mamba env create -f environment.yml
+mamba activate suncet
+python -m pip install --no-deps -e .
 ```
-	
-To use the `requirements.txt` route, run the following line. This may be done inside your own environment, such as with virtualenv.
+
+For an exactly reproducible install, `conda-lock.yml` freezes the tested package builds for `linux-aarch64`, `linux-64`, `osx-arm64`, and `osx-64`:
+
 ```
-$ pip install -r requirements.txt
+conda-lock install --name suncet conda-lock.yml
+conda activate suncet
+python -m pip install --no-deps -e .
 ```
+
+For development, testing, and notebooks, use the development environment instead:
+
+```
+mamba env create -f environment-dev.yml
+mamba activate suncet-dev
+python -m pip install --no-deps -e .
+```
+
+GNU Radio is not imported by the processing pipeline. Its large dependency stack is therefore isolated in `environment-radio.yml` and can be installed only where radio tooling is needed.
+
+To use pip inside an existing Python 3.12+ virtual environment:
+
+```
+python -m pip install -r requirements.txt
+python -m pip install --no-deps -e .
+```
+
+Developers using pip should install `requirements-dev.txt` instead. CUDA and JetPack are system-level Jetson dependencies and are intentionally not included in these portable Python environments.
 
 ## Running the Code
 The code uses a lightweight run management system. First, a new run is created which makes a new directory for the run. Then, the user copies the input data (binary packet telemetary) to the input sub-directory for the run. When that is done, one or more commands are executed to perform the processing, which will leave data in output sub-directories.

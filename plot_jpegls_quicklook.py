@@ -34,31 +34,16 @@ def decode_with_imagecodecs(data: bytes):
     return imagecodecs.jpegls_decode(data)
 
 
-def decode_with_pillow_jpls(path: Path):
-    from pillow_jpls import Image
-
-    with Image.open(path) as image:
-        image.load()
-        return np.asarray(image)
-
-
 def try_decode_jpegls(path: Path) -> tuple[np.ndarray | None, str, str]:
     data = path.read_bytes()
-    errors: list[str] = []
-    for name, decoder in (
-        ("imagecodecs.jpegls_decode", lambda: decode_with_imagecodecs(data)),
-        ("pillow_jpls.Image", lambda: decode_with_pillow_jpls(path)),
-    ):
-        try:
-            image = np.asarray(decoder())
-        except Exception as exc:
-            errors.append(f"{name}: {type(exc).__name__}: {exc}")
-            continue
-        if image.ndim != 2:
-            errors.append(f"{name}: decoded array has unexpected shape {image.shape}")
-            continue
-        return image, name, ""
-    return None, "", " | ".join(errors)
+    name = "imagecodecs.jpegls_decode"
+    try:
+        image = np.asarray(decode_with_imagecodecs(data))
+    except Exception as exc:
+        return None, "", f"{name}: {type(exc).__name__}: {exc}"
+    if image.ndim != 2:
+        return None, "", f"{name}: decoded array has unexpected shape {image.shape}"
+    return image, name, ""
 
 
 def plot_jpegls_quicklook(input_dir: Path, output_path: Path) -> None:

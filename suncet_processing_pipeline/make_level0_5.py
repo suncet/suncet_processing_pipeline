@@ -13,8 +13,8 @@ import time
 from datetime import datetime
 import pandas as pd 
 import h5py 
-from pillow_jpls import Image
-from io import BytesIO
+import imagecodecs
+from PIL import Image
 from tqdm import tqdm
 import importlib.util
 import types
@@ -1949,17 +1949,14 @@ class Level0_5:
             tuple: (np.ndarray | None, Exception | None)
         """
         try:
-            with BytesIO(buf) as bio:
-                img = Image.open(bio)
-                img.load()
-                arr = np.asarray(img, dtype=np.uint16)
+            arr = np.asarray(imagecodecs.jpegls_decode(buf), dtype=np.uint16).copy()
             return arr, None
         except Exception as exc:
             return None, exc
 
     def decompress_jpegls_image(self, compressed_data):
         """
-        Decompress JPEG-LS compressed image data using pillow_jpls.Image.
+        Decompress JPEG-LS compressed image data using imagecodecs.
         Args:
             compressed_data (bytes): The compressed image data as bytes
         Returns:

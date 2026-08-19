@@ -1,0 +1,6 @@
+name: suncet-radio
+channels:
+  - conda-forge
+dependencies:
+  - python=3.14
+  - gnuradio>=3.10.12
