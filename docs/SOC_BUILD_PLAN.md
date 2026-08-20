@@ -50,6 +50,10 @@ under its hostname.
   synchronized on development systems. Define the separate host-local
   `suncet_ctdb` root on every system. On the Jetson it will be a local directory,
   not a Box dependency, and must never be nested inside the public data root.
+- Use ARM64 `rclone` with explicit one-way `copy` operations for the initial
+  Dropbox integration. Dropbox is a replication/publication path, not the
+  processing queue, sole backup, or authority for in-progress files. Do not use
+  the unsupported native Dropbox Linux client or begin with bidirectional sync.
 - Begin with manual data transfer and processing. Do not add unattended jobs
   until the manual workflow is reliable and observable.
 - Do not expose SSH directly to the public Internet. Use the APL VPN or another
@@ -107,7 +111,7 @@ development tools, containers, and LCMS/BigFix status. Important findings:
   volume.
 - Time synchronization is active through `systemd-timesyncd`.
 
-### 2. Make the Python environment portable and Jetson-ready — specification complete; Jetson installation pending
+### 2. Make the Python environment portable and Jetson-ready — complete
 
 Completed in the repository:
 
@@ -127,17 +131,36 @@ Completed in the repository:
 - Regression tests scan Python, configuration, and notebook sources for
   workstation paths or direct legacy environment lookups.
 
-Next installation steps on the Jetson:
+Completed on the Jetson on 2026-08-20:
 
-1. Clone the public repository into the `james` account.
-2. Install the ARM64 Miniforge distribution in the `james` account.
-3. Create `suncet` from the `linux-aarch64` lock and install the repository in
-   editable mode without re-resolving dependencies.
-4. Define the public `suncet_data` root and a separate private `suncet_ctdb`
-   root; transfer only the required CTDB versions through an approved method.
-5. Run the unit tests and a JPEG-LS encode/decode smoke test.
-6. Run a representative Level 0.5 dataset and compare results with the Mac.
-7. Record disk usage and retain the exact environment and Git revision.
+- Cloned `main` at commit `f61c75f9ccbccea984765a98ed7db24637e2a2ae`
+  into `/home/james/src/suncet_processing_pipeline`; the checkout was clean at
+  the validation gate.
+- Checksum-verified and installed ARM64 Miniforge 26.3.2-3 under
+  `/home/james/miniforge3`. Conda base activation is disabled by default.
+- Created the production `suncet` environment from the repository's exact
+  `linux-aarch64` lock and installed the checkout in editable mode without
+  resolving its dependencies again.
+- Verified native ARM64 Python 3.14.7, `imagecodecs` 2026.8.16, the complete
+  science-package import set, and `pip check` with no broken requirements.
+- Created a cloned `suncet-test` validation environment with only pytest and
+  coverage tooling added. All 59 repository tests passed in 8.12 seconds.
+- Verified lossless 16-bit JPEG-LS encode/decode with representative image data.
+  An incompressible random-image encoder stress test also passed when given an
+  explicit output buffer. The default encoder buffer can be too small for that
+  artificial worst case; operational SunCET code consumes JPEG-LS by decoding,
+  so this is recorded as a test-tool behavior rather than a processing blocker.
+- Created `/home/james/suncet_ctdb` with mode `700`, exported it as
+  `suncet_ctdb` from `.bashrc`, and retained a pre-change Bash configuration
+  backup. No CTDB contents have been transferred yet.
+- Intentionally left `suncet_data` undefined until the NVMe is mounted at its
+  permanent path. Validation used a temporary data root, preventing an interim
+  eMMC location from becoming operational by accident.
+- Miniforge, both environments, and the shared package cache use about 4.7 GB;
+  approximately 40 GB remains free on eMMC.
+
+A representative Level 0.5 dataset comparison remains in Roadmap Step 6 after
+the NVMe data root and required CTDB contents are available.
 
 ### 3. Improve processing-run reproducibility — complete
 
@@ -160,6 +183,26 @@ Ethernet/APLNIS or expanding the node's data and service exposure.
   `suncet_data` for shell and non-interactive processing contexts.
 - Reproduce the directory organization currently rooted at
   `/Users/masonjp2/Dropbox/suncet_dropbox/9000 Processing/data/` on the Mac.
+- Install the ARM64 build of `rclone` and configure a Dropbox remote using a
+  dedicated identity that can access only SunCET public data, if that account
+  arrangement is available. Avoid placing a token for the owner's full personal
+  Dropbox account on the Jetson. Store the rclone configuration with permissions
+  restricted to `james`.
+- Use explicit one-way `rclone copy` commands rather than `sync` or `bisync`:
+  copy reference inputs from Dropbox to the Jetson, and copy finalized products
+  and processing manifests from the Jetson to Dropbox. Because `copy` does not
+  delete destination files, remote or local deletion will not be propagated by
+  the initial workflow.
+- Maintain a reviewed rclone filter file that includes only intended public
+  subtrees. Exclude scratch space, caches, temporary/partial products, package
+  stores, and all private material. `suncet_ctdb` is outside `suncet_data` and
+  must never be an rclone source or destination.
+- Write products outside the exported Dropbox subtree while they are incomplete,
+  then move completed products atomically into their publication location.
+- Begin with manual `--dry-run` and logged copy operations. Verify representative
+  transfers in both directions before considering a systemd timer. Any later
+  move to `sync` or `bisync` requires a separate review of ownership, conflicts,
+  deletion propagation, and recovery behavior.
 - Document a manual, resumable pull from
   <https://lasp.colorado.edu/data/store/suncet/>.
 - Verify downloaded files with server metadata or checksums where available.
@@ -222,11 +265,11 @@ build.
 
 ## Immediate next action
 
-Perform the user-space Jetson environment installation in Roadmap Step 2. This
-creates a reversible processing environment without changing the system CUDA
-stack, network policy, or APL management configuration. Then execute the unit,
-JPEG-LS, and representative Level 0.5 validation gates before starting
-data-ingest automation.
+Install and validate the NVMe in Roadmap Step 7, then establish the permanent
+`suncet_data` root and manual LASP/Dropbox transfer workflow in Roadmap Step 5.
+After the required CTDB versions and a known dataset are available, execute the
+representative Level 0.5 comparison in Roadmap Step 6. No data-ingest automation
+should begin before those manual validation gates pass.
 
 ## Definition of an initial operational SOC
 
