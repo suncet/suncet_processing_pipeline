@@ -104,6 +104,20 @@ The manifests are deliberately stored with the processed data rather than in the
 ## Running the Code
 The code uses a lightweight run management system. First, a new run is created which makes a new directory for the run. Then, the user copies the input data (binary packet telemetary) to the input sub-directory for the run. When that is done, one or more commands are executed to perform the processing, which will leave data in output sub-directories.
 
+The canonical Level 0.5 implementation is
+`suncet_processing_pipeline.make_level0_5`. It supports X-band, hardline CCSDS,
+UHF/Hydra, and combined-source ingest while retaining inspectable intermediate
+binaries. For example:
+
+```sh
+python -m suncet_processing_pipeline.make_level0_5 \
+  --config "$suncet_data/processing_runs/MYRUN/config.ini" \
+  --folder "$suncet_data/processing_runs/MYRUN/input" \
+  --input-mode combined
+```
+
+`suncet_processor.py` delegates Level 0.5 work to this same implementation.
+
 ```sh
 python make_run.py --run-name MYRUN  # creates $suncet_data/processing_runs/MYRUN
 

@@ -130,6 +130,10 @@ Completed in the repository:
   the host-specific private root.
 - Regression tests scan Python, configuration, and notebook sources for
   workstation paths or direct legacy environment lookups.
+- The staged Level 0.5 implementation is now the canonical
+  `suncet_processing_pipeline.make_level0_5` module. The superseded class-based
+  implementation and its dead batch helper were removed; their history remains
+  available in Git.
 
 Completed on the Jetson on 2026-08-20:
 

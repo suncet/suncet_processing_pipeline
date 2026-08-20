@@ -1,7 +1,7 @@
 """
 Create quick-look beacon time-series plots from decoded packet CSVs.
 
-This is intentionally downstream of ``make_level0_5_slowly_built_up.py``: it reads the
+This is intentionally downstream of ``make_level0_5.py``: it reads the
 per-APID decoded CSV files and makes easy sanity-check plots without re-ingesting binary
 data.
 """
@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from suncet_processing_pipeline.config_parser import Config
-from suncet_processing_pipeline.make_level0_5_slowly_built_up import (
+from suncet_processing_pipeline.make_level0_5 import (
     DEFAULT_DECODED_DIR_BASENAME,
     resolve_config_data_folder,
 )

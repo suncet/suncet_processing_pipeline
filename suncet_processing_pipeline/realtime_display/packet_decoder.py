@@ -57,22 +57,22 @@ class RealtimePacketDecoder:
         self._helper_error = None
         try:
             from suncet_processing_pipeline.config_parser import Config
-            from suncet_processing_pipeline import make_level0_5_slowly_built_up as slow
+            from suncet_processing_pipeline import make_level0_5 as level0_5
         except Exception as exc:
             self._helper_error = f"{type(exc).__name__}: {exc}"
             return
 
-        self._slow = slow
+        self._level0_5 = level0_5
         if self.processing_config_path is None:
             return
 
         try:
             with contextlib.redirect_stdout(io.StringIO()):
                 config = Config(str(self.processing_config_path))
-            apid_names = slow.read_apid_names_from_config(config)
-            expected_packet_bytes = slow.read_expected_packet_bytes_from_config(config)
-            bundle = slow.import_bus_decoder_bundle(config)
-            self.field_definitions = slow.read_ctdb_field_definitions_from_config(config)
+            apid_names = level0_5.read_apid_names_from_config(config)
+            expected_packet_bytes = level0_5.read_expected_packet_bytes_from_config(config)
+            bundle = level0_5.import_bus_decoder_bundle(config)
+            self.field_definitions = level0_5.read_ctdb_field_definitions_from_config(config)
             warnings = tuple(getattr(bundle, "warnings", ()) or ())
             self.bundle = bundle
             self.metadata = DecoderMetadata(
@@ -151,23 +151,23 @@ class RealtimePacketDecoder:
         )
 
     def _validate_checksum(self, packet: bytes, apid: int) -> str | None:
-        slow = getattr(self, "_slow", None)
-        if slow is None:
+        level0_5 = getattr(self, "_level0_5", None)
+        if level0_5 is None:
             return None
-        return slow.validate_packet_checksum(packet, apid)
+        return level0_5.validate_packet_checksum(packet, apid)
 
     def _select_generated_decoder(self, packet_name: str) -> tuple[object | None, str]:
         if self.bundle is None:
             return None, ""
-        slow = getattr(self, "_slow", None)
-        if slow is None:
+        level0_5 = getattr(self, "_level0_5", None)
+        if level0_5 is None:
             return None, ""
-        return slow._select_generated_decoder(packet_name, self.bundle)
+        return level0_5._select_generated_decoder(packet_name, self.bundle)
 
     def _decoder_object_fields(self, packet_object: object) -> dict[str, Any]:
-        slow = getattr(self, "_slow", None)
-        if slow is not None:
-            return slow._decoder_object_fields(packet_object)
+        level0_5 = getattr(self, "_level0_5", None)
+        if level0_5 is not None:
+            return level0_5._decoder_object_fields(packet_object)
         fields: dict[str, Any] = {}
         for attr_name in dir(packet_object):
             if attr_name.startswith("_"):
@@ -180,10 +180,10 @@ class RealtimePacketDecoder:
     def _generic_decode(
         self, packet: bytes, field_rows: list[dict[str, str]]
     ) -> dict[str, Any]:
-        slow = getattr(self, "_slow", None)
-        if slow is None:
+        level0_5 = getattr(self, "_level0_5", None)
+        if level0_5 is None:
             raise RuntimeError("generic CTDB decoder unavailable")
-        return slow.generic_ctdb_decode_packet(packet, field_rows)
+        return level0_5.generic_ctdb_decode_packet(packet, field_rows)
 
 
 def packet_header_metadata(packet: bytes) -> dict[str, int]:

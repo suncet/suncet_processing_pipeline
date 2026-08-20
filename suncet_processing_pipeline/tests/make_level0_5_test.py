@@ -1,10 +1,10 @@
-"""Focused tests for staged UHF playback cleanup and CSIE row policy."""
+"""Focused tests for canonical Level 0.5 ingest and CSIE row policy."""
 
 import imagecodecs
 import numpy as np
 from PIL import Image as PilImage
 
-from ..make_level0_5_slowly_built_up import (
+from ..make_level0_5 import (
     INPUT_MODE_CCSDS,
     PacketRecord,
     PLAYBACK_METADATA_LEN,
@@ -20,6 +20,8 @@ from ..make_level0_5_slowly_built_up import (
     _write_csie_png,
     assemble_csie_uncompressed_image,
     build_fixed_binary,
+    ccsds_packet_at,
+    packetize_checksum_valid_ccsds,
     unwrap_direct_playback_stream,
     unwrap_uhf_playback_stream,
 )
@@ -81,6 +83,42 @@ def _direct_playback_packet(payload: bytes, *, sequence: int) -> bytes:
         sequence=sequence,
         secondary_header=False,
     )
+
+
+def test_packetizer_recovers_valid_packets_across_unaligned_gap():
+    first = _ccsds_packet(68, b"first")
+    second = _ccsds_packet(72, b"second")
+
+    output, stats = packetize_checksum_valid_ccsds(
+        b"\xab\xcd\xef" + first + second,
+        {68, 72},
+        extract_playback_wrappers=False,
+    )
+
+    assert output == first + second
+    assert [record.apid for record in stats.records] == [68, 72]
+    assert stats.resync_gap_count == 1
+
+
+def test_packetizer_rejects_packets_outside_configured_apids():
+    accepted = _ccsds_packet(68, b"accepted")
+    rejected = _ccsds_packet(99, b"rejected")
+
+    output, stats = packetize_checksum_valid_ccsds(
+        accepted + rejected,
+        {68},
+        extract_playback_wrappers=False,
+    )
+
+    assert output == accepted
+    assert [record.apid for record in stats.records] == [68]
+
+
+def test_ccsds_candidate_rejects_nonzero_version():
+    packet = bytearray(_ccsds_packet(68, b"payload"))
+    packet[0] |= 0x20
+
+    assert ccsds_packet_at(bytes(packet), 0, {68}) is None
 
 
 def test_direct_apid72_chain_is_unwrapped_as_continuous_inner_stream():
