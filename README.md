@@ -32,7 +32,7 @@ The stable top-level convention is:
 $suncet_data/                  public or synchronized
 ├── calibration/
 ├── metadata/
-├── level0/ … level3/
+├── level0_5/ … level4/
 ├── processing_runs/
 ├── synthetic/
 ├── test_data/
@@ -86,6 +86,17 @@ python -m pip install --no-deps -e .
 
 Developers using pip should install `requirements-dev.txt` instead. CUDA and JetPack are system-level Jetson dependencies and are intentionally not included in these portable Python environments.
 
+For a new host, `local_system_setup.py` combines those setup commands into one
+repeatable helper: it creates or updates the Mamba environment, installs this
+checkout in editable mode, initializes the data tree, and prints the two shell
+profile exports. It never edits the shell profile itself.
+
+```sh
+python local_system_setup.py \
+  --data-root /absolute/public/data/path \
+  --ctdb-root /absolute/private/ctdb/path
+```
+
 ## Processing provenance
 
 Processing commands automatically write a unique JSON manifest under `<data folder>/processing_manifests/`. A manifest is written atomically when the run starts and finalized whether processing succeeds or raises an exception. Each manifest records:
@@ -100,6 +111,24 @@ Processing commands automatically write a unique JSON manifest under `<data fold
 - exception type, message, and traceback for failed runs
 
 The manifests are deliberately stored with the processed data rather than in the Git repository. Re-running the pipeline creates a new manifest instead of overwriting previous provenance.
+
+`make_run.py` also copies the current versioned FITS and NetCDF/Zarr metadata
+definitions into the run directory and records their SHA-256 checksums in
+`metadata_snapshot.json`. Historical runs therefore retain the definitions used
+to create them even after the live development Sheet changes.
+
+## Mission telemetry
+
+Mission-length scalar telemetry is stored in DuckDB, with one table per APID.
+This preserves each APID's natural sample times while still allowing SQL and
+ASOF joins for cross-system plots. Level 0.5 decoded CSVs can be ingested with:
+
+```sh
+python -m suncet_processing_pipeline.make_telemetry_file \
+  "$suncet_data/level0_5/PASS_OUTPUT/decoded"
+```
+
+Images are not stored in this database; they remain separate FITS products.
 
 ## Running the Code
 The code uses a lightweight run management system. First, a new run is created which makes a new directory for the run. Then, the user copies the input data (binary packet telemetary) to the input sub-directory for the run. When that is done, one or more commands are executed to perform the processing, which will leave data in output sub-directories.

@@ -2776,6 +2776,187 @@ def decode_csie_meta_packet(
     return generic_ctdb_decode_packet(packet, rows)
 
 
+def _meta_source(meta: dict[str, object]) -> str:
+    value = meta.get("csie_meta_meta_src")
+    if value is None:
+        value = meta.get("META_SRC")
+    normalized = str(value).strip().lower()
+    if normalized in {"0", "capture", "cap"} or "capture" in normalized:
+        return "capture"
+    if normalized in {"1", "process", "processed", "proc"} or "process" in normalized:
+        return "process"
+    return "unknown"
+
+
+def _particle_filter_enabled(meta: dict[str, object]) -> bool:
+    value = meta.get("fpm_proc_cfg_pix_clean_meta")
+    if value is None:
+        value = meta.get("csie_meta_fpm_proc_pix_clean")
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    return normalized in {"1", "true", "enabled", "enable", "ena", "on"}
+
+
+def _capture_timestamp_seconds(meta: dict[str, object]) -> float | None:
+    coarse = _first_int(
+        meta,
+        "_capture_time_coarse",
+        "SHCOARSE",
+        "shcoarse",
+        "csie_meta_shcoarse",
+    )
+    fine = _first_int(
+        meta,
+        "_capture_time_fine",
+        "SHFINE",
+        "shfine",
+        "csie_meta_shfine",
+    )
+    if coarse is None:
+        return None
+    return float(coarse) + (float(fine or 0) / 65536.0)
+
+
+def effective_stack_exposure_seconds(
+    integration_time_seconds: float,
+    stack_count: int,
+    normalization_factor: int,
+    *,
+    particle_filtering_enabled: bool,
+) -> float:
+    """Return the radiometric exposure represented by one processed stack."""
+    if integration_time_seconds < 0:
+        raise ValueError("integration time must be non-negative")
+    if stack_count < 1:
+        raise ValueError("stack count must be at least one")
+    if normalization_factor < 1:
+        raise ValueError("normalization factor must be at least one")
+    contributing = stack_count - 1 if particle_filtering_enabled else stack_count
+    return contributing * integration_time_seconds / normalization_factor
+
+
+def summarize_csie_metadata_packets(
+    packets: list[dict[str, object]],
+) -> tuple[dict[str, object] | None, dict[str, object], list[str]]:
+    """Select product metadata and derive image-level capture semantics.
+
+    FSW emits one capture-source META packet for every integration and normally a
+    process-source META packet for the final image. FPM0 is the long/outer full
+    frame and FPM1 is the short/inner frame. When an explicit FPM identifier is
+    absent, integration duration separates the two capture sets.
+    """
+    warnings: list[str] = []
+    if not packets:
+        return None, {}, warnings
+    captures = [meta for meta in packets if _meta_source(meta) == "capture"]
+    processed = [meta for meta in packets if _meta_source(meta) == "process"]
+    unknown = [meta for meta in packets if _meta_source(meta) == "unknown"]
+    if unknown:
+        warnings.append(f"{len(unknown)} CSIE META packet(s) have unknown META_SRC")
+    if not captures and unknown:
+        captures = unknown
+    product_meta = processed[-1] if processed else packets[-1]
+    if not processed:
+        warnings.append("no process-source CSIE META packet; using final META packet")
+
+    groups: dict[str, list[dict[str, object]]] = {"inner": [], "outer": []}
+    explicit_fpm = False
+    for meta in captures:
+        fpm = _first_int(meta, "csie_meta_fpm_num", "fpm_num", "FPM_NUM")
+        if fpm in (0, 1):
+            explicit_fpm = True
+            groups["outer" if fpm == 0 else "inner"].append(meta)
+
+    if not explicit_fpm and captures:
+        integration_values = sorted(
+            {
+                value
+                for meta in captures
+                if (value := _first_int(meta, "csie_meta_intg_ms", "INTG_MS"))
+                is not None
+            }
+        )
+        if len(integration_values) >= 2:
+            short = integration_values[0]
+            long = integration_values[-1]
+            groups["inner"] = [
+                meta
+                for meta in captures
+                if _first_int(meta, "csie_meta_intg_ms", "INTG_MS") == short
+            ]
+            groups["outer"] = [
+                meta
+                for meta in captures
+                if _first_int(meta, "csie_meta_intg_ms", "INTG_MS") == long
+            ]
+        else:
+            warnings.append(
+                "capture META packets do not expose two distinguishable FPM sets"
+            )
+
+    derived: dict[str, object] = {
+        "csie_metadata_packet_count": len(packets),
+        "csie_capture_metadata_count": len(captures),
+        "csie_process_metadata_count": len(processed),
+    }
+    all_filter_flags: list[bool] = []
+    for component in ("inner", "outer"):
+        component_packets = groups[component]
+        if not component_packets:
+            continue
+        integration_ms = _first_int(
+            component_packets[0], "csie_meta_intg_ms", "INTG_MS"
+        )
+        right_shift = _first_int(
+            component_packets[-1],
+            "fpm_proc_cfg_right_shift_meta",
+            "csie_meta_fpm_proc_right_shift",
+        )
+        right_shift = right_shift or 0
+        if right_shift < 0:
+            warnings.append(
+                f"{component} FPM right-shift count {right_shift} is invalid; using zero"
+            )
+            right_shift = 0
+        normalization = 2**right_shift
+        filtered = any(_particle_filter_enabled(meta) for meta in component_packets)
+        all_filter_flags.append(filtered)
+        count = len(component_packets)
+        derived[f"number_stacked_integrations_{component}"] = count
+        derived[f"stack_normalization_factor_{component}"] = normalization
+        derived[f"particle_filtering_enabled_{component}"] = filtered
+        if integration_ms is not None:
+            integration_seconds = integration_ms / 1000.0
+            derived[f"integration_time_{component}"] = integration_seconds
+            derived[f"effective_exposure_time_{component}"] = (
+                effective_stack_exposure_seconds(
+                    integration_seconds,
+                    count,
+                    normalization,
+                    particle_filtering_enabled=filtered,
+                )
+            )
+
+    derived["particle_filtering_enabled"] = any(all_filter_flags)
+    timed_captures = [
+        (timestamp, meta)
+        for meta in captures
+        if (timestamp := _capture_timestamp_seconds(meta)) is not None
+    ]
+    if timed_captures:
+        first_start, _ = min(timed_captures, key=lambda item: item[0])
+        last_start, last_meta = max(timed_captures, key=lambda item: item[0])
+        final_integration_ms = _first_int(last_meta, "csie_meta_intg_ms", "INTG_MS")
+        if final_integration_ms is not None:
+            derived["exposure_time"] = (
+                last_start + final_integration_ms / 1000.0 - first_start
+            )
+    else:
+        warnings.append("capture timestamps unavailable; TELAPSE was not derived")
+    return product_meta, derived, warnings
+
+
 def csie_meta_dimensions(meta: dict[str, object]) -> tuple[int, int, list[str]]:
     warnings: list[str] = []
     proc_config = _first_int(meta, "csie_meta_fpm_proc_config")
@@ -3004,9 +3185,31 @@ def _write_csie_fits(
     )
     header["OUTRANGE"] = int(inventory_row.get("out_of_range_rows", 0) or 0)
 
+    derived_fits_names = {
+        "exposure_time": "TELAPSE",
+        "integration_time_inner": "INTTIMEI",
+        "integration_time_outer": "INTTIMEO",
+        "number_stacked_integrations_inner": "NSTACKI",
+        "number_stacked_integrations_outer": "NSTACKO",
+        "stack_normalization_factor_inner": "STKNORMI",
+        "stack_normalization_factor_outer": "STKNORMO",
+        "effective_exposure_time_inner": "EFFEXPI",
+        "effective_exposure_time_outer": "EFFEXPO",
+        "particle_filtering_enabled_inner": "PIXFILTI",
+        "particle_filtering_enabled_outer": "PIXFILTO",
+        "csie_metadata_packet_count": "METAPKTS",
+        "csie_capture_metadata_count": "CAPMETA",
+        "csie_process_metadata_count": "PROCMETA",
+    }
+    for internal_name, fits_name in derived_fits_names.items():
+        if internal_name in meta:
+            header[fits_name] = meta[internal_name]
+
     used_keys = set(header)
     for attr_name, value in sorted(meta.items()):
         if attr_name.startswith("_") or callable(value):
+            continue
+        if attr_name in derived_fits_names:
             continue
         if not isinstance(value, (str, int, float, bool)):
             continue
@@ -3050,9 +3253,29 @@ def _write_csie_png(path: Path, image) -> None:
     Image.fromarray(rgb, mode="RGB").save(path, format="PNG")
 
 
-def _write_csie_meta_json(path: Path, image_id: int, meta: dict[str, object]) -> None:
+def _write_csie_meta_json(
+    path: Path,
+    image_id: int,
+    meta: dict[str, object],
+    metadata_packets: list[dict[str, object]],
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"image_id": image_id, **{k: _csv_safe_value(v) for k, v in meta.items()}}
+    payload = {
+        "image_id": image_id,
+        **{
+            key: _csv_safe_value(value)
+            for key, value in meta.items()
+            if not key.startswith("_")
+        },
+        "metadata_packets": [
+            {
+                key: _csv_safe_value(value)
+                for key, value in packet.items()
+                if not key.startswith("_")
+            }
+            for packet in metadata_packets
+        ],
+    }
     with path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, sort_keys=True, default=str)
         f.write("\n")
@@ -3420,7 +3643,7 @@ def write_csie_image_products(
             "using packets_valid records because they are at least as complete."
         )
 
-    metadata_by_image: dict[int, dict[str, object]] = {}
+    metadata_by_image: dict[int, list[dict[str, object]]] = {}
     metadata_counts: Counter = Counter()
     rows_by_image: dict[int, dict[int, object]] = {}
     row_quality_by_image: dict[int, dict[int, object]] = {}
@@ -3445,8 +3668,11 @@ def write_csie_image_products(
                     f"APID 538 packet_index={record.packet_index} decoded without csie_meta_img_id"
                 )
                 continue
+            sort_time = _record_sort_time(record)
+            if sort_time is not None:
+                meta["_capture_time_coarse"], meta["_capture_time_fine"] = sort_time
             metadata_counts[image_id] += 1
-            metadata_by_image[image_id] = meta
+            metadata_by_image.setdefault(image_id, []).append(meta)
             continue
 
         if record.apid != CSIE_DATA_APID:
@@ -3506,15 +3732,18 @@ def write_csie_image_products(
     inventory_rows: list[dict[str, object]] = []
 
     for image_id in all_image_ids:
-        meta = metadata_by_image.get(image_id)
+        meta_packets = metadata_by_image.get(image_id, [])
+        meta, derived_meta, metadata_warnings = summarize_csie_metadata_packets(
+            meta_packets
+        )
+        if meta is not None:
+            meta = {**meta, **derived_meta}
         rows = rows_by_image.get(image_id, {})
         row_summaries = row_summaries_by_image.get(image_id, [])
         row_lengths = row_lengths_by_image.get(image_id, Counter())
         selected_quality = row_quality_by_image.get(image_id, {})
         compressed_chunks = compressed_chunks_by_image.get(image_id, [])
-        warnings: list[str] = []
-        if metadata_counts[image_id] > 1:
-            warnings.append(f"duplicate metadata packets seen: {metadata_counts[image_id]}; last one used")
+        warnings: list[str] = list(metadata_warnings)
 
         expected_rows: int | None = None
         expected_cols: int | None = None
@@ -3772,7 +4001,7 @@ def write_csie_image_products(
                     stats.output_paths.append(jp2_file)
             if write_meta_json:
                 meta_json_file = output_dir / f"image_{image_id}{suffix}_meta.json"
-                _write_csie_meta_json(meta_json_file, image_id, meta)
+                _write_csie_meta_json(meta_json_file, image_id, meta, meta_packets)
                 meta_json_path = str(meta_json_file)
                 stats.output_paths.append(meta_json_file)
 
@@ -3814,7 +4043,7 @@ def write_csie_image_products(
             stats.output_paths.append(fits_file)
             if write_meta_json:
                 meta_json_file = output_dir / f"image_{image_id}{suffix}_meta.json"
-                _write_csie_meta_json(meta_json_file, image_id, meta)
+                _write_csie_meta_json(meta_json_file, image_id, meta, meta_packets)
                 meta_json_path = str(meta_json_file)
                 stats.output_paths.append(meta_json_file)
             if write_png:

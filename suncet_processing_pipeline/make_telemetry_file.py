@@ -1,197 +1,263 @@
-# Intent of this code is to create a single hdf5 file for all the SunCET telemetry points spanning the entire mission
-# First thing to build is a tool that can ingest updated CTDB files and update our public documentation of what's in the hdf5 file
-# The second piece will be ingesting new downlinked binary files and storing that data into the hdf5 file at the right location (sorted by time). 
-# Note that no changes to the CTDB will occur after spacecraft delivery because we don't really have the capability to update flight software (we kinda do but it's very very slow.)
+"""Build the mission-length, per-APID DuckDB telemetry store.
 
-import os
-import pandas as pd
-import glob
-import h5py
-from pathlib import Path
-import packet_definitions.gen_pkts as gen_pkts
+Level 0.5 already writes one decoded CSV stream per APID. This module ingests
+those products transactionally, preserving each APID's natural sampling cadence
+instead of forcing unrelated packets onto one shared timeline.
+"""
+
+from __future__ import annotations
+
+import argparse
 import configparser
+import hashlib
+from pathlib import Path
+import re
 
-from suncet_processing_pipeline.config_parser import Config
-from suncet_processing_pipeline.data_paths import data_path
+import duckdb
+import pandas as pd
+
+from .config_parser import Config
+from .data_paths import data_path
+
+
+DECODED_CSV_RE = re.compile(r"decoded_apid_(?P<apid>\d+)_(?P<name>.+)\.csv$")
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class CTDBDocumenter:
-    def __init__(self):
-        pass
+    """Create a public, human-focused subset of a private CTDB definition."""
 
-    def process_ctdb(self, ctdb_path_filename=None, output_telemetry_definition_path_filename=None):
-        """Process CTDB file and create a cleaned telemetry definition file.
-        
-        Args:
-            ctdb_path_filename (str, optional): Path to the CTDB file. If None, uses default path.
-            output_telemetry_definition_path_filename (str, optional): Path to save the processed telemetry definition file. 
-                If None, saves as 'telemetry_definition.csv' in current directory.
-        
-        Returns:
-            pandas.DataFrame: The processed telemetry data
-        """
-        # Set default paths if not provided
+    def process_ctdb(
+        self,
+        ctdb_path_filename=None,
+        output_telemetry_definition_path_filename=None,
+    ):
         if ctdb_path_filename is None:
-            default_config = (
-                Path(__file__).resolve().parent
-                / 'config_files'
-                / 'config_default.ini'
+            config = Config(
+                Path(__file__).resolve().parent / "config_files" / "config_default.ini"
             )
-            config = Config(default_config)
             ctdb_path_filename = (
-                Path(config.bus_ctdb_path) / 'packet_definitions' / 'ct_tlm.csv'
+                Path(config.bus_ctdb_path) / "packet_definitions" / "ct_tlm.csv"
             )
-        
         if output_telemetry_definition_path_filename is None:
             output_telemetry_definition_path_filename = data_path(
-                'metadata', 'telemetry_definition.csv'
+                "metadata", "telemetry_definition.csv"
             )
-        
-        # Read the CTDB file
-        df = pd.read_csv(ctdb_path_filename)
-        
-        # Rename ItemName column to Variable Name
-        df = df.rename(columns={'ItemName': 'Variable Name'})
-        
-        # Drop specified columns
-        columns_to_drop = ['ExternalElement', 'Packet', 'ContainerType', 'RepeatMethod', 'APID', 'LongDescription', 'Source', 'FSWDataType', 'DisplayForm', 'Equation', 'Limits', 'SystemName']
-        df = df.drop(columns=[col for col in columns_to_drop if col in df.columns])
 
-        # Drop rows with specific Variable Names
-        df = df[~df['Variable Name'].isin(['VERSION', 'TYPE', 'SEC_HDR_FLAG', 'PKT_APID', 'SEQ_FLGS', 'SEQ_CTR', 'PKT_LEN'])]
-        
-        # Drop rows where Variable Name starts with specific prefixes
-        df = df[~df['Variable Name'].str.startswith(('ccsds', 'des_', 'REUSABLE_', 'mem_dump', 'fp_test', 'xband_adc', 'uhf_pass_', 'pl_data', 'log_', 'mem_', 'ver_'))]
+        frame = pd.read_csv(ctdb_path_filename).rename(
+            columns={"ItemName": "Variable Name"}
+        )
+        drop = {
+            "ExternalElement", "Packet", "ContainerType", "RepeatMethod", "APID",
+            "LongDescription", "Source", "FSWDataType", "DisplayForm", "Equation",
+            "Limits", "SystemName",
+        }
+        frame = frame.drop(columns=[name for name in drop if name in frame.columns])
+        excluded = {
+            "VERSION", "TYPE", "SEC_HDR_FLAG", "PKT_APID", "SEQ_FLGS", "SEQ_CTR",
+            "PKT_LEN",
+        }
+        frame = frame[~frame["Variable Name"].isin(excluded)]
+        frame = frame[
+            ~frame["Variable Name"].str.startswith(
+                (
+                    "ccsds", "des_", "REUSABLE_", "mem_dump", "fp_test",
+                    "xband_adc", "uhf_pass_", "pl_data", "log_", "mem_", "ver_",
+                ),
+                na=False,
+            )
+        ]
+        frame = frame[
+            ~frame["Variable Name"].str.contains(
+                "dbg|debug|cmd_bytes|checksum|task_state|wp_state|xband_virt_|"
+                "version|chksm|opcode|unused",
+                case=False,
+                na=False,
+            )
+        ].reset_index(drop=True)
+        frame["Units"] = frame["Variable Name"].map(self._determine_units)
+        output = Path(output_telemetry_definition_path_filename)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_csv(output, index=False)
+        return frame
 
-        # Drop rows where Variable Name contains specific strings
-        df = df[~df['Variable Name'].str.contains('dbg|debug|cmd_bytes|checksum|task_state|wp_state|xband_virt_|version|chksm|opcode|unused', case=False, na=False)]
-        df = df.reset_index(drop=True)
-        
-        # Add units column based on Variable Name patterns
-        df['Units'] = df['Variable Name'].apply(self._determine_units)
-        
-        # Save to new CSV file
-        df.to_csv(output_telemetry_definition_path_filename, index=False)
-        
-        return df
-
-    def _determine_units(self, variable_name):
-        """Determine the units for a telemetry variable based on its name.
-        
-        Args:
-            variable_name (str): The name of the telemetry variable
-            
-        Returns:
-            str: The determined unit for the variable, or None if no unit can be determined
-        """
-        variable_name = variable_name.lower()
-        
-        if 'temp' in variable_name:
-            return 'Celsius'
-        if 'cur' in variable_name or '_iin' in variable_name or '_iout' in variable_name or variable_name.endswith('_i'):
-            return 'Amperes'
-        if 'vcell' in variable_name or 'volt' in variable_name or 'vin' in variable_name or 'v_out' in variable_name or variable_name.endswith('_v'):
-            return 'Volts'
-        if 'power' in variable_name or 'pwr' in variable_name:
-            return 'Watts'
-        if 'time' in variable_name or 'sec' in variable_name:
-            return 'Seconds'
-        if 'angle' in variable_name or 'deg' in variable_name:
-            return 'Degrees'
-        if 'count' in variable_name or 'cnt' in variable_name:
-            return 'Count'
-        
+    @staticmethod
+    def _determine_units(variable_name):
+        name = str(variable_name).lower()
+        if "temp" in name:
+            return "Celsius"
+        if "cur" in name or "_iin" in name or "_iout" in name or name.endswith("_i"):
+            return "Amperes"
+        if "vcell" in name or "volt" in name or "vin" in name or "v_out" in name or name.endswith("_v"):
+            return "Volts"
+        if "power" in name or "pwr" in name:
+            return "Watts"
+        if "time" in name or "sec" in name:
+            return "Seconds"
+        if "angle" in name or "deg" in name:
+            return "Degrees"
+        if "count" in name or "cnt" in name:
+            return "Count"
         return None
 
 
 class TelemetryProcessor:
-    def __init__(self, version=None):
-        """Initialize the TelemetryProcessor.
-        
-        Args:
-            version (str, optional): Version string for the output hdf5 file. If None, reads from config file.
-        """
+    """Ingest decoded per-APID CSVs into one mission-length DuckDB database."""
+
+    def __init__(self, version=None, database_path=None):
         if version is None:
-            # Read version from config file
             config = configparser.ConfigParser()
-            config_path = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
-            config.read(config_path)
-            self.version = config["structure"]["version_pipeline"]
-        else:
-            self.version = version
-            
-        self.hdf5_filename = data_path(
-            'level0_5', f'suncet_telemetry_mission_length_v{self.version}.hdf5'
+            config.read(
+                Path(__file__).resolve().parent / "config_files" / "config_default.ini"
+            )
+            version = config["structure"]["version_pipeline"]
+        self.version = version
+        self.database_path = Path(database_path) if database_path else data_path(
+            "telemetry", f"suncet_telemetry_mission_length_v{version}.duckdb"
         )
-        
-    def process_files(self, path=None, file_list=None):
-        """Process telemetry files and store data in hdf5 file.
-        
-        Args:
-            path (str, optional): Path to directory containing ccsds_ binary files
-            file_list (list, optional): List of specific ccsds_ binary files to process
-            
-        Returns:
-            None
-        """
-        files_to_process = []
-        
+
+    @staticmethod
+    def _discover(path=None, file_list=None) -> list[Path]:
+        candidates: list[Path] = []
         if path is not None:
-            # Find all ccsds_ files in the given path
-            files_to_process.extend(glob.glob(os.path.join(path, 'ccsds_*')))
-            
-        if file_list is not None:
-            # Add specific files from the list
-            files_to_process.extend([f for f in file_list if os.path.basename(f).startswith('ccsds_')])
-            
-        if not files_to_process:
-            raise ValueError("No files to process. Please provide either a path or a list of files.")
-            
-        # Process each file
-        all_data = []
-        for file_path in files_to_process:
-            with open(file_path, 'rb') as f:
-                binary_data = f.read()
-                
-            # Use gen_pkts to interpret the binary data
-            packet = gen_pkts.interpret_packet(binary_data)
-            
-            if packet is not None:
-                # Extract time and data from packet
-                packet_time = packet.get_time()  # Assuming this method exists in gen_pkts
-                packet_data = packet.get_data()  # Assuming this method exists in gen_pkts
-                
-                all_data.append({
-                    'time': packet_time,
-                    'data': packet_data,
-                    'packet_type': packet.get_type()  # Assuming this method exists in gen_pkts
-                })
-        
-        # Sort all data by time
-        all_data.sort(key=lambda x: x['time'])
-        
-        # Store in hdf5 file
-        self.hdf5_filename.parent.mkdir(parents=True, exist_ok=True)
-        with h5py.File(self.hdf5_filename, 'a') as f:
-            for data in all_data:
-                # Create group for packet type if it doesn't exist
-                if data['packet_type'] not in f:
-                    f.create_group(data['packet_type'])
-                
-                # Store data in appropriate group
-                group = f[data['packet_type']]
-                group.create_dataset(str(data['time']), data=data['data'])
+            candidates.extend(Path(path).rglob("decoded_apid_*.csv"))
+        if file_list:
+            candidates.extend(Path(item) for item in file_list)
+        unique = sorted({item.resolve() for item in candidates if item.is_file()})
+        invalid = [str(item) for item in unique if DECODED_CSV_RE.match(item.name) is None]
+        if invalid:
+            raise ValueError("Unrecognized decoded telemetry filename(s): " + ", ".join(invalid))
+        if not unique:
+            raise ValueError("No decoded_apid_*.csv telemetry files were found")
+        return unique
+
+    @staticmethod
+    def _initialize(connection) -> None:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS _apid_catalog (
+                apid INTEGER PRIMARY KEY,
+                packet_name VARCHAR NOT NULL,
+                table_name VARCHAR NOT NULL UNIQUE
+            );
+            CREATE TABLE IF NOT EXISTS _ingestions (
+                ingestion_id UUID PRIMARY KEY,
+                source_path VARCHAR NOT NULL,
+                source_sha256 VARCHAR NOT NULL UNIQUE,
+                apid INTEGER NOT NULL,
+                table_name VARCHAR NOT NULL,
+                rows_ingested BIGINT NOT NULL,
+                ingested_utc TIMESTAMPTZ NOT NULL DEFAULT current_timestamp
+            );
+            """
+        )
+
+    def process_files(self, path=None, file_list=None) -> dict[str, int]:
+        files = self._discover(path, file_list)
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        ingested = 0
+        skipped = 0
+        rows_ingested = 0
+        with duckdb.connect(str(self.database_path)) as connection:
+            self._initialize(connection)
+            for source in files:
+                match = DECODED_CSV_RE.match(source.name)
+                assert match is not None
+                apid = int(match.group("apid"))
+                packet_name = match.group("name")
+                table_name = f"apid_{apid:04d}"
+                checksum = _sha256(source)
+                already_loaded = connection.execute(
+                    "SELECT 1 FROM _ingestions WHERE source_sha256 = ?", [checksum]
+                ).fetchone()
+                if already_loaded:
+                    skipped += 1
+                    continue
+                connection.execute("BEGIN")
+                try:
+                    connection.execute(
+                        "INSERT INTO _apid_catalog VALUES (?, ?, ?) "
+                        "ON CONFLICT (apid) DO UPDATE SET "
+                        "packet_name = excluded.packet_name, table_name = excluded.table_name",
+                        [apid, packet_name, table_name],
+                    )
+                    source_sql = str(source).replace("'", "''")
+                    connection.execute(
+                        f'CREATE TABLE IF NOT EXISTS "{table_name}" AS '
+                        f"SELECT *, uuid() AS _ingestion_id, '{checksum}'::VARCHAR AS _source_sha256 "
+                        f"FROM read_csv_auto('{source_sql}', header=true, all_varchar=false) LIMIT 0"
+                    )
+                    existing_columns = {
+                        row[0]
+                        for row in connection.execute(
+                            f'DESCRIBE "{table_name}"'
+                        ).fetchall()
+                    }
+                    source_columns = connection.execute(
+                        f"DESCRIBE SELECT * FROM read_csv_auto("
+                        f"'{source_sql}', header=true, all_varchar=false)"
+                    ).fetchall()
+                    for column_name, column_type, *_rest in source_columns:
+                        if column_name in existing_columns:
+                            continue
+                        safe_column = str(column_name).replace('"', '""')
+                        connection.execute(
+                            f'ALTER TABLE "{table_name}" ADD COLUMN '
+                            f'"{safe_column}" {column_type}'
+                        )
+                    ingestion_id = connection.execute("SELECT uuid()").fetchone()[0]
+                    connection.execute(
+                        f'INSERT INTO "{table_name}" BY NAME '
+                        f"SELECT *, ?::UUID AS _ingestion_id, ?::VARCHAR AS _source_sha256 "
+                        f"FROM read_csv_auto('{source_sql}', header=true, all_varchar=false)",
+                        [ingestion_id, checksum],
+                    )
+                    count = connection.execute(
+                        f'SELECT count(*) FROM "{table_name}" WHERE _ingestion_id = ?',
+                        [ingestion_id],
+                    ).fetchone()[0]
+                    connection.execute(
+                        "INSERT INTO _ingestions "
+                        "(ingestion_id, source_path, source_sha256, apid, table_name, rows_ingested) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        [ingestion_id, str(source), checksum, apid, table_name, count],
+                    )
+                    connection.execute("COMMIT")
+                except Exception:
+                    connection.execute("ROLLBACK")
+                    raise
+                ingested += 1
+                rows_ingested += count
+        return {"files_ingested": ingested, "files_skipped": skipped, "rows_ingested": rows_ingested}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("paths", nargs="+", type=Path)
+    parser.add_argument("--database", type=Path)
+    parser.add_argument("--version")
+    args = parser.parse_args(argv)
+    processor = TelemetryProcessor(args.version, args.database)
+    files: list[Path] = []
+    directories: list[Path] = []
+    for path in args.paths:
+        (directories if path.is_dir() else files).append(path)
+    summary = {"files_ingested": 0, "files_skipped": 0, "rows_ingested": 0}
+    for directory in directories or [None]:
+        result = processor.process_files(path=directory, file_list=files)
+        files = []
+        for key in summary:
+            summary[key] += result[key]
+    print(f"DuckDB telemetry store: {processor.database_path}")
+    print(summary)
 
 
 if __name__ == "__main__":
-    # Create processor instance and process CTDB file
-    default_config = Path(__file__).resolve().parent / 'config_files' / 'config_default.ini'
-    config = Config(default_config)
-    documenter = CTDBDocumenter()
-    df = documenter.process_ctdb(
-        ctdb_path_filename=(
-            Path(config.bus_ctdb_path) / 'packet_definitions' / 'ct_tlm.csv'
-        )
-    )
-    print("Telemetry definition file has been created successfully.")
-    print(f"Number of telemetry points processed: {len(df)}")
+    main()

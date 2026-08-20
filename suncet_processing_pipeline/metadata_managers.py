@@ -16,6 +16,8 @@ from astropy.io import fits
 import numpy as np
 import pandas as pd
 
+from .metadata_snapshots import verify_run_metadata_snapshot
+
 
 
 # Expected name of FITS metadata definitions file in the run directory
@@ -39,8 +41,8 @@ FITS_RESERVED_NAMES = [
 class FitsMetadataManager:
     """Class for interacting with SunCET FITS Metadata files.
 
-    This expect the metadata is downloaded into the run directory. To do that,
-    see: setup_minimum_required_folders_files.py
+    New runs contain checksum-guarded definition snapshots created by
+    ``make_run.py``. Historical runs without a snapshot manifest remain readable.
     """
     def __init__(self, run_dir):
         """Initialize a metadata manager from a run directory, which
@@ -51,6 +53,8 @@ class FitsMetadataManager:
         """
         # Convert run directory to a Path object
         run_dir = Path(run_dir)
+
+        self._snapshot_manifest = verify_run_metadata_snapshot(run_dir)
         
         # Set paths and check they exist
         self._metadata_path = run_dir / FITS_METADATA_DEFINITIONS_FILENAME
@@ -63,7 +67,7 @@ class FitsMetadataManager:
             
         if not self._metadata_ver_path.exists():
             raise FileNotFoundError(
-                f"Error: could not find metadata version at {self._metadata_path}"
+                f"Error: could not find metadata version at {self._metadata_ver_path}"
             )
 
         # Load metadata CSV using Pandas

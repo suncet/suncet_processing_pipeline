@@ -1,5 +1,37 @@
 import os
+import numpy as np
+import pytest
 from .. import config_parser, make_level1
+
+
+def test_effective_exposure_uses_stack_counts_filtering_and_right_shift():
+    exposures = make_level1.effective_exposure_times_from_metadata(
+        {
+            "INTTIMEI": 0.035,
+            "NSTACKI": 9,
+            "STKNORMI": 8,
+            "PIXFILTI": True,
+            "INTTIMEO": 15.0,
+            "NSTACKO": 4,
+            "STKNORMO": 4,
+            "PIXFILTO": True,
+            "TELAPSE": 69.0,
+        }
+    )
+    assert exposures == {"inner": 0.035, "outer": 11.25}
+
+
+def test_2d_composite_exposure_requires_and_uses_inner_mask():
+    image = np.zeros((2, 3))
+    exposures = {"inner": 1.0, "outer": 4.0}
+    with pytest.raises(ValueError, match="requires an inner_mask"):
+        make_level1.create_exposure_time_mask(image, exposures)
+    mask = make_level1.create_exposure_time_mask(
+        image,
+        exposures,
+        inner_mask=np.array([[False, True, False], [True, True, False]]),
+    )
+    np.testing.assert_array_equal(mask, [[4, 1, 4], [1, 1, 4]])
 
 
 def test_Level1_object_instantiates(tmp_path, monkeypatch):

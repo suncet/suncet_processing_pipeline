@@ -8,6 +8,7 @@ import sys
 from termcolor import cprint
 
 from suncet_processing_pipeline.data_paths import processing_run_path
+from suncet_processing_pipeline.metadata_snapshots import snapshot_metadata_for_run
 
 
 def main():
@@ -49,6 +50,12 @@ def main():
     shutil.copy(default_config, config_path)
     print(f"Copied ", end="")
     cprint(config_path, "yellow")
+
+    metadata_manifest = snapshot_metadata_for_run(run_dir)
+    print(
+        "Snapshotted metadata definition "
+        f"v{metadata_manifest['metadata_version']} into this run"
+    )
 
     # Print final message stating success
     print("Run creation completed successfully")

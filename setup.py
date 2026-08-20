@@ -34,8 +34,8 @@ except KeyError:
 setup(
     name='suncet',
     version=version_string, 
-    description='Simulate the Sun Coronal Ejection Tracker observations',
-    url='https://github.com/suncet/suncet_instrument_simulator',
+    description='Process Sun Coronal Ejection Tracker mission data',
+    url='https://github.com/suncet/suncet_processing_pipeline',
     install_requires=requirements,
     python_requires='>=3.12',
     packages=find_packages(),

@@ -68,7 +68,13 @@ COMMENT ----- Camera and Readout State -----------------------------------------
 Detector Description ,detector_desc,CMOS detector 2000 x1505 pixels,,DETECTOR,,,string,CMOS detector 2000 x1504 pixels
 Bad Pixel Count,num_pixel_bad,Number of invalid pixel counts,,NPIXBAD,pixels,u.pix,int,0
 Readout Time,readout_time,Time to readout raw image from camera,,READTIME,miliseconds,u.ms ,float,10
-Exposure lapse time,exposure_time,Time between begin and end of exposure,,TELAPSE,seconds,u.s ,float,59.65
+Exposure lapse time,exposure_time,Elapsed time from start of first integration through end of final integration for one image ID,,TELAPSE,seconds,u.s,float,59.65
+Integration time (inner),integration_time_inner,Per-capture short integration time for the inner-FOV component,,INTTIMEI,seconds,u.s,float,0.035
+Integration time (outer),integration_time_outer,Per-capture long integration time for the outer/full-frame component,,INTTIMEO,seconds,u.s,float,15
+Number of stacked integrations (inner),number_stacked_integrations_inner,Number of short/inner capture-source CSIE META packets sharing the image ID,,NSTACKI,,u.dimensionless_unscaled,int,9
+Number of stacked integrations (outer),number_stacked_integrations_outer,Number of long/outer capture-source CSIE META packets sharing the image ID,,NSTACKO,,u.dimensionless_unscaled,int,4
+Stack normalization factor (inner),stack_normalization_factor_inner,Divisor applied after summing the inner stack; 2 ** FPM right-shift count,,STKNORMI,,u.dimensionless_unscaled,int,8
+Stack normalization factor (outer),stack_normalization_factor_outer,Divisor applied after summing the outer stack; 2 ** FPM right-shift count,,STKNORMO,,u.dimensionless_unscaled,int,4
 Detector Name,detector_name,Name of the Detector,,CAMERA,,,string,CSIE
 First Detector Row,detector_row_start,First read-out detector row,,PXBEG1,,u.dimensionless_unscaled,int ,0
 Last Detector Row,detector_row_end,Last read-out detector row,,PXEND1,,u.dimensionless_unscaled,int ,751
@@ -94,7 +100,9 @@ Code Table ,code_table_name,Square-root coding table name,,SQRTCODE,,,string,SLU
 Image Compression,cmpr_type,Image compression type,,COMPRESS,,,string,RICE
 Compression Ratio,cmpr_ratio,Compressed/uncompressed data ratio,,COMP_RAT,,u.dimensionless_unscaled,float,14.5
 COMMENT ----- Calibration Data -------------------------------------------------,,,,,,,,
-Vignet File,vignet_file,Vignetting filename,,CALVI,,,string ,Vignet_2023-01-14T17-00-00.000
+Dark File,dark_file,Dark calibration filename,,CALDARK,,,string,Dark_2023-01-14T17-00-00.000
+Flat File,flat_file,Flat-field calibration filename,,CALFLAT,,,string,Flat_2023-01-14T17-00-00.000
+Vignette File,vignette_file,Vignetting filename,,CALVI,,,string,Vignette_2023-01-14T17-00-00.000
 PSF File,psf_file,PSF filename,,CALPSF,,,string ,PSF_2023-01-14T17-00-00.000
 Bad Pixel File,bad_pixel_file,Bad pixel map filename,,CALBPM,,,string ,BadPixel_2023-01-14T17-00-00.000
 Stray Light File,stray_light_file,Stray light model filename,,CALSL,,,string ,StrayLight_2023-01-14T17-00-00.000

@@ -13,7 +13,9 @@ Pipeline Version,ver_pipeline,Processing pipeline version number,,,string,v1.0
 Raw filename,filename_raw_telem,Raw telemetry filename ,,,string,config_default_OBS_2023-02-14T17-00-00.000
 Instituition ,institution,Institution responsible for data creation,,,string,LASP
 Instrument Name,instrument_name,Instrument Name: 'SunCET',,,string,SunCET
-Vignet File,vignet_file,Vignetting filename,,,string ,Vignet_2023-01-14T17-00-00.000
+Dark File,dark_file,Dark calibration filename,,,string,Dark_2023-01-14T17-00-00.000
+Flat File,flat_file,Flat-field calibration filename,,,string,Flat_2023-01-14T17-00-00.000
+Vignette File,vignette_file,Vignetting filename,,,string,Vignette_2023-01-14T17-00-00.000
 PSF File,psf_file,PSF filename,,,string ,PSF_2023-01-14T17-00-00.000
 Bad Pixel File,bad_pixel_file,Bad pixel map filename,,,string ,BadPixel_2023-01-14T17-00-00.000
 Stray Light File,stray_light_file,Stray light model filename,,,string ,StrayLight_2023-01-14T17-00-00.000
@@ -82,7 +84,7 @@ Bits Per Pixel,bits_per_pixel,Number of bits per pixel ,,u.bit/u.pix,int,16
 Detector Description ,detector_desc,CMOS detector 2000 x1505 pixels,,,string,CMOS detector 2000 x1504 pixels
 Bad Pixel Count,num_pixel_bad,Number of invalid pixel counts,pixels,u.pix,int,0
 Readout Time,readout_time,Time to readout raw image from camera,miliseconds,u.ms ,float,10
-Exposure lapse time,exposure_time,Time between begin and end of exposure,seconds,u.s ,float,10
+Exposure lapse time,exposure_time,Elapsed time from start of first integration through end of final integration for one image ID,seconds,u.s,float,10
 Detector Name,detector_name,Name of the Detector,,,string,CSIE
 First Detector Row,detector_row_start,First read-out detector row,,u.dimensionless_unscaled,int ,0
 Last Detector Row,detector_row_end,Last read-out detector row,,u.dimensionless_unscaled,int ,751

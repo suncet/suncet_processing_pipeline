@@ -1,156 +1,206 @@
-"""Download auxilary data for a run from online resources"""
+"""Initialize the portable ``suncet_data`` tree and its metadata definitions.
+
+This script is intentionally host-independent: the absolute data location comes
+only from the required ``suncet_data`` environment variable. It may therefore
+be run unchanged on a developer laptop or the SOC Jetson.
+"""
+
+from __future__ import annotations
+
 import argparse
-import os
+import csv
 from pathlib import Path
 import urllib.request
-from urllib.parse import urlparse
-import ssl
-import sys
-import re
-from termcolor import cprint
 
-from suncet_processing_pipeline.data_paths import processing_run_path
-
-# URL to synthetic level 1 fits file on dropbox
-SYNTHETIC_LEVEL1_URL = 'https://www.dropbox.com/scl/fi/udcemchdku67mjhawfa7b/config_default_OBS_2023-02-14T17-00-00.000.fits?rlkey=iaa9fnjl4imjcs3rlnjceas12&dl=1'
-
-# URL to frozen SunCET metadata file
-SUNCET_METADATA_FROZEN_URL = 'https://www.dropbox.com/scl/fi/rbe7vm3sha9mbloek1iio/suncet_metadata_definition_v1.0.0.csv?rlkey=mswa2lvdrvbb9o1rer1z60p2x&dl=1'
-
-# URL to live SunCET metadata file, or development
-SUNCET_METADATA_FITS_LIVE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSBYimlrLlhl04mQ-mYZnu6j9aK6sbEzEEMqPuFhK_Qavy3skMpmv9mmzGyGf-msVxARAmIjI-tc8Mh/pub?gid=0&single=true&output=csv'
-
-SUNCET_METADATA_NETCDF_ZARR_LIVE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSBYimlrLlhl04mQ-mYZnu6j9aK6sbEzEEMqPuFhK_Qavy3skMpmv9mmzGyGf-msVxARAmIjI-tc8Mh/pub?gid=2088748176&single=true&output=csv'
+from suncet_processing_pipeline.data_paths import get_data_root
+from suncet_processing_pipeline.metadata_snapshots import (
+    FITS_SOURCE_FILENAME,
+    METADATA_VERSION,
+    NETCDF_ZARR_SOURCE_FILENAME,
+    VERSION_FILENAME,
+)
 
 
-def run():
-    "Main routine of the program"    
-    # Parse command line arguments and check that run exists
-    args = get_parser().parse_args()
-    run_dir = processing_run_path(args.run_name)
+GOOGLE_SHEET_ID = "18W6bGEchqG0jehqo0b5oj78b8fG_wEmbKwkjHDh5a6w"
+GOOGLE_SHEET_FITS_GID = "0"
+GOOGLE_SHEET_NETCDF_ZARR_GID = "2088748176"
 
-    if not run_dir.exists():
-        cprint(f"Cannot find run \"{args.run_name}\"; no such directory {run_dir}", "red")
-        sys.exit(1)
+SUNCET_METADATA_FITS_LIVE_URL = (
+    f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export"
+    f"?format=csv&gid={GOOGLE_SHEET_FITS_GID}"
+)
+SUNCET_METADATA_NETCDF_ZARR_LIVE_URL = (
+    f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export"
+    f"?format=csv&gid={GOOGLE_SHEET_NETCDF_ZARR_GID}"
+)
 
-    # Setup downloading capability for dropbox
-    ssl._create_default_https_context = ssl._create_unverified_context
-        
-    # Save Synthetic Level 1 Data
-    synthetic_path = run_dir / 'level1' / get_filename_from_url(SYNTHETIC_LEVEL1_URL)
-    synthetic_path.parent.mkdir(parents=True, exist_ok=True)
+FITS_METADATA_FILENAME = FITS_SOURCE_FILENAME
+NETCDF_ZARR_METADATA_FILENAME = NETCDF_ZARR_SOURCE_FILENAME
+METADATA_VERSION_FILENAME = VERSION_FILENAME
 
-    download_file(SYNTHETIC_LEVEL1_URL, synthetic_path)
+DATA_DIRECTORIES = (
+    "calibration",
+    "level0_5",
+    "level1",
+    "level2",
+    "level3",
+    "level4",
+    "metadata",
+    "processing_runs",
+    "synthetic/level1",
+    "synthetic/level2",
+    "telemetry",
+    "test_data",
+    "trends",
+)
 
-    # Save SunCET Metatadata
-    metadata_fits_path = run_dir / 'suncet_metadata_definition_fits.csv'
-    metadata_nczarr_path = run_dir / 'suncet_metadata_definition_nczarr.csv'
+FITS_REQUIRED_VARIABLES = {
+    "exposure_time",
+    "integration_time_inner",
+    "integration_time_outer",
+    "number_stacked_integrations_inner",
+    "number_stacked_integrations_outer",
+    "stack_normalization_factor_inner",
+    "stack_normalization_factor_outer",
+    "dark_file",
+    "flat_file",
+    "vignette_file",
+}
 
-    if args.live_metadata:
-        
-        to_download = {
-            SUNCET_METADATA_FITS_LIVE_URL: metadata_fits_path,
-            SUNCET_METADATA_NETCDF_ZARR_LIVE_URL: metadata_nczarr_path,
+NETCDF_ZARR_REQUIRED_VARIABLES = {
+    "dark_file",
+    "flat_file",
+    "vignette_file",
+    "psf_file",
+    "bad_pixel_file",
+    "stray_light_file",
+}
 
-        }
-        metadata_version = 'live'
-        print("Using 'live' version of metadata from Google Drive")
+
+def initialize_data_tree() -> Path:
+    """Create the minimum directory structure below ``suncet_data``."""
+    data_root = get_data_root(must_exist=False)
+    data_root.mkdir(parents=True, exist_ok=True)
+    for relative_directory in DATA_DIRECTORIES:
+        (data_root / relative_directory).mkdir(parents=True, exist_ok=True)
+    return data_root
+
+
+def download_file(url: str, out_path: Path, *, timeout: float = 60.0) -> None:
+    """Download one file with normal TLS verification and atomic replacement."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            temporary_path.write_bytes(response.read())
+        temporary_path.replace(out_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _validate_variable_column(
+    metadata_path: Path,
+    *,
+    variable_column: int,
+    required_variables: set[str],
+) -> None:
+    with metadata_path.open(newline="", encoding="utf-8-sig") as stream:
+        rows = list(csv.reader(stream))
+    if not rows:
+        raise ValueError(f"Downloaded metadata file is empty: {metadata_path}")
+
+    variables = {
+        row[variable_column].strip()
+        for row in rows
+        if len(row) > variable_column and row[variable_column].strip()
+    }
+    missing = sorted(required_variables - variables)
+    if missing:
+        raise ValueError(
+            f"Metadata export {metadata_path} is missing required variables: "
+            + ", ".join(missing)
+        )
+    if "vignet_file" in variables:
+        raise ValueError(
+            f"Metadata export {metadata_path} contains obsolete 'vignet_file'; "
+            "use 'vignette_file'."
+        )
+
+
+def download_live_metadata(metadata_directory: Path) -> tuple[Path, Path]:
+    """Download and validate both authoritative development metadata tabs."""
+    fits_path = metadata_directory / FITS_METADATA_FILENAME
+    netcdf_zarr_path = metadata_directory / NETCDF_ZARR_METADATA_FILENAME
+    fits_staging_path = fits_path.with_suffix(fits_path.suffix + ".download")
+    netcdf_zarr_staging_path = netcdf_zarr_path.with_suffix(
+        netcdf_zarr_path.suffix + ".download"
+    )
+
+    try:
+        download_file(SUNCET_METADATA_FITS_LIVE_URL, fits_staging_path)
+        download_file(
+            SUNCET_METADATA_NETCDF_ZARR_LIVE_URL, netcdf_zarr_staging_path
+        )
+
+        _validate_variable_column(
+            fits_staging_path,
+            variable_column=1,
+            required_variables=FITS_REQUIRED_VARIABLES,
+        )
+        _validate_variable_column(
+            netcdf_zarr_staging_path,
+            variable_column=1,
+            required_variables=NETCDF_ZARR_REQUIRED_VARIABLES,
+        )
+        fits_staging_path.replace(fits_path)
+        netcdf_zarr_staging_path.replace(netcdf_zarr_path)
+    finally:
+        fits_staging_path.unlink(missing_ok=True)
+        netcdf_zarr_staging_path.unlink(missing_ok=True)
+
+    (metadata_directory / METADATA_VERSION_FILENAME).write_text(
+        METADATA_VERSION + "\n", encoding="utf-8"
+    )
+    return fits_path, netcdf_zarr_path
+
+
+def report_calibration_status(calibration_directory: Path) -> None:
+    """Report whether calibration FITS assets are present without guessing names."""
+    calibration_files = sorted(calibration_directory.glob("*.fits*"))
+    if calibration_files:
+        print(f"Calibration assets found: {len(calibration_files)}")
     else:
-        to_download = {
-            SUNCET_METADATA_FROZEN_URL: metadata_fits_path,
-        }
-        metadata_version = find_metadata_version(SUNCET_METADATA_FROZEN_URL)
-        print("Using 'frozen' version of metadata from Dropbox")
-
-    # Setup output paths
-    metadata_ver_path = run_dir / 'suncet_metadata_definition_version.txt'
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    for url, metadata_path in to_download.items():        
-        download_file(url, metadata_path)
-
-    with open(metadata_ver_path, 'w') as fh:
-        cprint('Writing metadata version: ', 'green', end='')
-        print(metadata_version)
-        fh.write(metadata_version)
-    
-    # Print message tht all completed successfully
-    print("All Downloads completed successfully")
+        print(
+            "WARNING: no calibration FITS assets are present yet in "
+            f"{calibration_directory}. The directory is ready, but Level 1/2 "
+            "production processing will require mission-approved files."
+        )
 
 
-def download_file(url, out_path):
-    """
-    Download a file to an output path and write a message to console.
-    
-    Args
-       url: URL to download
-       out_path: Path to write output to
-    """    
-    thisurl = urllib.request.urlopen(url)  
-    data = thisurl.read()
-    thisurl.close()
-
-    with open(out_path, "wb") as fh:
-        cprint(f'downloading file:', 'green')
-        print(f'  url = {url}')
-        print(f'  output path = {out_path}')
-        fh.write(data)
-
-        
-def get_filename_from_url(url):
-    """Parse a filename from a URL
-    
-    Args
-      url: source of filename
-    Returns
-      string filename
-    """    
-    parsed_url = urlparse(url)
-    return os.path.basename(parsed_url.path)
-
-
-def get_parser():
-    """Get command line ArgumentParser object with options defined.
-        
-    Returns
-       argparse.ArgumentParser object which can be used to parse command
-       line objects
-    """
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-n', '--run-name', type=str, required=True,
-                        help='String name of the run')
-    parser.add_argument('--live-metadata', action='store_true',
-                        help='Use live version of metadata from Google Drive (for devel)')
+def get_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Initialize the directory structure below $suncet_data."
+    )
+    parser.add_argument(
+        "--skip-metadata-download",
+        action="store_true",
+        help="Create directories without refreshing metadata from the live Sheet.",
+    )
     return parser
 
 
-def find_metadata_version(url):
-    """Determine the Metadata Version from the filename in a URL.
+def run(argv: list[str] | None = None) -> Path:
+    args = get_parser().parse_args(argv)
+    data_root = initialize_data_tree()
+    print(f"Initialized SunCET data tree: {data_root}")
 
-    If cannot determine, prints an error message and returns "unknown".    
+    if not args.skip_metadata_download:
+        fits_path, netcdf_zarr_path = download_live_metadata(data_root / "metadata")
+        print(f"Downloaded FITS metadata: {fits_path}")
+        print(f"Downloaded NetCDF/Zarr metadata: {netcdf_zarr_path}")
 
-    Args
-      url: URL to file, e.g. on dropbox
-    Returns
-      string version such as "v1.1.0" or "unknown" if could not determine.
-    """
-    # Expects URLs like https://www.dropbox.com/scl/fi/rbe7vm3sha9mbloek1iio/suncet_metadata_
-    # definition_v1.0.0.csv?rlkey=mswa2lvdrvbb9o1rer1z60p2x&dl=1
-    match = re.search(r'_v(.*)\.csv', url)
-
-    if match:
-        # e.g. 1.1.0 
-        version = (
-            match
-            .group(0)
-            .replace('_v', '')
-            .replace('.csv', '')
-        )
-    else:
-        cprint('Could not determine version of metadata from URL; setting as "unknown"', 'red')
-        version = 'unknown'
-
-    return version
+    report_calibration_status(data_root / "calibration")
+    return data_root
 
 
 if __name__ == "__main__":

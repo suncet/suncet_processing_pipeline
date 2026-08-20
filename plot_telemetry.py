@@ -1,7 +1,7 @@
 """
-Script to create plots of telemetry points from HDF5 files.
+Script to create plots of telemetry points from the mission DuckDB store.
 
-This script uses TelemetryReader from read_telemetry_hdf5.py to read telemetry data
+This script uses the packaged DuckDB ``TelemetryReader`` to read telemetry data
 and create plots of specified telemetry points. If no points are specified,
 it creates a default stack plot of temperature measurements from beacon packets.
 """
@@ -13,8 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-# Import TelemetryReader from read_telemetry_hdf5
-from read_telemetry_hdf5 import TelemetryReader
+from suncet_processing_pipeline.readers import TelemetryReader
 from suncet_processing_pipeline.data_paths import data_path
 
 
@@ -118,12 +117,7 @@ def create_stack_plot(reader, fields, time_field='beac_time_since_boot',
         print(f"Warning: No {packet_type} packets found. Cannot create plot.")
         return
     
-    # Get available fields
-    if hasattr(filtered_data, 'dtype') and hasattr(filtered_data.dtype, 'names'):
-        available_fields = filtered_data.dtype.names
-    else:
-        # Columnar format
-        available_fields = list(filtered_data.data_dict.keys())
+    available_fields = list(filtered_data.columns)
     
     # Find time field
     time_fields = [f for f in available_fields if time_field.lower() in f.lower()]
@@ -218,12 +212,7 @@ def create_overlay_plot(reader, fields, time_field='beac_time_since_boot',
         print(f"Warning: No {packet_type} packets found. Cannot create plot.")
         return
     
-    # Get available fields
-    if hasattr(filtered_data, 'dtype') and hasattr(filtered_data.dtype, 'names'):
-        available_fields = filtered_data.dtype.names
-    else:
-        # Columnar format
-        available_fields = list(filtered_data.data_dict.keys())
+    available_fields = list(filtered_data.columns)
     
     # Find time field
     time_fields = [f for f in available_fields if time_field.lower() in f.lower()]
@@ -307,12 +296,7 @@ def create_individual_plots(reader, packet_type='beacon', time_field='beac_time_
         print(f"Warning: No {packet_type} packets found. Cannot create plots.")
         return 0
     
-    # Get available fields
-    if hasattr(filtered_data, 'dtype') and hasattr(filtered_data.dtype, 'names'):
-        available_fields = filtered_data.dtype.names
-    else:
-        # Columnar format
-        available_fields = list(filtered_data.data_dict.keys())
+    available_fields = list(filtered_data.columns)
     
     # Exclude time field and packet_type from plotting
     fields_to_plot = [f for f in available_fields 
@@ -416,7 +400,7 @@ def create_individual_plots(reader, packet_type='beacon', time_field='beac_time_
 def main():
     """Main function for command-line usage."""
     parser = argparse.ArgumentParser(
-        description='Create plots of telemetry points from HDF5 files',
+        description='Create plots of telemetry points from a DuckDB file',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -427,7 +411,7 @@ Examples:
   python plot_telemetry.py --fields beac_batt_temp_1 beac_cdh_temp
   
   # Plot with custom file
-  python plot_telemetry.py --filepath /path/to/file.h5
+  python plot_telemetry.py --filepath /path/to/file.duckdb
   
   # Create overlay plot instead of stack plot
   python plot_telemetry.py --overlay
@@ -435,14 +419,11 @@ Examples:
     )
     
     default_filepath = data_path(
-        'test_data',
-        '2026-05-01_fm_xband_downlink_all_data_types_test',
-        'level0_5',
-        'suncet_telemetry_mission_length_v1.0.1-hardline_playback_test.h5'
+        'telemetry', 'suncet_telemetry_mission_length_v1.0.1.duckdb'
     )
     
     parser.add_argument('--filepath', type=str, default=default_filepath,
-                       help='Path to telemetry HDF5 file')
+                       help='Path to the mission telemetry DuckDB file')
     parser.add_argument('--fields', type=str, nargs='+',
                        help='List of field names to plot (if not specified, uses default temperature fields)')
     parser.add_argument('--packet-type', type=str, default='beacon',
@@ -482,7 +463,7 @@ Examples:
             else:
                 # Use default temperature fields
                 print("No fields specified. Using default temperature fields from beacon packets...")
-                available_fields = reader.get_field_names()
+                available_fields = reader.get_field_names(args.packet_type)
                 default_keywords = get_default_temperature_fields()
                 fields_to_plot = find_matching_fields(available_fields, default_keywords, case_sensitive=False)
                 

@@ -22,9 +22,48 @@ from ..make_level0_5 import (
     build_fixed_binary,
     ccsds_packet_at,
     packetize_checksum_valid_ccsds,
+    summarize_csie_metadata_packets,
     unwrap_direct_playback_stream,
     unwrap_uhf_playback_stream,
 )
+
+
+def _capture_meta(integration_ms, capture_id, coarse, *, right_shift, filtered):
+    return {
+        "csie_meta_meta_src": 0,
+        "csie_meta_capture_id": capture_id,
+        "csie_meta_intg_ms": integration_ms,
+        "fpm_proc_cfg_right_shift_meta": right_shift,
+        "fpm_proc_cfg_pix_clean_meta": "ENA" if filtered else "DIS",
+        "_capture_time_coarse": coarse,
+        "_capture_time_fine": 0,
+    }
+
+
+def test_csie_metadata_capture_set_derives_timing_and_normalization():
+    packets = [
+        *[
+            _capture_meta(35, index, 100 + index, right_shift=3, filtered=True)
+            for index in range(9)
+        ],
+        *[
+            _capture_meta(15000, 9 + index, 109 + 15 * index, right_shift=2, filtered=True)
+            for index in range(4)
+        ],
+        {"csie_meta_meta_src": 1, "csie_meta_img_id": 42},
+    ]
+
+    product, derived, warnings = summarize_csie_metadata_packets(packets)
+
+    assert product["csie_meta_img_id"] == 42
+    assert derived["number_stacked_integrations_inner"] == 9
+    assert derived["number_stacked_integrations_outer"] == 4
+    assert derived["stack_normalization_factor_inner"] == 8
+    assert derived["stack_normalization_factor_outer"] == 4
+    assert derived["effective_exposure_time_inner"] == 8 * 0.035 / 8
+    assert derived["effective_exposure_time_outer"] == 3 * 15 / 4
+    assert derived["exposure_time"] == 169 - 100
+    assert warnings == []
 
 
 def _ccsds_packet(

@@ -1,54 +1,137 @@
+"""Bootstrap a SunCET development checkout with Mamba.
+
+This helper does not edit shell profiles or guess private paths. It creates or
+updates the named Mamba environment, installs the checkout in editable mode, and
+initializes the public data tree using explicit absolute paths.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
+
 import setup_minimum_required_folders_files
 
 
-# Setup steps
-# 1. Manual: If you're contributing as part of the SunCET team, you should be part of the GitHub Organization -- talk to James Mason
+def _absolute_path(value: str) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        raise argparse.ArgumentTypeError(f"expected an absolute path, got {value!r}")
+    return path.resolve(strict=False)
 
-# 2. Manual: This script assumes that you have already cloned the repository to some local directory, so do that.
 
-# 3. Scripted: Install the environment using conda (you can do this manually with virtualenv instead if you prefer) -- this creates an environment called "suncet"
-os.system('conda env create -f environment.yml')
-
-# 4. Manual: Define environment variable for "suncet_data" path
-suncet_data_path = Path(
-    input(
-        'What absolute path should `suncet_data` use for public/synchronized data? '
+def get_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Create/update the SunCET Mamba environment and data tree."
     )
-).expanduser().resolve()
-suncet_data_path.mkdir(parents=True, exist_ok=True)
-os.environ['suncet_data'] = str(suncet_data_path)
-suncet_ctdb_path = Path(
-    input(
-        'What existing absolute path should `suncet_ctdb` use for private CTDBs? '
+    parser.add_argument("--data-root", required=True, type=_absolute_path)
+    parser.add_argument("--ctdb-root", required=True, type=_absolute_path)
+    parser.add_argument("--environment", default="suncet")
+    parser.add_argument(
+        "--definition",
+        type=Path,
+        default=Path(__file__).resolve().parent / "environment.yml",
     )
-).expanduser().resolve()
-if not suncet_ctdb_path.is_dir():
-    raise SystemExit(f'CTDB directory does not exist: {suncet_ctdb_path}')
-os.environ['suncet_ctdb'] = str(suncet_ctdb_path)
-print('You are executing from the following shell:')
-os.system('echo $SHELL')
-print(
-    'Add both suncet_data (public data) and suncet_ctdb (private CTDBs) to '
-    'your shell profile. Never place suncet_ctdb inside suncet_data.'
-)
+    parser.add_argument(
+        "--skip-environment",
+        action="store_true",
+        help="Only initialize the data tree (useful after an environment exists).",
+    )
+    parser.add_argument(
+        "--skip-metadata-download",
+        action="store_true",
+        help="Create directories without downloading the live metadata exports.",
+    )
+    return parser
 
-# 5. Scripted: Configure the necessary directory structure and download the minimum set of required files
-setup_minimum_required_folders_files.run()
 
-# 6. Scripted: Configure things so that pytest is always looking at the most recent edited code
-os.system('pip install -e .')
+def _environment_exists(mamba: str, environment: str) -> bool:
+    result = subprocess.run(
+        [mamba, "env", "list", "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return any(
+        Path(path).name == environment for path in json.loads(result.stdout)["envs"]
+    )
 
-# 7. Manual: In your dev tools (VS Code or PyCharm or whatever), open up the folder that you cloned
 
-# 8. Manual: Setup your interpreter (e.g., in VS Code, open the Command Pallette, search for + click "Python: Select Interpreter", and choose the "suncet" environment that should've been installed in Step 3 above.)
+def bootstrap(argv: list[str] | None = None) -> Path:
+    args = get_parser().parse_args(argv)
+    if not args.ctdb_root.is_dir():
+        raise SystemExit(f"Private CTDB directory does not exist: {args.ctdb_root}")
+    args.data_root.mkdir(parents=True, exist_ok=True)
+    if (
+        args.ctdb_root == args.data_root
+        or args.ctdb_root.is_relative_to(args.data_root)
+        or args.data_root.is_relative_to(args.ctdb_root)
+    ):
+        raise SystemExit("suncet_data and suncet_ctdb must not overlap")
 
-# And then you're done! But you probably want to check that things are working. The quick way to do that is to open up a terminal in the folder of your local version of the repo, make sure you're in the "suncet" environment, and then just type "pytest". It should run and all tests should pass. 
+    repository = Path(__file__).resolve().parent
+    if not args.skip_environment:
+        mamba = shutil.which("mamba")
+        if mamba is None:
+            raise SystemExit(
+                "Mamba was not found. Install Miniforge, then rerun this command."
+            )
+        if _environment_exists(mamba, args.environment):
+            environment_command = [
+                mamba,
+                "env",
+                "update",
+                "--name",
+                args.environment,
+                "--file",
+                str(args.definition),
+                "--prune",
+            ]
+        else:
+            environment_command = [
+                mamba,
+                "env",
+                "create",
+                "--name",
+                args.environment,
+                "--file",
+                str(args.definition),
+            ]
+        subprocess.run(environment_command, check=True, cwd=repository)
+        subprocess.run(
+            [
+                mamba,
+                "run",
+                "--name",
+                args.environment,
+                "python",
+                "-m",
+                "pip",
+                "install",
+                "--no-deps",
+                "--editable",
+                str(repository),
+            ],
+            check=True,
+            cwd=repository,
+        )
 
-# For running, developing, and debugging the code, make sure to run things from the main wrapper: simulator.py. That calls the other key files/classes/functions (e.g., instrument.py). 
-# If you're in an IDE, the typical process would be:
-# 1. Make edits in whatever file you're working on, and put a break point there
-# 2. Go to simulator.py and tell the IDE to run it in debug mode
-# 3. Code will execute until it reaches your breakpoint, at which point you can inspect variables, test your code, and test alternative implementations of code at the command line in the debugger
-# 4. Make any needed changes to your code, and repeat this process
+    os.environ["suncet_data"] = str(args.data_root)
+    os.environ["suncet_ctdb"] = str(args.ctdb_root)
+    initializer_args = ["--skip-metadata-download"] if args.skip_metadata_download else []
+    data_root = setup_minimum_required_folders_files.run(initializer_args)
+
+    print("\nAdd these lines to the appropriate shell profile on this host:")
+    print(f"export suncet_data={str(args.data_root)!r}")
+    print(f"export suncet_ctdb={str(args.ctdb_root)!r}")
+    print(f"Activate with: mamba activate {args.environment}")
+    print(f"Validate with: mamba run -n {args.environment} python -m pytest")
+    return data_root
+
+
+if __name__ == "__main__":
+    bootstrap()

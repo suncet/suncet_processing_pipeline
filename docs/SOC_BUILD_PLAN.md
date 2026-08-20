@@ -38,6 +38,12 @@ under its hostname.
 - Keep CUDA and JetPack components at the operating-system level rather than in
   the portable Python environment.
 - Use `imagecodecs` for JPEG-LS decompression.
+- Store mission-length telemetry in DuckDB, with one table per APID so each
+  packet stream retains its own sampling cadence. Images remain separate FITS
+  products; use ASOF joins for ad hoc cross-APID trending.
+- Treat versioned CSV exports below `$suncet_data/metadata` as the current
+  development definitions, and copy checksum-guarded snapshots into each named
+  processing run. A run never follows later edits to the live Google Sheet.
 - Keep the operating system, boot support, SSH access, source checkout, and a
   small reproducible production environment on eMMC. Use NVMe for SunCET data,
   products, processing scratch space, large caches, optional development
@@ -175,6 +181,10 @@ failure, sanitized arguments and configuration, Git state, environment and
 package details, input and output checksums, and exception details. Successful
 and intentionally failed runs have been tested.
 
+Named processing runs additionally contain exact FITS and NetCDF/Zarr metadata
+definition snapshots, their version, and a checksum manifest. Readers verify the
+snapshot before use, so a modified historical definition fails visibly.
+
 ### 4. Choose the initial APL network posture — complete
 
 Keep the Jetson on Staff Wi-Fi and off APLNIS. IT directed unsupported systems
@@ -249,6 +259,18 @@ Ethernet/APLNIS or expanding the node's data and service exposure.
   GPU-enabled implementation is ready.
 - Record Jetson power mode, clocks, temperature, throughput, memory, and energy
   per product for future flight-hardware suitability studies.
+
+### 8.1 Resolve retained metadata documentation debt — pending
+
+- Obtain the authoritative internal variable names, FITS keywords, units, and
+  data types for the Dual-SPS Solar Angle Error X/Y fields, then update the live
+  Google Sheet and versioned exports.
+- Fill the currently blank provenance/source cells for the older FITS metadata
+  rows. These blanks are documentation debt, not permission to infer sources in
+  production processing.
+- Inventory the mission-approved dark, flat, vignette, PSF, bad-pixel, and
+  stray-light calibration products; define versioning and validity intervals
+  before Level 1/2 production use.
 
 ### 9. Automate post-pass operations — future
 

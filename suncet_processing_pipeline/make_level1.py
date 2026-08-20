@@ -16,6 +16,72 @@ from sunkit_image.utils import noise_estimation
 from suncet_processing_pipeline import config_parser
 
 
+def effective_exposure_times_from_metadata(metadata):
+    """Return inner/outer radiometric exposures in seconds.
+
+    ``TELAPSE`` is deliberately not used: it is the wall-clock span from the
+    first integration start to the final integration end, including gaps. The
+    values here describe the integrated signal after FSW stacking, optional
+    particle rejection, and right-shift normalization.
+    """
+    def value(name, default=None):
+        if hasattr(metadata, "get"):
+            observed = metadata.get(name, default)
+        else:
+            observed = getattr(metadata, name, default)
+        return default if observed is None else observed
+
+    result = {}
+    for component, suffix in (("inner", "I"), ("outer", "O")):
+        direct = value(f"EFFEXP{suffix}")
+        if direct is not None:
+            result[component] = float(direct)
+            continue
+        integration = value(f"INTTIME{suffix}")
+        count = value(f"NSTACK{suffix}")
+        normalization = value(f"STKNORM{suffix}")
+        if integration is None or count is None or normalization is None:
+            continue
+        particle_filtering = bool(value(f"PIXFILT{suffix}", False))
+        contributing = int(count) - (1 if particle_filtering else 0)
+        if contributing < 0 or float(normalization) <= 0:
+            raise ValueError(f"invalid {component} exposure metadata")
+        result[component] = (
+            contributing * float(integration) / float(normalization)
+        )
+    if not result:
+        raise ValueError("no effective inner/outer exposure metadata is available")
+    return result
+
+
+def create_exposure_time_mask(image_data, exposures, *, inner_mask=None):
+    """Create the effective-exposure mask used for DN/s normalization."""
+    image = np.asanyarray(image_data)
+    inner = exposures.get("inner")
+    outer = exposures.get("outer")
+    if image.ndim == 3:
+        ordered = [value for value in (inner, outer) if value is not None]
+        if len(ordered) != image.shape[0]:
+            raise ValueError("effective exposures do not match image sections")
+        return np.broadcast_to(
+            np.asarray(ordered, dtype=float)[:, None, None], image.shape
+        ).copy()
+    if image.ndim != 2:
+        raise ValueError("image data must be a 2D composite or 3D section stack")
+    if inner is None:
+        return np.full(image.shape, outer, dtype=float)
+    if outer is None or inner == outer:
+        return np.full(image.shape, inner, dtype=float)
+    if inner_mask is None:
+        raise ValueError(
+            "a 2D composite with different inner/outer exposures requires an inner_mask"
+        )
+    mask = np.asanyarray(inner_mask, dtype=bool)
+    if mask.shape != image.shape:
+        raise ValueError("inner_mask shape does not match image data")
+    return np.where(mask, float(inner), float(outer))
+
+
 class Level1:
     def __init__(self, config):
         self.config = config
@@ -238,21 +304,11 @@ class Level1:
         np.ndarray
             Exposure time mask with the same shape as image_data.
         """
-        telapse = self.metadata.TELAPSE
-
-        if image_data.ndim == 3:
-            telapse = np.asarray(telapse)
-            if telapse.size != image_data.shape[0]:
-                raise ValueError("Length of TELAPSE does not match number of image sections.")
-            # Broadcast exposure times across height and width
-            exposure_mask = telapse[:, None, None] * np.ones_like(image_data)
-        elif image_data.ndim == 2:
-            # Single-section image: broadcast scalar or single-element array
-            exposure_mask = np.full_like(image_data, telapse, dtype=float)
-        else:
-            raise ValueError("Unsupported image_data shape: must be 2D or 3D array.")
-
-        return exposure_mask
+        exposures = effective_exposure_times_from_metadata(self.metadata)
+        inner_mask = getattr(self, "inner_fov_mask", None)
+        return create_exposure_time_mask(
+            image_data, exposures, inner_mask=inner_mask
+        )
 
     def __convert_to_DN(self, image_data):
         """
