@@ -152,7 +152,8 @@ Completed on the Jetson on 2026-08-20:
   so this is recorded as a test-tool behavior rather than a processing blocker.
 - Created `/home/james/suncet_ctdb` with mode `700`, exported it as
   `suncet_ctdb` from `.bashrc`, and retained a pre-change Bash configuration
-  backup. No CTDB contents have been transferred yet.
+  backup. CTDB content, inventory, and transfer records are deliberately kept
+  outside this public repository.
 - Intentionally left `suncet_data` undefined until the NVMe is mounted at its
   permanent path. Validation used a temporary data root, preventing an interim
   eMMC location from becoming operational by accident.
