@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
+from suncet_processing_pipeline.data_paths import get_data_root
+
 
 SCHEMA_VERSION = 1
 MANIFEST_DIRNAME = "processing_manifests"
@@ -156,6 +158,7 @@ def resolved_config_snapshot(config: object, data_root: Path) -> dict[str, objec
         "version_csie",
         "output_suffix",
         "base_metadata_filename",
+        "ctdb_base",
         "calibration_path",
         "dark_filename",
         "flat_filename",
@@ -166,6 +169,18 @@ def resolved_config_snapshot(config: object, data_root: Path) -> dict[str, objec
         "csie_ctdb_path",
     )
     values = {name: getattr(config, name) for name in names if hasattr(config, name)}
+    ctdb_base = Path(values["ctdb_base"]) if "ctdb_base" in values else None
+    if ctdb_base is not None:
+        values["ctdb_base"] = "$suncet_ctdb"
+        for name in ("packet_definitions_path", "bus_ctdb_path", "csie_ctdb_path"):
+            if name not in values:
+                continue
+            try:
+                relative = Path(values[name]).relative_to(ctdb_base)
+            except (TypeError, ValueError):
+                values[name] = "<private-ctdb-path>"
+            else:
+                values[name] = str(Path("$suncet_ctdb") / relative)
     values["data_root"] = str(data_root)
     return _json_safe(values)  # type: ignore[return-value]
 
@@ -226,7 +241,7 @@ def _system_snapshot() -> dict[str, object]:
         "python_prefix": sys.prefix,
         "conda_environment": os.environ.get("CONDA_DEFAULT_ENV"),
         "conda_prefix": os.environ.get("CONDA_PREFIX"),
-        "suncet_data": os.environ.get("suncet_data"),
+        "suncet_data": str(get_data_root()),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
     }
 

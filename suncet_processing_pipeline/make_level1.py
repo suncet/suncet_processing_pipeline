@@ -26,24 +26,34 @@ class Level1:
          pass
 
     def make(self, level0_5_to_process=None): 
-        if level0_5_to_process is None: 
-        #    raise ValueError('Need to provide either path to files (string) or list of filenames that you want to process.') # FIXME: uncomment this once we don't need the hack to get a synthetic image
-            pass
+        if level0_5_to_process is None:
+            raise ValueError(
+                'Provide a Level 0.5 directory, FITS filename, or list of FITS filenames.'
+            )
         if isinstance(level0_5_to_process, list):
             filenames = level0_5_to_process
-        elif isinstance(level0_5_to_process, str):
-            filenames = glob(os.path.join(level0_5_to_process, '*.fits'))
+        elif isinstance(level0_5_to_process, (str, os.PathLike)):
+            input_path = Path(level0_5_to_process).expanduser()
+            filenames = (
+                glob(os.path.join(input_path, '*.fits'))
+                if input_path.is_dir()
+                else [str(input_path)]
+            )
         else: 
-            raise TypeError('Need to provide either path to files (string) or list of filenames that you want to process.')
-        
-        filenames = os.getenv('suncet_data') + '/synthetic/level0_raw/fits/config_default_OBS_2023-02-14T17:00:00.000_300.fits' # Hack to get synthetic image 
+            raise TypeError(
+                'Provide a path-like object or list of FITS filenames.'
+            )
+        if not filenames:
+            raise FileNotFoundError(
+                f'No Level 0.5 FITS files found at {level0_5_to_process}'
+            )
         print("make_level1 is going to process the following input files:")
         for file in filenames:
             print(f"- {file}")
 
         level0_5 = self.__load_level0_5(filenames)
         
-        meta_filename = self.__make_metadata_filename(filenames, self.config.version)
+        meta_filename = self.__make_metadata_filename(filenames[0], self.config.version)
         #self.save_metadata(filename=meta_filename)
 
         pass
@@ -340,4 +350,3 @@ def parameterize_noise(self, image_data, n_regions=9, region_size=64): #TODO tes
 if __name__ == "__main__":
     level1 = Level1()
     level1.run()
-

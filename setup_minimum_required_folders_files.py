@@ -9,6 +9,8 @@ import sys
 import re
 from termcolor import cprint
 
+from suncet_processing_pipeline.data_paths import processing_run_path
+
 # URL to synthetic level 1 fits file on dropbox
 SYNTHETIC_LEVEL1_URL = 'https://www.dropbox.com/scl/fi/udcemchdku67mjhawfa7b/config_default_OBS_2023-02-14T17-00-00.000.fits?rlkey=iaa9fnjl4imjcs3rlnjceas12&dl=1'
 
@@ -25,9 +27,9 @@ def run():
     "Main routine of the program"    
     # Parse command line arguments and check that run exists
     args = get_parser().parse_args()
-    run_dir = os.path.join('processing_runs', args.run_name)
+    run_dir = processing_run_path(args.run_name)
 
-    if not os.path.exists(run_dir):
+    if not run_dir.exists():
         cprint(f"Cannot find run \"{args.run_name}\"; no such directory {run_dir}", "red")
         sys.exit(1)
 
@@ -35,14 +37,14 @@ def run():
     ssl._create_default_https_context = ssl._create_unverified_context
         
     # Save Synthetic Level 1 Data
-    synthetic_path = Path(run_dir) / 'level1' / get_filename_from_url(SYNTHETIC_LEVEL1_URL)
+    synthetic_path = run_dir / 'level1' / get_filename_from_url(SYNTHETIC_LEVEL1_URL)
     synthetic_path.parent.mkdir(parents=True, exist_ok=True)
 
     download_file(SYNTHETIC_LEVEL1_URL, synthetic_path)
 
     # Save SunCET Metatadata
-    metadata_fits_path = Path(run_dir) / 'suncet_metadata_definition_fits.csv'
-    metadata_nczarr_path = Path(run_dir) / 'suncet_metadata_definition_nczarr.csv'
+    metadata_fits_path = run_dir / 'suncet_metadata_definition_fits.csv'
+    metadata_nczarr_path = run_dir / 'suncet_metadata_definition_nczarr.csv'
 
     if args.live_metadata:
         
@@ -61,8 +63,8 @@ def run():
         print("Using 'frozen' version of metadata from Dropbox")
 
     # Setup output paths
-    metadata_ver_path = Path(run_dir) / 'suncet_metadata_definition_version.txt'
-    Path(run_dir).mkdir(parents=True, exist_ok=True) 
+    metadata_ver_path = run_dir / 'suncet_metadata_definition_version.txt'
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     for url, metadata_path in to_download.items():        
         download_file(url, metadata_path)
@@ -153,4 +155,3 @@ def find_metadata_version(url):
 
 if __name__ == "__main__":
     run()
-

@@ -7,7 +7,6 @@ diffraction and scatter effects from the PSF.
 import argparse
 from pathlib import Path
 from glob import glob
-import os
 import sys
 
 from astropy.io import fits
@@ -16,6 +15,7 @@ from termcolor import cprint
 
 from suncet_processing_pipeline import config_parser
 from suncet_processing_pipeline import suncet_deconv
+from suncet_processing_pipeline.data_paths import data_path
 from suncet_processing_pipeline.run_provenance import (
     ProcessingRunProvenance,
     resolved_config_snapshot,
@@ -73,15 +73,11 @@ class Level2:
         
         # Determine output directory
         if output_path is None:
-            suncet_data = os.getenv('suncet_data')
-            if suncet_data is None:
-                raise ValueError("Environment variable 'suncet_data' is not set")
-            
             # Check if we're working with synthetic data
             if 'synthetic' in str(input_path):
-                output_path = Path(suncet_data) / 'synthetic' / 'level2'
+                output_path = data_path('synthetic', 'level2')
             else:
-                output_path = Path(suncet_data) / 'level2'
+                output_path = data_path('level2')
         else:
             output_path = Path(output_path)
         
@@ -205,11 +201,10 @@ def main(argv=None):
     if args.output_path is not None:
         output_path = Path(args.output_path).expanduser().resolve()
     else:
-        suncet_data = os.getenv('suncet_data')
-        if suncet_data is None:
-            raise ValueError("Environment variable 'suncet_data' is not set")
-        output_path = Path(suncet_data).expanduser().resolve() / (
-            'synthetic/level2' if 'synthetic' in str(input_path) else 'level2'
+        output_path = (
+            data_path('synthetic', 'level2')
+            if 'synthetic' in str(input_path)
+            else data_path('level2')
         )
 
     if input_path.is_dir():

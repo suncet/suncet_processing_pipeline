@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import setup_minimum_required_folders_files
 
 
@@ -11,11 +12,27 @@ import setup_minimum_required_folders_files
 os.system('conda env create -f environment.yml')
 
 # 4. Manual: Define environment variable for "suncet_data" path
-suncet_data_path = input('What path do you want `suncet_data` to be? This is where the minimum set of required files to run the simulator will be downloaded: ')
-os.environ['suncet_data'] = suncet_data_path
+suncet_data_path = Path(
+    input(
+        'What absolute path should `suncet_data` use for public/synchronized data? '
+    )
+).expanduser().resolve()
+suncet_data_path.mkdir(parents=True, exist_ok=True)
+os.environ['suncet_data'] = str(suncet_data_path)
+suncet_ctdb_path = Path(
+    input(
+        'What existing absolute path should `suncet_ctdb` use for private CTDBs? '
+    )
+).expanduser().resolve()
+if not suncet_ctdb_path.is_dir():
+    raise SystemExit(f'CTDB directory does not exist: {suncet_ctdb_path}')
+os.environ['suncet_ctdb'] = str(suncet_ctdb_path)
 print('You are executing from the following shell:')
 os.system('echo $SHELL')
-print('HEY USER: Add an environment variable called suncet_data to your corresponding profile (e.g., ~/.zshrc, ~/.bash_profile, ~/.cshrc) that points to the path you just provided.' )
+print(
+    'Add both suncet_data (public data) and suncet_ctdb (private CTDBs) to '
+    'your shell profile. Never place suncet_ctdb inside suncet_data.'
+)
 
 # 5. Scripted: Configure the necessary directory structure and download the minimum set of required files
 setup_minimum_required_folders_files.run()

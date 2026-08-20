@@ -104,3 +104,29 @@ def test_failed_processing_manifest_preserves_error_and_partial_outputs(
     assert [
         record["path"] for record in payload["outputs"]["created_or_modified"]
     ] == ["partial.bin"]
+
+
+def test_resolved_config_hides_private_ctdb_root(tmp_path):
+    private_root = tmp_path / "private" / "ctdb"
+
+    class ConfigStub:
+        ctdb_base = str(private_root)
+        bus_ctdb_path = str(private_root / "suncet_v2-0-1")
+        csie_ctdb_path = str(private_root / "suncet_csie_v1-1-2")
+        packet_definitions_path = str(
+            private_root / "suncet_v2-0-1" / "decoders"
+        )
+        version_bus = "2.0.1"
+        version_csie = "1.1.2"
+
+    snapshot = run_provenance.resolved_config_snapshot(
+        ConfigStub(), tmp_path / "public-data"
+    )
+
+    assert snapshot["ctdb_base"] == "$suncet_ctdb"
+    assert snapshot["bus_ctdb_path"] == "$suncet_ctdb/suncet_v2-0-1"
+    assert snapshot["csie_ctdb_path"] == "$suncet_ctdb/suncet_csie_v1-1-2"
+    assert snapshot["packet_definitions_path"] == (
+        "$suncet_ctdb/suncet_v2-0-1/decoders"
+    )
+    assert str(private_root) not in str(snapshot)

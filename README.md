@@ -3,6 +3,49 @@
 
 # SunCET Data Processing Pipeline
 
+The tracked build and operations roadmap for the Jetson processing node is in
+[the SunCET SOC plan](docs/SOC_BUILD_PLAN.md).
+
+## Portable data roots
+
+Every processing host must define two absolute paths:
+
+```sh
+export suncet_data="/absolute/path/to/public-suncet-data"
+export suncet_ctdb="/absolute/path/to/private-suncet-ctdb"
+```
+
+`suncet_data` is the root of the standard public/synchronized data tree. All
+managed inputs, products, calibration data, trends, manifests, and named
+processing runs use the same relative structure below it. `suncet_ctdb` is a
+separate, private, host-managed CTDB root. The pipeline rejects configurations
+where the two roots overlap so CTDB content cannot accidentally enter the
+publicly synchronized data tree.
+
+The checked-in configurations use `${suncet_ctdb}` for `paths.ctdb_base` and
+select bus and CSIE versions below that root. A specialized configuration may
+provide an explicit absolute CTDB root instead.
+
+The stable top-level convention is:
+
+```text
+$suncet_data/                  public or synchronized
+├── calibration/
+├── metadata/
+├── level0/ … level3/
+├── processing_runs/
+├── synthetic/
+├── test_data/
+└── trends/
+
+$suncet_ctdb/                  private and host-managed
+├── suncet_v<bus-version>/
+└── suncet_csie_v<csie-version>/
+```
+
+Additional science/reference directories may live below `suncet_data`, but code
+must address them relative to that root.
+
 ## Instructions
 The SunCET Data Processing Pipeline supports Python 3.12 and the current Python 3.14 release on Intel and ARM systems. The environment specifications are architecture-neutral: Conda/Mamba or pip selects native packages for Intel/ARM macOS and Linux automatically.
 
@@ -50,7 +93,7 @@ Processing commands automatically write a unique JSON manifest under `<data fold
 - UTC start/end times, duration, status, command line, and parsed arguments
 - Git commit, branch, dirty-tree state, and changed file names
 - configuration contents and SHA-256 checksum, with sensitive-looking values redacted
-- resolved data and CTDB paths plus pipeline, bus, and CSIE versions
+- resolved data paths, private-root-relative CTDB labels, and pipeline, bus, and CSIE versions
 - hostname, operating system, CPU architecture, Python, Conda, and installed package versions
 - input file sizes, timestamps, and SHA-256 checksums
 - created, modified, or deleted outputs and SHA-256 checksums
@@ -61,20 +104,23 @@ The manifests are deliberately stored with the processed data rather than in the
 ## Running the Code
 The code uses a lightweight run management system. First, a new run is created which makes a new directory for the run. Then, the user copies the input data (binary packet telemetary) to the input sub-directory for the run. When that is done, one or more commands are executed to perform the processing, which will leave data in output sub-directories.
 
-```
-$ python make_run.py --run-name MYRUN                   # this makes a directory processing_runs/MYRUN
+```sh
+python make_run.py --run-name MYRUN  # creates $suncet_data/processing_runs/MYRUN
 
-$ cp TELEMETRY_PATH/*.bin procesing_runs/MYRUN/input  # add input files
+cp TELEMETRY_PATH/*.bin "$suncet_data/processing_runs/MYRUN/input/"
 
-$ python suncet_processor.py --run-name MYRUN          # begins processing the run and writes output
+# Set paths.data_to_process_path = processing_runs/MYRUN/input in this config,
+# then run it explicitly.
+python suncet_processor.py \
+  --config "$suncet_data/processing_runs/MYRUN/config.ini"
 
-$ cp processing_runs/MYRUN/level3/* /ftp/public/level3  # copy output data to export directory
+cp "$suncet_data"/processing_runs/MYRUN/level3/* /ftp/public/level3/
 ```
 
 To delete a run from disk, all thats needed is to delete its directory:
 
-```
-$ rm -r processing_runs/MYRUN`
+```sh
+rm -r "$suncet_data/processing_runs/MYRUN"
 ```
 
 ## Running the tests

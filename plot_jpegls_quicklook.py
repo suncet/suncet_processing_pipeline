@@ -14,11 +14,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from suncet_processing_pipeline.data_paths import data_path
 
-DEFAULT_CSIE_DIR = Path(
-    "/Users/masonjp2/Dropbox/suncet_dropbox/9000 Processing/data/test_data/"
-    "2026-05-20_xband_downlink_hk_sci_dsps_adcs/csie_images"
-)
+
+def default_csie_dir() -> Path:
+    return data_path(
+        "test_data",
+        "2026-05-20_xband_downlink_hk_sci_dsps_adcs",
+        "csie_images",
+    )
 
 
 def image_id_from_path(path: Path) -> int:
@@ -123,7 +127,7 @@ def main() -> None:
     parser.add_argument(
         "--input-dir",
         type=Path,
-        default=DEFAULT_CSIE_DIR,
+        default=default_csie_dir(),
         help="Folder containing image_*.jls files.",
     )
     parser.add_argument(

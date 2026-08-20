@@ -15,6 +15,8 @@ import argparse
 from pathlib import Path
 import matplotlib.pyplot as plt
 
+from suncet_processing_pipeline.data_paths import data_path
+
 
 class TelemetryReader:
     """Class to read and work with telemetry HDF5 files."""
@@ -299,9 +301,16 @@ class TelemetryReader:
 
 def main():
     """Main function for command-line usage."""
+    default_filepath = data_path(
+        'test_data',
+        '2026-01-16_7170-002_fm_flatsat_cpt',
+        '2026_016_09_23_06_FM_FLATSAT_CPT',
+        'telemetry',
+        'suncet_telemetry_mission_length_v1.0.0.h5',
+    )
     parser = argparse.ArgumentParser(description='Read and analyze telemetry HDF5 files')
     parser.add_argument('filepath', type=str, nargs='?', 
-                       default='/Users/masonjp2/Dropbox/suncet_dropbox/9000 Processing/data/test_data/2026-01-16_7170-002_fm_flatsat_cpt/2026_016_09_23_06_FM_FLATSAT_CPT/telemetry/suncet_telemetry_mission_length_v1.0.0.h5',
+                       default=str(default_filepath),
                        help='Path to telemetry HDF5 file')
     parser.add_argument('--summary', action='store_true', help='Print summary of telemetry data')
     parser.add_argument('--fields', action='store_true', help='List all field names')

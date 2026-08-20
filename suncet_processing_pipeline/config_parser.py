@@ -3,10 +3,17 @@ import configparser
 import json
 import astropy.units as u
 
+from suncet_processing_pipeline.data_paths import (
+    get_data_root,
+    resolve_ctdb_root,
+    resolve_data_path,
+)
+
 
 class Config:
 
     def __init__(self, filename):
+        self.data_root = str(get_data_root())
         config = configparser.ConfigParser()
         print('Reading configuration file: {}'.format(filename))
         if os.path.isfile(filename): 
@@ -49,9 +56,9 @@ class Config:
         self.output_suffix = config.get('structure', 'output_suffix', fallback='').strip()
 
         try:
-            ctdb_base = os.path.expanduser(config.get('paths', 'ctdb_base'))
+            ctdb_base = resolve_ctdb_root(config.get('paths', 'ctdb_base'))
         except (configparser.NoSectionError, configparser.NoOptionError):
-            ctdb_base = os.path.expanduser('~/Library/CloudStorage/Box-Box/SunCET Private')
+            ctdb_base = resolve_ctdb_root()
 
         def _version_to_path_format(v):
             return 'v' + v.replace('.', '-')
@@ -62,13 +69,16 @@ class Config:
         # CTDB directory layout (2026-04):
         # - bus:  <ctdb_base>/suncet_vX-Y-Z/{decoders,packet_definitions}
         # - csie: <ctdb_base>/suncet_csie_vA-B-C/{decoders,packet_definitions}
+        self.ctdb_base = str(ctdb_base)
         self.bus_ctdb_path = os.path.join(ctdb_base, f"suncet_{bus_version_path}")
         self.csie_ctdb_path = os.path.join(ctdb_base, f"suncet_csie_{csie_version_path}")
         # Historical name: bus ``decoders/`` folder (gen_pkts.py + dsps_decoders/ codegen).
         self.packet_definitions_path = os.path.join(self.bus_ctdb_path, "decoders")
 
         # calibration
-        self.calibration_path = config['calibration']['calibration_path']
+        self.calibration_path = str(
+            resolve_data_path(config['calibration']['calibration_path'])
+        )
         self.dark_filename = config['calibration']['dark_filename']
         self.flat_filename = config['calibration']['flat_filename']
         self.badpix_filename = config['calibration']['badpix_filename']
@@ -76,6 +86,6 @@ class Config:
 
 
 if __name__ == "__main__":
-    filename = os.getcwd() + '/suncet_processing_pipeline/config_files/config_default.ini'
+    filename = os.path.join(os.path.dirname(__file__), 'config_files', 'config_default.ini')
     config = Config(filename)
     print(config.example_limit)  # Just an example to see something return when running as a script

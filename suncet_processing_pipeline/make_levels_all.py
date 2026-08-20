@@ -1,7 +1,6 @@
 """
 This script will run all of the processing from the bottom up
 """
-import os
 from glob import glob
 import pandas as pd
 import astropy.units as u
@@ -10,6 +9,7 @@ from astropy.io import fits
 from suncet_processing_pipeline import config_parser
 from suncet_processing_pipeline.make_level0_5 import Level0_5
 from suncet_processing_pipeline.make_level1 import Level1
+from suncet_processing_pipeline.data_paths import data_path
 
 
 class MakeAllLevels:
@@ -17,11 +17,11 @@ class MakeAllLevels:
         pass
 
     def run(self, version='1.0.0'):
-        data_path = os.getenv('suncet_data') + 'v' + version + '/'
+        version_data_path = data_path('v' + version)
 
         #level0_5 = Level0_5.make()
         level1 = Level1()
-        level1.make(version=version, path=data_path)
+        level1.make(version=version, path=str(version_data_path))
         pass
 
 

@@ -3,8 +3,8 @@
 Strip SunCET **transfer-frame** wrappers and concatenate per-frame **payload** bytes for CSIE EM
 tools (same role as ``parse_tf_assume_raw_nand.py``).
 
-From this folder, **``python3 parse_tf_raw_nand_for_csie.py``** alone uses the FM2 raw file and
-writes **``parsed_output_raw_csie_12p5mbps_4sps``** (same as explicit ``-o``).
+With no path arguments, the script reads and writes the known FM2 test files below
+``$suncet_data/test_data/2026-05-08_em_xband_fixed_bluefin_firmware_downlink_test``.
 
 **FM2 / fixed-Bluefin firmware layout** (default): each **2056**-byte TF is still::
 
@@ -29,6 +29,8 @@ import argparse
 import re
 from collections import Counter
 from pathlib import Path
+
+from suncet_processing_pipeline.data_paths import data_path
 
 SYNC_MARKER = b"\x1A\xCF\xFC\x1D"
 SYNC_SIZE = 4
@@ -160,6 +162,9 @@ def extract_raw_nand(
 
 
 def main() -> None:
+    default_test_dir = data_path(
+        "test_data", "2026-05-08_em_xband_fixed_bluefin_firmware_downlink_test"
+    )
     p = argparse.ArgumentParser(
         description="Concatenate TF NAND payloads (FM2: 2040 B + ignored Fletcher tail; legacy: 2044 B)"
     )
@@ -167,15 +172,15 @@ def main() -> None:
         "input_file",
         nargs="?",
         type=Path,
-        default=Path("CSIEtestpattern96_12p5Mbps_4sps_FM2"),
-        help="Raw binary (default: CSIEtestpattern96_12p5Mbps_4sps_FM2 when run from this folder)",
+        default=default_test_dir / "CSIEtestpattern96_12p5Mbps_4sps_FM2",
+        help="Raw binary (default: managed FM2 test capture below $suncet_data)",
     )
     p.add_argument(
         "-o",
         "--output",
         type=Path,
-        default=Path("parsed_output_raw_csie_12p5mbps_4sps"),
-        help="Output binary (default: parsed_output_raw_csie_12p5mbps_4sps)",
+        default=default_test_dir / "parsed_output_raw_csie_12p5mbps_4sps",
+        help="Output binary (default: next to the managed FM2 test capture)",
     )
     p.add_argument(
         "--legacy-2044",

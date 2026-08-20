@@ -16,6 +16,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from suncet_processing_pipeline import (
     config_parser, metadata_managers
 )
+from suncet_processing_pipeline.data_paths import processing_run_path
 from suncet_processing_pipeline.run_provenance import (
     ProcessingRunProvenance,
     resolved_config_snapshot,
@@ -32,7 +33,7 @@ class Level3:
            configration object
         """
         self.run_name = run_name
-        self.run_dir = Path('processing_runs') / run_name
+        self.run_dir = processing_run_path(run_name)
         self.config = config
 
         if not self.run_dir.exists():
@@ -130,9 +131,9 @@ def main(argv=None):
     args = _get_parser().parse_args(argv)
 
     # Load config
-    config_filename = Path('processing_runs') / args.run_name / 'config.ini'
+    run_dir = processing_run_path(args.run_name)
+    config_filename = run_dir / 'config.ini'
     config = config_parser.Config(config_filename)
-    run_dir = Path('processing_runs') / args.run_name
 
     # Call run() method on Level3 class
     level3 = Level3(args.run_name, config)

@@ -16,15 +16,17 @@ import re
 import shutil
 from pathlib import Path
 
+from suncet_processing_pipeline.data_paths import data_path
 
-DEFAULT_SOURCE_ROOT = Path(
-    "/Users/masonjp2/Dropbox/suncet_dropbox/9000 Processing/data/test_data/"
-    "suncet_test_laptop_hydra_rundirs"
-)
-DEFAULT_TARGET_ROOT = Path(
-    "/Users/masonjp2/Dropbox/suncet_dropbox/9000 Processing/data/test_data/"
-    "2026-05-29_thermal_vacuum_tvac"
-)
+
+def default_source_root() -> Path:
+    return data_path("test_data", "suncet_test_laptop_hydra_rundirs")
+
+
+def default_target_root() -> Path:
+    return data_path("test_data", "2026-05-29_thermal_vacuum_tvac")
+
+
 DEFAULT_START = "2026_149"
 MERGED_EVENTLOG_NAME = "eventlog"
 MANIFEST_NAME = ".hydra_to_tvac_copy_manifest.json"
@@ -212,8 +214,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Copy Hydra rundir files into the TVAC folder and merge EventLogs."
     )
-    parser.add_argument("--source-root", type=Path, default=DEFAULT_SOURCE_ROOT)
-    parser.add_argument("--target-root", type=Path, default=DEFAULT_TARGET_ROOT)
+    parser.add_argument("--source-root", type=Path, default=default_source_root())
+    parser.add_argument("--target-root", type=Path, default=default_target_root())
     parser.add_argument(
         "--start",
         default=DEFAULT_START,

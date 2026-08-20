@@ -392,17 +392,9 @@ class FixStats:
 
 def resolve_config_data_folder(config: Config) -> Path:
     """Resolve ``paths.data_to_process_path`` using the same rule as ``make_level0_5.py``."""
-    data_path = config.data_to_process_path
-    if data_path.startswith("/") or data_path.startswith("~"):
-        return Path(data_path).expanduser().resolve()
+    from suncet_processing_pipeline.data_paths import resolve_data_path
 
-    data_root = os.getenv("suncet_data")
-    if not data_root:
-        raise RuntimeError(
-            "Config data_to_process_path is relative, but the suncet_data environment "
-            "variable is not set."
-        )
-    return (Path(data_root).expanduser() / data_path).resolve()
+    return resolve_data_path(config.data_to_process_path)
 
 
 def discover_prefixed_binary_files(folder: Path, prefix: str) -> list[Path]:

@@ -22,6 +22,7 @@ from suncet_processing_pipeline.level05_merge_utils import merge_per_folder_h5s
 from suncet_processing_pipeline.level05_subprocess_runner import level05_folder_worker
 from suncet_processing_pipeline.make_level0_5 import discover_level0_5_input_files
 from suncet_processing_pipeline.config_parser import Config
+from suncet_processing_pipeline.data_paths import data_path
 
 
 PER_FOLDER_TIMEOUT_SEC = 30
@@ -75,24 +76,20 @@ def main():
     config_path = os.path.join(repo, "suncet_processing_pipeline", "config_files", "config_default.ini")
     config = Config(config_path)
 
-    sd = os.environ.get("suncet_data")
-    if not sd:
-        sys.exit("suncet_data environment variable is not set")
-
-    test_data = os.path.join(sd, "test_data")
-    if not os.path.isdir(test_data):
+    test_data = data_path("test_data")
+    if not test_data.is_dir():
         sys.exit(f"test_data directory does not exist: {test_data}")
 
     subdirs = sorted(
         x
         for x in os.listdir(test_data)
-        if x.startswith("2026") and os.path.isdir(os.path.join(test_data, x))
+        if x.startswith("2026") and (test_data / x).is_dir()
     )
 
     ok, failed, empty = 0, 0, 0
     succeeded_names = []
     for name in subdirs:
-        folder = os.path.join(test_data, name)
+        folder = str(test_data / name)
         file_paths = discover_level0_5_input_files(folder, ignore_realtime=config.ignore_realtime)
         if not file_paths:
             print(f"[skip empty] {name}")
@@ -114,7 +111,7 @@ def main():
         f"{len(subdirs)} folders total."
     )
 
-    merge_root = os.path.join(test_data, "_level0_5_merged_2026_subfolders")
+    merge_root = str(test_data / "_level0_5_merged_2026_subfolders")
     if succeeded_names:
         print(f"Merging HDF5 from {len(succeeded_names)} successful folder(s) -> {merge_root}")
         merge_per_folder_h5s(test_data, succeeded_names, config, merge_root)

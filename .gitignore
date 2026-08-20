@@ -1,5 +1,4 @@
 # Local working directories
-processing_runs/*
 /tmp/
 
 # Byte-compiled / optimized / DLL files

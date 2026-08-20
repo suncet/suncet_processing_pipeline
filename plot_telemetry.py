@@ -15,6 +15,7 @@ from pathlib import Path
 
 # Import TelemetryReader from read_telemetry_hdf5
 from read_telemetry_hdf5 import TelemetryReader
+from suncet_processing_pipeline.data_paths import data_path
 
 
 def get_default_temperature_fields():
@@ -293,7 +294,7 @@ def create_individual_plots(reader, packet_type='beacon', time_field='beac_time_
         reader (TelemetryReader): The telemetry reader instance
         packet_type (str): Packet type to filter by (default: beacon)
         time_field (str): Name of the time field to use for x-axis
-        output_dir (str): Directory to save plots (default: getenv('suncet_data')/trends/test_trends)
+        output_dir (str): Directory to save plots (default: $suncet_data/trends/test_trends)
         color (str): Color to use for plots (default: dodgerblue)
     
     Returns:
@@ -339,12 +340,7 @@ def create_individual_plots(reader, packet_type='beacon', time_field='beac_time_
     
     # Set up output directory
     if output_dir is None:
-        suncet_data = os.getenv('suncet_data')
-        if suncet_data:
-            output_dir = os.path.join(suncet_data, 'trends', 'test_trends')
-        else:
-            output_dir = 'trends/test_trends'
-            print(f"Warning: 'suncet_data' environment variable not set. Using default: {output_dir}")
+        output_dir = data_path('trends', 'test_trends')
     
     # Create output directory if it doesn't exist
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -438,8 +434,7 @@ Examples:
         """
     )
     
-    default_filepath = os.path.join(
-        os.getenv('suncet_data', ''),
+    default_filepath = data_path(
         'test_data',
         '2026-05-01_fm_xband_downlink_all_data_types_test',
         'level0_5',
@@ -463,7 +458,7 @@ Examples:
     parser.add_argument('--individual', action='store_true',
                        help='Create individual plots for all fields in the packet type (saves to trends/test_trends)')
     parser.add_argument('--output-dir', type=str,
-                       help='Output directory for individual plots (default: getenv("suncet_data")/trends/test_trends)')
+                       help='Output directory for individual plots (default: $suncet_data/trends/test_trends)')
     
     args = parser.parse_args()
     

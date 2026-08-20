@@ -181,11 +181,11 @@ def load_config(path: str | Path | None = None) -> RealtimeDisplayConfig:
         parser.get(
             "pipeline",
             "processing_config",
-            fallback="suncet_processing_pipeline/config_files/config_default.ini",
+            fallback="../config_files/config_default.ini",
         )
     ).expanduser()
     if not processing_config.is_absolute():
-        processing_config = (Path.cwd() / processing_config).resolve()
+        processing_config = (config_path.parent / processing_config).resolve()
 
     limits_path_text = parser.get(
         "limits", "color_limits_xml", fallback="color_limits_tlm.xml"

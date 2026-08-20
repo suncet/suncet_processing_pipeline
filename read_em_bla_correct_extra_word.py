@@ -19,18 +19,19 @@ from collections import defaultdict
 
 import numpy as np
 
-# Test pattern (suncet_csie_configuration_translator) for ground-truth diff vs parsed CSIE
-_DEFAULT_REFERENCE_FITS = os.path.join(
-    os.path.expanduser("~/Dropbox/suncet_dropbox/9000 Processing/code/"),
-    "suncet_csie_configuration_translator",
-    "test_pattern_96.fits",
-)
+from suncet_processing_pipeline.data_paths import data_path
 
-# Default input used for the 2026-04-22 EM / X-band test
-_DEFAULT_INPUT = (
-    "/Users/masonjp2/Dropbox/suncet_dropbox/9000 Processing/data/test_data/"
-    "2026-05-08_em_xband_fixed_bluefin_firmware_downlink_test/parsed_output_raw_csie_12p5mbps_4sps"
-)
+
+def _default_reference_fits():
+    return data_path("test_data", "reference_test_pattern_96.fits")
+
+
+def _default_input():
+    return data_path(
+        "test_data",
+        "2026-05-08_em_xband_fixed_bluefin_firmware_downlink_test",
+        "parsed_output_raw_csie_12p5mbps_4sps",
+    )
 
 
 SYNC_PATTERN = b"\x1a\xcf\xfc\x1d"
@@ -449,7 +450,7 @@ def main() -> None:
     p.add_argument(
         "input",
         nargs="?",
-        default=_DEFAULT_INPUT,
+        default=_default_input(),
         help="Raw binary capture (default: EM test file path)",
     )
     p.add_argument(
@@ -464,9 +465,9 @@ def main() -> None:
     )
     p.add_argument(
         "--reference-fits",
-        default=_DEFAULT_REFERENCE_FITS,
+        default=_default_reference_fits(),
         metavar="PATH",
-        help="FITS test pattern to subtract (default: test_pattern_96.fits next to config translator; loaded as uint16)",
+        help="FITS test pattern to subtract (default: $suncet_data/test_data/reference_test_pattern_96.fits)",
     )
     p.add_argument(
         "--show",

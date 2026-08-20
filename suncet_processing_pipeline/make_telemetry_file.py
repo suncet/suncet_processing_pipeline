@@ -11,6 +11,9 @@ from pathlib import Path
 import packet_definitions.gen_pkts as gen_pkts
 import configparser
 
+from suncet_processing_pipeline.config_parser import Config
+from suncet_processing_pipeline.data_paths import data_path
+
 
 class CTDBDocumenter:
     def __init__(self):
@@ -29,10 +32,20 @@ class CTDBDocumenter:
         """
         # Set default paths if not provided
         if ctdb_path_filename is None:
-            ctdb_path_filename = os.path.join(os.getcwd(), 'ct_tlm.csv')
+            default_config = (
+                Path(__file__).resolve().parent
+                / 'config_files'
+                / 'config_default.ini'
+            )
+            config = Config(default_config)
+            ctdb_path_filename = (
+                Path(config.bus_ctdb_path) / 'packet_definitions' / 'ct_tlm.csv'
+            )
         
         if output_telemetry_definition_path_filename is None:
-            output_telemetry_definition_path_filename = os.path.join(os.getenv('suncet_data'), 'metadata', 'telemetry_definition.csv')
+            output_telemetry_definition_path_filename = data_path(
+                'metadata', 'telemetry_definition.csv'
+            )
         
         # Read the CTDB file
         df = pd.read_csv(ctdb_path_filename)
@@ -107,7 +120,9 @@ class TelemetryProcessor:
         else:
             self.version = version
             
-        self.hdf5_filename = f'suncet_telemetry_mission_length_v{self.version}.hdf5'
+        self.hdf5_filename = data_path(
+            'level0_5', f'suncet_telemetry_mission_length_v{self.version}.hdf5'
+        )
         
     def process_files(self, path=None, file_list=None):
         """Process telemetry files and store data in hdf5 file.
@@ -156,6 +171,7 @@ class TelemetryProcessor:
         all_data.sort(key=lambda x: x['time'])
         
         # Store in hdf5 file
+        self.hdf5_filename.parent.mkdir(parents=True, exist_ok=True)
         with h5py.File(self.hdf5_filename, 'a') as f:
             for data in all_data:
                 # Create group for packet type if it doesn't exist
@@ -169,7 +185,13 @@ class TelemetryProcessor:
 
 if __name__ == "__main__":
     # Create processor instance and process CTDB file
+    default_config = Path(__file__).resolve().parent / 'config_files' / 'config_default.ini'
+    config = Config(default_config)
     documenter = CTDBDocumenter()
-    df = documenter.process_ctdb(ctdb_path_filename=os.path.expanduser('~/Downloads/ctdbSunCET_Bus_v0-1-0/ctdb/ct_tlm.csv'))
+    df = documenter.process_ctdb(
+        ctdb_path_filename=(
+            Path(config.bus_ctdb_path) / 'packet_definitions' / 'ct_tlm.csv'
+        )
+    )
     print("Telemetry definition file has been created successfully.")
     print(f"Number of telemetry points processed: {len(df)}")

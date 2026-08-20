@@ -2177,11 +2177,9 @@ def _main_without_provenance(argv=None, *, _prepared=None):
         config = Config(config_path)
         data_path = config.data_to_process_path
 
-        # Resolve path: absolute (~ or /) use as-is; otherwise relative to suncet_data
-        if data_path.startswith('/') or data_path.startswith('~'):
-            folder = os.path.expanduser(data_path)
-        else:
-            folder = os.path.join(os.getenv('suncet_data', ''), data_path)
+        from suncet_processing_pipeline.data_paths import resolve_data_path
+
+        folder = str(resolve_data_path(data_path))
         file_paths = discover_level0_5_input_files(
             folder, ignore_realtime=config.ignore_realtime
         )
@@ -2222,10 +2220,9 @@ def main(argv=None):
     if provenance_args.save_jpeg2000:
         config.save_jpeg2000 = True
     data_path = config.data_to_process_path
-    if data_path.startswith('/') or data_path.startswith('~'):
-        folder = os.path.abspath(os.path.expanduser(data_path))
-    else:
-        folder = os.path.abspath(os.path.join(os.getenv('suncet_data', ''), data_path))
+    from suncet_processing_pipeline.data_paths import resolve_data_path
+
+    folder = str(resolve_data_path(data_path))
     file_paths = discover_level0_5_input_files(
         folder, ignore_realtime=config.ignore_realtime
     )

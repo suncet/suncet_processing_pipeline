@@ -1,6 +1,7 @@
 """
 This is the main wrapper for most/all(?) of the other processor related python files. Those also inherit the common functionality of Processor.
 """
+import argparse
 import os
 from glob import glob
 from pathlib import Path
@@ -12,6 +13,7 @@ from suncet_processing_pipeline import config_parser
 from suncet_processing_pipeline.make_level0_5 import Level0_5
 from suncet_processing_pipeline.make_level0_5 import discover_level0_5_input_files
 from suncet_processing_pipeline.make_level1 import Level1
+from suncet_processing_pipeline.data_paths import data_path, resolve_data_path
 from suncet_processing_pipeline.run_provenance import (
     ProcessingRunProvenance,
     resolved_config_snapshot,
@@ -31,7 +33,7 @@ class Processor:
     
 
     def __load_metadata_definition(self):
-        return pd.read_csv(os.getenv('suncet_data') + '/metadata/' + self.config.base_metadata_filename)
+        return pd.read_csv(data_path('metadata', self.config.base_metadata_filename))
     
     
     def save_metadata(self, filename=None):
@@ -40,16 +42,13 @@ class Processor:
             base, extension = os.path.splitext(filename)
             filename = f"{base}{'_no_new_filename_specified'}{extension}"
 
-        path = os.getenv('suncet_data') + '/metadata/'
-        self.metadata.to_csv(path + filename, index=False)
+        path = data_path('metadata', filename)
+        self.metadata.to_csv(path, index=False)
 
 
     def run(self):
-        data_path = self.config.data_to_process_path
-        if data_path.startswith('/') or data_path.startswith('~'):
-            folder = os.path.abspath(os.path.expanduser(data_path))
-        else:
-            folder = os.path.abspath(os.path.join(os.getenv('suncet_data', ''), data_path))
+        configured_data_path = self.config.data_to_process_path
+        folder = str(resolve_data_path(configured_data_path))
 
         file_paths = []
         if self.config.make_level0_5:
@@ -88,9 +87,28 @@ class Processor:
 
         if self.config.make_level1:
             level1 = Level1(self.config)
-            level1.make(level0_5_to_process=os.getenv('suncet_data') + 'level0_5/')
+            level1.make(level0_5_to_process=str(data_path('level0_5')))
+
+
+def main(argv=None):
+    default_config = (
+        Path(__file__).resolve().parent
+        / 'suncet_processing_pipeline'
+        / 'config_files'
+        / 'config_default.ini'
+    )
+    parser = argparse.ArgumentParser(description='Run the configured SunCET pipeline.')
+    parser.add_argument(
+        '-c',
+        '--config',
+        type=Path,
+        default=default_config,
+        help='Processing configuration file (default: checked-in config_default.ini)',
+    )
+    args = parser.parse_args(argv)
+    processor = Processor(config_filename=args.config)
+    processor.run()
 
 
 if __name__ == "__main__":
-    processor = Processor(config_filename=os.getcwd() + '/suncet_processing_pipeline/config_files/config_default.ini')
-    processor.run()
+    main()

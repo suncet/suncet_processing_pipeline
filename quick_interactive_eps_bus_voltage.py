@@ -16,11 +16,18 @@ from pathlib import Path
 
 import pandas as pd
 
+from suncet_processing_pipeline.data_paths import data_path
 
-DEFAULT_BEACON_CSV = Path(
-    "/Users/masonjp2/Dropbox/suncet_dropbox/9000 Processing/data/test_data/"
-    "2026-05-29_thermal_vacuum_tvac/decoded_packets/decoded_apid_0001_beacon.csv"
-)
+
+def default_beacon_csv() -> Path:
+    return data_path(
+        "test_data",
+        "2026-05-29_thermal_vacuum_tvac",
+        "decoded_packets",
+        "decoded_apid_0001_beacon.csv",
+    )
+
+
 DEFAULT_MIN_UTC = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 J2000_UTC_EPOCH = datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 EPS_BUS_V_FIELD = "beac_ana_eps_bus_v"
@@ -88,7 +95,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Open an interactive EPS bus-voltage plot from decoded beacon CSV."
     )
-    parser.add_argument("--csv", type=Path, default=DEFAULT_BEACON_CSV)
+    parser.add_argument("--csv", type=Path, default=default_beacon_csv())
     parser.add_argument("--time-column", default=None)
     parser.add_argument("--min-utc", default=DEFAULT_MIN_UTC.isoformat().replace("+00:00", "Z"))
     parser.add_argument("--no-leap-second-correction", action="store_true")
