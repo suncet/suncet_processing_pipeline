@@ -39,5 +39,8 @@ setup(
     install_requires=requirements,
     python_requires='>=3.12',
     packages=find_packages(),
+    package_data={
+        'suncet_processing_pipeline.satnogs': ['public_beacon_schema.csv'],
+    },
     zip_safe=False,
 )

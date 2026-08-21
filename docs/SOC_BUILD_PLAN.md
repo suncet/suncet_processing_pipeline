@@ -1,6 +1,6 @@
 # SunCET SOC Jetson Build and Operations Plan
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 ## Purpose
 
@@ -346,6 +346,20 @@ After manual operations are dependable:
 Public hosting on APL infrastructure or product write-back to LASP requires a
 separate architecture and permission review. It is not part of the initial SOC
 build.
+
+### 11. Establish the public SatNOGS mission presence — in progress
+
+Register SunCET and its UHF transmitter before launch, validate reception with
+flight-representative RF data, publish a decoder for only the globally broadcast
+CCSDS APID 1 beacon, build the public telemetry dashboard, and coordinate
+post-launch identification. The NORAD catalog number is expected only after
+launch and does not block the pre-launch work. This workstream is tracked in the
+[SunCET SatNOGS onboarding plan](SATNOGS_ONBOARDING_PLAN.md).
+
+The APID 1 public-field review is complete: 112 fields are approved for public
+decoding and 24 remain opaque. The repository public schema is ready as the
+input to the first Kaitai decoder pass. Fine-time serialization remains the
+only field-definition follow-up.
 
 ## Immediate next action
 

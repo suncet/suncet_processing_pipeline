@@ -1,0 +1,113 @@
+category,byte_offset,bit_offset,bit_in_byte,bit_length,data_type,source_field,public_name,description,unit,conversion_or_status_map
+Packet metadata,0,0,0,3,U3,VERSION,ccsds_version,CCSDS Space Packet version number.,dimensionless,
+Packet metadata,0,3,3,1,U1,TYPE,ccsds_packet_type,CCSDS packet type; telemetry is expected for the beacon.,dimensionless,
+Packet metadata,0,4,4,1,U1,SEC_HDR_FLAG,ccsds_secondary_header_flag,Indicates presence of the SunCET secondary time header.,dimensionless,
+Packet metadata,0,5,5,11,U11,PKT_APID,ccsds_apid,CCSDS application process identifier; expected value is 1.,dimensionless,
+Packet metadata,2,16,0,2,U2,SEQ_FLGS,ccsds_sequence_flags,CCSDS packet sequence flags.,dimensionless,
+Packet metadata,2,18,2,14,U14,SEQ_CTR,ccsds_sequence_count,CCSDS packet sequence counter.,count,
+Packet metadata,4,32,0,16,U16,PKT_LEN,ccsds_packet_length_field,CCSDS packet length field: bytes after the primary header minus one.,bytes,
+Time,6,48,0,32,U32,ccsdsSecHeader2_sec_beacon,spacecraft_time_seconds_since_2000,Whole seconds elapsed since 2000-01-01T00:00:00Z.,s,
+Time,10,80,0,16,U16,ccsdsSecHeader2_sub_beacon,spacecraft_time_fine_raw,"Raw fine-time field; intended as microseconds after the coarse second, but 16-bit serialization remains unresolved.",µs intended; raw encoding TBC,
+Internal storage,12,96,0,32,U32,sw_store_partition_write_adcs_beac,partition_write_adcs,Current write pointer in the NAND ADCS partition.,raw address,
+Internal storage,16,128,0,32,U32,sw_store_partition_read_adcs_beac,partition_read_adcs,Current read pointer in the NAND ADCS partition.,raw address,
+Internal storage,20,160,0,32,U32,sw_store_partition_write_hk_beac,partition_write_hk,Current write pointer in the NAND housekeeping partition.,raw address,
+Internal storage,24,192,0,32,U32,sw_store_partition_read_hk_beac,partition_read_hk,Current read pointer in the NAND housekeeping partition.,raw address,
+Internal storage,28,224,0,32,U32,sw_store_partition_write_sci_beac,partition_write_sci,Current write pointer in the NAND science partition.,raw address,
+Internal storage,32,256,0,32,U32,sw_store_partition_read_sci_beac,partition_read_sci,Current read pointer in the NAND science partition.,raw address,
+Internal storage,36,288,0,32,U32,sw_store_partition_write_dsps_beac,partition_write_dsps,Current write pointer in the NAND Dual-SPS partition.,raw address,
+Internal storage,40,320,0,32,U32,sw_store_partition_read_dsps_beac,partition_read_dsps,Current read pointer in the NAND Dual-SPS partition.,raw address,
+Internal storage,44,352,0,32,U32,beac_store_partition_write_log,store_partition_write_log,Current write pointer in the NAND log partition.,raw address,
+Internal storage,48,384,0,32,U32,beac_csie_nand_sci_write_ptr,csie_nand_sci_write_ptr,Current write pointer in the NAND CSIE science-image partition.,raw address,
+Internal storage,52,416,0,32,U32,beac_csie_meta_nand_sci_write_ptr,csie_meta_nand_sci_write_ptr,Current write pointer in the NAND CSIE image-metadata partition.,raw address,
+Time,56,448,0,32,U32,beac_time_since_boot,time_since_boot,Seconds since most recent boot,s,
+Time,60,480,0,32,U32,beac_time_alive,time_alive,Number of seconds spent powered on and processing (i.e Alive),s,
+Time,64,512,0,32,U32,beac_time_mission_elapsed_time,time_mission_elapsed_time,Time since Mission start,s,
+Spacecraft state,68,544,0,32,U32,beac_mode_seconds_since_mode_change,mode_seconds_since_mode_change,Second since mode switch,s,
+Payload/science,72,576,0,32,F32,beac_dsps_flare_level,dsps_flare_level,Dual-SPS flare trigger threshold in log10 of estimated GOES XRS-B flux,log10(XRS-B flux),
+ADCS,76,608,0,32,I32,beac_adcs_body_rt1,adcs_body_rate_1,ADCS Body Frame Rate 1,rad/s,C0=0.000000e+00 C1=5.000000e-09
+ADCS,80,640,0,32,I32,beac_adcs_body_rt2,adcs_body_rate_2,ADCS Body Frame Rate 2,rad/s,C0=0.000000e+00 C1=5.000000e-09
+ADCS,84,672,0,32,I32,beac_adcs_body_rt3,adcs_body_rate_3,ADCS Body Frame Rate 3,rad/s,C0=0.000000e+00 C1=5.000000e-09
+Payload/science,88,704,0,32,U32,beac_csie_img_hist_0,csie_img_hist_0,"CSIE pixel count in histogram bin 0; configurable DN range [offset, offset+width-1], default 0-31",count,
+Payload/science,92,736,0,32,U32,beac_csie_img_hist_1,csie_img_hist_1,"CSIE pixel count in histogram bin 1; configurable DN range [offset+width, offset+2*width-1], default 32-63",count,
+Payload/science,96,768,0,32,U32,beac_csie_img_hist_2,csie_img_hist_2,"CSIE pixel count in histogram bin 2; configurable DN range [offset+2*width, offset+3*width-1], default 64-95",count,
+Payload/science,100,800,0,32,U32,beac_csie_img_hist_3,csie_img_hist_3,"CSIE pixel count in histogram bin 3; configurable DN range [offset+3*width, offset+4*width-1], default 96-127",count,
+Payload/science,104,832,0,32,U32,beac_csie_img_hist_4,csie_img_hist_4,"CSIE pixel count in histogram bin 4; configurable DN range [offset+4*width, offset+5*width-1], default 128-159",count,
+Payload/science,108,864,0,32,U32,beac_csie_img_hist_5,csie_img_hist_5,"CSIE pixel count in histogram bin 5; configurable DN range [offset+5*width, offset+6*width-1], default 160-191; beacon truncates the full histogram after bin 5",count,
+Thermal,114,912,0,16,U16,beac_xband_pa_temp,xband_pa_temp,XBAND Power Amplifier Temp,degC (inferred),C0=0.000000e+00 C1=9.765625e-04
+Radio,116,928,0,16,U16,beac_xband_pa_curr,xband_pa_current,XBAND Power Amplifier current,A (inferred),C0=0.000000e+00 C1=1.654473e-03
+Power,128,1024,0,16,U16,beac_ana_3p3_v,rail_3v3_voltage,3p3 Voltage,V (inferred),C0=0.000000e+00 C1=1.611300e-03
+Power,130,1040,0,16,U16,beac_ana_3p3_i,rail_3v3_current,3p3 Current,A (inferred),C0=0.000000e+00 C1=8.056600e-05
+Thermal,132,1056,0,16,U16,beac_ana_cdh_temp,cdh_temp,CDH Temperature,degC (inferred),C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+Spacecraft health,134,1072,0,16,U16,beac_ana_cdh_3p3_ref,cdh_3v3_reference_voltage,CDH 3.3 V reference measurement.,V (inferred),C0=0.000000e+00 C1=1.611300e-03
+Power,136,1088,0,16,U16,beac_ana_sa_8_cell_str_v,solar_array_8_cell_string_voltage,Solar Array 8-Cell String Voltage,V (inferred),C0=0.000000e+00 C1=9.659200e-03
+Power,138,1104,0,16,U16,beac_ana_sa_8_cell_str_i,solar_array_8_cell_string_current,Solar Array 8-Cell String Current,A (inferred),C0=0.000000e+00 C1=2.014200e-03
+Power,140,1120,0,16,U16,beac_ana_sa_9_cell_str_v,solar_array_9_cell_string_voltage,9-Cell String Solar Array Voltage,V (inferred),C0=0.000000e+00 C1=9.659200e-03
+Power,142,1136,0,16,U16,beac_ana_sa_9_cell_str_i,solar_array_9_cell_string_current,9-Cell String Solar Array Current,A (inferred),C0=0.000000e+00 C1=2.014200e-03
+Power,144,1152,0,16,U16,beac_ana_bat1_v,battery_1_voltage,Battery 1 Voltage,V (inferred),C0=0.000000e+00 C1=8.056641e-03
+Power,146,1168,0,16,U16,beac_ana_bat2_v,battery_2_voltage,Battery 2 Voltage,V (inferred),C0=0.000000e+00 C1=8.056641e-03
+Thermal,148,1184,0,16,U16,beac_ana_eps_temp,eps_temp,EPS Board Temperature,degC (inferred),C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+Power,150,1200,0,16,U16,beac_ana_eps_3p3_ref,eps_3v3_reference_voltage,EPS 3.3 V reference measurement.,V (inferred),C0=0.000000e+00 C1=1.611330e-03
+Power,152,1216,0,16,U16,beac_ana_eps_bus_v,eps_bus_voltage,EPS Bus Voltage,V (inferred),C0=0.000000e+00 C1=8.862300e-03
+Power,154,1232,0,16,U16,beac_ana_eps_bus_i,eps_bus_current,EPS Bus Current,A (inferred),C0=0.000000e+00 C1=1.220700e-03
+Power,156,1248,0,16,U16,beac_ana_xact_v,xact_voltage,XACT Voltage,V (inferred),C0=0.000000e+00 C1=8.862300e-03
+Power,158,1264,0,16,U16,beac_ana_xact_i,xact_current,XACT Current,A (inferred),C0=0.000000e+00 C1=2.014200e-03
+Radio,160,1280,0,16,U16,beac_ana_uhf_v,uhf_voltage,UHF Voltage,V (inferred),C0=0.000000e+00 C1=8.862300e-03
+Radio,162,1296,0,16,U16,beac_ana_uhf_i,uhf_current,UHF Current,A (inferred),C0=0.000000e+00 C1=2.014200e-03
+Radio,164,1312,0,16,U16,beac_ana_xband_v,xband_voltage,XBAND Voltage,V (inferred),C0=0.000000e+00 C1=8.862300e-03
+Radio,166,1328,0,16,U16,beac_ana_xband_i,xband_current,XBAND Current,A (inferred),C0=0.000000e+00 C1=2.014200e-03
+Payload/science,168,1344,0,16,U16,beac_ana_csie_volt,csie_voltage,CSIE Voltage,V (inferred),C0=0.000000e+00 C1=3.963900e-03
+Payload/science,170,1360,0,16,U16,beac_ana_csie_curr,csie_current,CSIE Current,A (inferred),C0=0.000000e+00 C1=1.220700e-03
+Payload/science,172,1376,0,16,U16,beac_ana_dsps_volt,dsps_voltage,DSPS Voltage,V (inferred),C0=0.000000e+00 C1=3.963900e-03
+Payload/science,174,1392,0,16,U16,beac_ana_dsps_curr,dsps_current,DSPS Current,A (inferred),C0=0.000000e+00 C1=1.220700e-03
+Thermal,176,1408,0,16,U16,beac_ana_ifb_therm1,ifb_therm1,Interface Board Temperature,degC (inferred),C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+Thermal,178,1424,0,16,U16,beac_ana_sa_minus_y_temp,sa_minus_y_temp,Solar Array 1 Temperature,degC (inferred),C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+Thermal,180,1440,0,16,U16,beac_ana_sa_plus_y_temp,sa_plus_y_temp,Solar Array 2 Temperature,degC (inferred),C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+Thermal,182,1456,0,16,U16,beac_csie_temp,csie_temp,CSIE Detector Temperature,degC (inferred),C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+Thermal,184,1472,0,16,U16,beac_batt1_temp,battery_1_temp,Battery 1 Temperature,degC (inferred),C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+Thermal,186,1488,0,16,U16,beac_batt_board_temp,batt_board_temp,Battery Board Temperature,degC (inferred),C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+Power,188,1504,0,16,U16,beac_batt1_charge_current,battery_1_charge_current,Battery 1 Charge Current,A (inferred),C0=0.000000e+00 C1=2.366954e-04
+Power,190,1520,0,16,U16,beac_batt2_charge_current,battery_2_charge_current,Battery 2 Charge Current,A (inferred),C0=0.000000e+00 C1=2.366954e-04
+Payload/science,192,1536,0,16,I16,beac_dsps_visible_sps_sun_pos_x,dsps_visible_sps_sun_pos_x,Visible DSPS Sun position x (arcsecs),arcsec,
+Payload/science,194,1552,0,16,I16,beac_dsps_visible_sps_sun_pos_y,dsps_visible_sps_sun_pos_y,Visible DSPS Sun position y (arcsecs),arcsec,
+Payload/science,196,1568,0,16,I16,beac_dsps_x_ray_sps_sun_pos_x,dsps_x_ray_sps_sun_pos_x,X-RAY DSPS Sun position x (arcsecs),arcsec,
+Payload/science,198,1584,0,16,I16,beac_dsps_x_ray_sps_sun_pos_y,dsps_x_ray_sps_sun_pos_y,X-RAY DSPS Sun position y (arcsecs),arcsec,
+Thermal,200,1600,0,16,U16,beac_dsps_sensor_board_temp,dsps_sensor_board_temp,Dual-SPS Sensor Board Temperature,degC (inferred),C0=0.000000e+00 C1=1.000000e-02
+Thermal,202,1616,0,16,I16,beac_adcs_ana_motor1_temp,adcs_ana_motor1_temp,Wheel 1 Temp,degC (inferred),C0=0.000000e+00 C1=5.000000e-03
+ADCS,204,1632,0,32,I32,beac_adcs_wheel_sp1,adcs_wheel_speed_1,ADCS Wheel Speed 1,rpm,C0=0.000000e+00 C1=2.000000e-03
+ADCS,208,1664,0,32,I32,beac_adcs_wheel_sp2,adcs_wheel_speed_2,ADCS Wheel Speed 2,rpm,C0=0.000000e+00 C1=2.000000e-03
+ADCS,212,1696,0,32,I32,beac_adcs_wheel_sp3,adcs_wheel_speed_3,ADCS Wheel Speed 3,rpm,C0=0.000000e+00 C1=2.000000e-03
+ADCS,216,1728,0,16,U16,beac_adcs_att_ctrl_sun_point_ang_err,adcs_sun_point_angle_error,Angle between the estimated and commanded Sun vectors.,deg,C0=0.000000e+00 C1=3.000000e-03
+Spacecraft state,218,1744,0,16,U16,beac_num_sc_resets,num_sc_resets,Number of Spacecraft Reboots,count,
+Time,224,1792,0,8,U8,beac_mode_clt_hours_left,clt_hours_until_reboot,Command Loss Timer time remaining until the spacecraft resets.,h,
+Spacecraft state,225,1800,0,8,D8,beac_mode_system_mode,mode_system_mode,System mode,dimensionless,0/PHOENIX 1/SAFE 2/SCIENCE 3/DOWNLINK
+Thermal,226,1808,0,8,I8,beac_uhf_temp,uhf_temp,UHF Temperature,degC (inferred),
+Payload/science,231,1848,0,8,D8,beac_fp_task_state,fault_protection_task_state,Fault-protection task state.,dimensionless,0/DISABLED 1/PASSIVE 2/ENABLED
+Payload/science,232,1856,0,2,U2,beac_csie_cap_state,csie_capture_state,CSIE image-capture state.,dimensionless,
+Payload/science,232,1858,2,2,D2,beac_fp_wp_state_wp6,fault_protection_watchpoint_6_state,WP State wp6,dimensionless,0/DISABLED 1/PASSIVE 2/ENABLED
+Payload/science,232,1860,4,2,D2,beac_fp_wp_state_wp5,fault_protection_watchpoint_5_state,WP State wp5,dimensionless,0/DISABLED 1/PASSIVE 2/ENABLED
+Payload/science,232,1862,6,2,D2,beac_fp_wp_state_wp4,fault_protection_watchpoint_4_state,WP State wp4,dimensionless,0/DISABLED 1/PASSIVE 2/ENABLED
+Payload/science,233,1864,0,2,D2,beac_fp_wp_state_wp3,fault_protection_watchpoint_3_state,WP State wp3,dimensionless,0/DISABLED 1/PASSIVE 2/ENABLED
+Payload/science,233,1866,2,2,D2,beac_fp_wp_state_wp2,fault_protection_watchpoint_2_state,WP State wp2,dimensionless,0/DISABLED 1/PASSIVE 2/ENABLED
+Payload/science,233,1868,4,2,D2,beac_fp_wp_state_wp1,fault_protection_watchpoint_1_state,WP State wp1,dimensionless,0/DISABLED 1/PASSIVE 2/ENABLED
+Payload/science,233,1870,6,2,D2,beac_fp_wp_state_wp0,fault_protection_watchpoint_0_state,WP State wp0,dimensionless,0/DISABLED 1/PASSIVE 2/ENABLED
+Payload/science,234,1872,0,8,I8,beac_dsps_flare_magnitude,dsps_flare_magnitude,Dual-SPS estimate of GOES XRS-B flare magnitude,log10(XRS-B flux),C0=0.000000e+00 C1=1.000000e-01
+Payload/science,235,1880,0,8,D8,beac_dsps_flare_phase,dsps_flare_phase,Dual-SPS flare-state bit flags,dimensionless,0/NOT_IN_SUN 1/FILLING_HISTORY 2/NOT_IN_FLARE 4/FLARE_LIKELY 24/IN_FLARE_DECREASING 40/IN_FLARE_RISING
+Power,243,1946,2,1,D1,beac_batt1_charging_state,battery_1_charging_state,Charging State of the Battery,dimensionless,1/CHARGING 0/DISCHARGING
+Payload/science,243,1947,3,1,D1,beac_eps_pwr_state_dsps,eps_pwr_state_dsps,EPS Power state for Dual-SPS,dimensionless,0/OFF 1/ON
+Payload/science,243,1948,4,1,D1,beac_eps_pwr_state_csie,eps_pwr_state_csie,EPS Power state for CSIE,dimensionless,0/OFF 1/ON
+Radio,243,1949,5,1,D1,beac_eps_pwr_state_xband,eps_pwr_state_xband,EPS Power state for X-Band radio,dimensionless,0/OFF 1/ON
+Radio,243,1950,6,1,D1,beac_eps_pwr_state_uhf,eps_pwr_state_uhf,EPS Power state for UHF radio,dimensionless,0/OFF 1/ON
+ADCS,243,1951,7,1,D1,beac_eps_pwr_state_adcs,eps_pwr_state_adcs,EPS Power state for ADCS/XACT,dimensionless,0/OFF 1/ON
+Spacecraft health,244,1952,0,1,D1,beac_telescope_door_pin_pulled,telescope_door_pin_pulled,Telescope Door Release Pin feedback,dimensionless,1/ENGAGED 0/PULLED
+Payload/science,244,1953,1,1,D1,beac_csie_heater_enable,csie_heater_enable,CSIE Heater enable flag,dimensionless,0/NO 1/YES
+Power,244,1954,2,1,D1,beac_battery2_heater_enable,battery2_heater_enable,Battery 2 heater enable flag,dimensionless,0/NO 1/YES
+Power,244,1955,3,1,D1,beac_battery1_heater_enable,battery1_heater_enable,Battery 1 heater enable flag,dimensionless,0/NO 1/YES
+Radio,244,1956,4,2,D2,beac_uhf_alive,uhf_alive,UHF Aliveness flag,dimensionless,0/OFF 1/ALIVE 2/DEAD
+ADCS,244,1958,6,2,D2,beac_adcs_alive,adcs_alive,ADCS Aliveness flag,dimensionless,
+ADCS,245,1960,0,1,D1,beac_adcs_att_vld,adcs_att_valid,Attitude Valid,dimensionless,0/NO 1/YES
+ADCS,245,1961,1,1,D1,beac_adcs_ref_vld,adcs_ref_valid,Refs Valid,dimensionless,0/NO 1/YES
+Time,245,1962,2,1,D1,beac_adcs_time_vld,adcs_time_valid,Time Valid,dimensionless,1/YES 0/NO
+ADCS,245,1963,3,1,D1,beac_adcs_mode,adcs_mode,ADCS Mode,dimensionless,0/SUN_POINT 1/FINE_REF_POINT
+Power,245,1964,4,1,D1,beac_batt2_charging_state,battery_2_charging_state,Charging State of the Battery,dimensionless,1/CHARGING 0/DISCHARGING
+ADCS,245,1965,5,3,D3,beac_adcs_sun_point_state,adcs_sun_point_state,Sun Point State,dimensionless,0/SUN_POINT 1/FINE_REF_POINT 2/SEARCH_INIT 3/SEARCHING 4/WAITING 5/CONVERGING 6/ON_SUN 7/NOT_ACTV
+Radio,246,1968,0,8,D8,beac_xband_data_src,xband_data_source,Selected X-band data source.,dimensionless,0/TEST_PAT 1/CDH

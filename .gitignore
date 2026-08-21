@@ -137,5 +137,6 @@ dmypy.json
 
 # Private packet definitions (keep local only)
 suncet_processing_pipeline/packet_definitions/
+satnogs_*_private_review.csv
 .vscode/launch.json
 /.vscode

@@ -6,6 +6,12 @@
 The tracked build and operations roadmap for the Jetson processing node is in
 [the SunCET SOC plan](docs/SOC_BUILD_PLAN.md).
 
+Pre-launch registration, APID 1 beacon decoding, dashboard setup, and
+post-launch identification through SatNOGS are tracked in the
+[SunCET SatNOGS onboarding plan](docs/SATNOGS_ONBOARDING_PLAN.md).
+The repository also hosts the canonical
+[SunCET public beacon specification](docs/SUNCET_PUBLIC_BEACON_SPEC.md).
+
 ## Portable data roots
 
 Every processing host must define two absolute paths:
