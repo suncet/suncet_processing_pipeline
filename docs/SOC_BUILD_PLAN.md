@@ -357,9 +357,10 @@ launch and does not block the pre-launch work. This workstream is tracked in the
 [SunCET SatNOGS onboarding plan](SATNOGS_ONBOARDING_PLAN.md).
 
 The APID 1 public-field review is complete: 112 fields are approved for public
-decoding and 24 remain opaque. The repository public schema is ready as the
-input to the first Kaitai decoder pass. Fine-time serialization remains the
-only field-definition follow-up.
+decoding and 24 remain opaque. The first generated bare-CCSDS Kaitai decoder
+pass and a synthetic public test vector now compile and validate successfully.
+AX.25/RF integration, packet length, and fine-time serialization remain the
+technical follow-ups before upstream submission.
 
 ## Immediate next action
 

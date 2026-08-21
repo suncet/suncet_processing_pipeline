@@ -2,7 +2,7 @@
 
 Status: **Pre-publication draft — not yet authoritative**
 
-Revision: draft-0.3  
+Revision: draft-0.4
 Last updated: 2026-08-21
 
 Canonical URL:
@@ -209,6 +209,23 @@ publication decision:
 - `spacecraft_time_fine_raw` remains raw until the 16-bit serialization is
   reconciled with the confirmed microsecond semantics.
 
+### Provisional decoder and synthetic vector
+
+The generated
+[`suncet_apid1.ksy`](../suncet_processing_pipeline/satnogs/suncet_apid1.ksy)
+is a provisional Kaitai decoder for a bare CCSDS APID 1 packet. It exposes all
+112 approved fields, consumes the 24 excluded fields as anonymous gaps, leaves
+fine time raw, rejects a non-APID-1 CCSDS primary word, and accepts either the
+251- or 252-byte packet form. It deliberately does not guess the unresolved
+AX.25 wrapper.
+
+The repository also contains a fully synthetic, non-flight
+[`251-byte packet`](../suncet_processing_pipeline/satnogs/test_data/suncet_apid1_synthetic_251.hex)
+and its
+[`expected public values`](../suncet_processing_pipeline/satnogs/test_data/suncet_apid1_synthetic_251_expected.json).
+They provide a safe regression and interoperability fixture, but they do not
+replace validation against a flight-equivalent AX.25 frame and RF recording.
+
 ### CSIE image histogram fields
 
 The CSIE firmware calculates histogram bins after subtracting the configurable
@@ -253,8 +270,9 @@ measurement.
 
 ## Required validation artifacts
 
-Before publication, retain the following non-sensitive artifacts with this
-specification or in the SatNOGS decoder test data:
+Before promoting this draft to an authoritative revision, retain the following
+non-sensitive flight-equivalent artifacts with this specification or in the
+SatNOGS decoder test data:
 
 1. A raw AX.25 frame captured from the flight-equivalent RF path.
 2. The extracted APID 1 bytes.

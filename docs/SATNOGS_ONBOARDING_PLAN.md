@@ -200,6 +200,13 @@ values have an authoritative public citation.
 
 ### 2. Create the pre-launch SatNOGS DB record — pending
 
+- An offline [SatNOGS DB submission draft](SATNOGS_DB_SUBMISSION_DRAFT.md) now
+  contains proposed values for every spacecraft field and the nominal 9600-baud
+  transmitter. It also records the submission gates and the policy for a
+  separate 19200-baud contingency record.
+- A resized, metadata-free public spacecraft image is stored at
+  [`assets/suncet_spacecraft.jpg`](assets/suncet_spacecraft.jpg) so the accepted
+  record does not depend on a private local file or leak phone/GPS metadata.
 - In SatNOGS DB, open **All Satellites → All Suggestions → Actions → Suggest New
   Satellite**.
 - Leave the NORAD ID blank.
@@ -244,8 +251,22 @@ private mission material.
 **Gate:** A repeatable laboratory test produces an intact APID 1 packet using
 the same reception path expected in the SatNOGS Network.
 
-### 5. Implement the APID 1 Kaitai decoder — pending
+### 5. Implement the APID 1 Kaitai decoder — in progress
 
+- The first generated [`suncet_apid1.ksy`](../suncet_processing_pipeline/satnogs/suncet_apid1.ksy)
+  skeleton now parses the bare CCSDS packet, validates the APID 1 primary word
+  and CCSDS packet length, exposes all 112 approved fields and engineering
+  conversions, and consumes every excluded region opaquely.
+- The skeleton deliberately leaves the AX.25 wrapper unresolved, fine time raw,
+  and supports both 251- and 252-byte packet candidates, including the apparent
+  extra pre-checksum byte in the latter.
+- The KSY compiles with the same Libre Space Kaitai 0.10 image used by upstream
+  SatNOGS. Its generated Python parser has decoded all 112 independently
+  expected public values from the repository's synthetic 251-byte vector and
+  passed 251/252-byte, wrong-APID, truncated, and checksum-corruption checks.
+- The synthetic vector is deliberately not flight data. Upstream submission
+  still requires a complete flight-equivalent AX.25 frame and receiver-path
+  validation.
 - Use the current `satnogs-decoders` repository conventions and a comparable
   AX.25/CCSDS mission such as CIRBE as a structural reference.
 - Parse the required link and CCSDS framing, then accept only APID 1 for public
@@ -336,11 +357,11 @@ beacon without consulting raw bytes.
 
 ## Immediate next action
 
-Generate the first Kaitai decoder skeleton from the reviewed 112-field schema,
-consuming the 24 omitted fields opaquely. In parallel, wait for the remaining
-flight-software answers and obtain a flight-equivalent RF recording to close
-the waveform, packet-length, and ground-receiver questions. No external DB
-suggestions should be submitted until the public source document is reviewed.
+Obtain the remaining flight-software answers and a flight-equivalent RF
+recording so the AX.25 wrapper, waveform, packet length, and fine-time encoding
+can replace the decoder's provisional boundaries. In parallel, review the
+offline SatNOGS DB submission draft. No external DB suggestions should be
+submitted until the public source document is reviewed.
 
 ## Current mission answers pending
 

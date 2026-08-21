@@ -1,0 +1,450 @@
+{
+  "adcs_alive": {
+    "engineering": 3,
+    "raw": 3
+  },
+  "adcs_ana_motor1_temp": {
+    "engineering": -13.56,
+    "raw": -2712
+  },
+  "adcs_att_valid": {
+    "engineering": "YES",
+    "raw": 1
+  },
+  "adcs_body_rate_1": {
+    "engineering": -4.68e-06,
+    "raw": -936
+  },
+  "adcs_body_rate_2": {
+    "engineering": 4.865e-06,
+    "raw": 973
+  },
+  "adcs_body_rate_3": {
+    "engineering": -5.05e-06,
+    "raw": -1010
+  },
+  "adcs_mode": {
+    "engineering": "FINE_REF_POINT",
+    "raw": 1
+  },
+  "adcs_ref_valid": {
+    "engineering": "YES",
+    "raw": 1
+  },
+  "adcs_sun_point_angle_error": {
+    "engineering": 8.58,
+    "raw": 2860
+  },
+  "adcs_sun_point_state": {
+    "engineering": "ON_SUN",
+    "raw": 6
+  },
+  "adcs_time_valid": {
+    "engineering": "NO",
+    "raw": 0
+  },
+  "adcs_wheel_speed_1": {
+    "engineering": 5.498,
+    "raw": 2749
+  },
+  "adcs_wheel_speed_2": {
+    "engineering": -5.572,
+    "raw": -2786
+  },
+  "adcs_wheel_speed_3": {
+    "engineering": 5.646,
+    "raw": 2823
+  },
+  "batt_board_temp": {
+    "engineering": 16.728219465449598,
+    "raw": 2416
+  },
+  "battery1_heater_enable": {
+    "engineering": "YES",
+    "raw": 1
+  },
+  "battery2_heater_enable": {
+    "engineering": "YES",
+    "raw": 1
+  },
+  "battery_1_charge_current": {
+    "engineering": 0.5806138162000001,
+    "raw": 2453
+  },
+  "battery_1_charging_state": {
+    "engineering": "DISCHARGING",
+    "raw": 0
+  },
+  "battery_1_temp": {
+    "engineering": 17.548037151232847,
+    "raw": 2379
+  },
+  "battery_1_voltage": {
+    "engineering": 13.204834599,
+    "raw": 1639
+  },
+  "battery_2_charge_current": {
+    "engineering": 0.5893715460000001,
+    "raw": 2490
+  },
+  "battery_2_charging_state": {
+    "engineering": "DISCHARGING",
+    "raw": 0
+  },
+  "battery_2_voltage": {
+    "engineering": 13.502930316,
+    "raw": 1676
+  },
+  "ccsds_apid": {
+    "engineering": 1,
+    "raw": 1
+  },
+  "ccsds_packet_length_field": {
+    "engineering": 244,
+    "raw": 244
+  },
+  "ccsds_packet_type": {
+    "engineering": 0,
+    "raw": 0
+  },
+  "ccsds_secondary_header_flag": {
+    "engineering": 1,
+    "raw": 1
+  },
+  "ccsds_sequence_count": {
+    "engineering": 42,
+    "raw": 42
+  },
+  "ccsds_sequence_flags": {
+    "engineering": 3,
+    "raw": 3
+  },
+  "ccsds_version": {
+    "engineering": 0,
+    "raw": 0
+  },
+  "cdh_3v3_reference_voltage": {
+    "engineering": 2.3428302,
+    "raw": 1454
+  },
+  "cdh_temp": {
+    "engineering": 40.29311430073611,
+    "raw": 1417
+  },
+  "clt_hours_until_reboot": {
+    "engineering": 118,
+    "raw": 118
+  },
+  "csie_capture_state": {
+    "engineering": 2,
+    "raw": 2
+  },
+  "csie_current": {
+    "engineering": 2.587884,
+    "raw": 2120
+  },
+  "csie_heater_enable": {
+    "engineering": "YES",
+    "raw": 1
+  },
+  "csie_img_hist_0": {
+    "engineering": 1047,
+    "raw": 1047
+  },
+  "csie_img_hist_1": {
+    "engineering": 1084,
+    "raw": 1084
+  },
+  "csie_img_hist_2": {
+    "engineering": 1121,
+    "raw": 1121
+  },
+  "csie_img_hist_3": {
+    "engineering": 1158,
+    "raw": 1158
+  },
+  "csie_img_hist_4": {
+    "engineering": 1195,
+    "raw": 1195
+  },
+  "csie_img_hist_5": {
+    "engineering": 1232,
+    "raw": 1232
+  },
+  "csie_meta_nand_sci_write_ptr": {
+    "engineering": 714,
+    "raw": 714
+  },
+  "csie_nand_sci_write_ptr": {
+    "engineering": 677,
+    "raw": 677
+  },
+  "csie_temp": {
+    "engineering": 18.369805035110318,
+    "raw": 2342
+  },
+  "csie_voltage": {
+    "engineering": 8.2568037,
+    "raw": 2083
+  },
+  "dsps_current": {
+    "engineering": 2.6782158,
+    "raw": 2194
+  },
+  "dsps_flare_level": {
+    "engineering": 12.5,
+    "raw": 12.5
+  },
+  "dsps_flare_magnitude": {
+    "engineering": -5.0,
+    "raw": -50
+  },
+  "dsps_flare_phase": {
+    "engineering": "IN_FLARE_RISING",
+    "raw": 40
+  },
+  "dsps_sensor_board_temp": {
+    "engineering": 26.75,
+    "raw": 2675
+  },
+  "dsps_visible_sps_sun_pos_x": {
+    "engineering": 2527,
+    "raw": 2527
+  },
+  "dsps_visible_sps_sun_pos_y": {
+    "engineering": -2564,
+    "raw": -2564
+  },
+  "dsps_voltage": {
+    "engineering": 8.550132300000001,
+    "raw": 2157
+  },
+  "dsps_x_ray_sps_sun_pos_x": {
+    "engineering": 2601,
+    "raw": 2601
+  },
+  "dsps_x_ray_sps_sun_pos_y": {
+    "engineering": -2638,
+    "raw": -2638
+  },
+  "eps_3v3_reference_voltage": {
+    "engineering": 2.8198275,
+    "raw": 1750
+  },
+  "eps_bus_current": {
+    "engineering": 2.2265568,
+    "raw": 1824
+  },
+  "eps_bus_voltage": {
+    "engineering": 15.8369301,
+    "raw": 1787
+  },
+  "eps_pwr_state_adcs": {
+    "engineering": "ON",
+    "raw": 1
+  },
+  "eps_pwr_state_csie": {
+    "engineering": "ON",
+    "raw": 1
+  },
+  "eps_pwr_state_dsps": {
+    "engineering": "ON",
+    "raw": 1
+  },
+  "eps_pwr_state_uhf": {
+    "engineering": "ON",
+    "raw": 1
+  },
+  "eps_pwr_state_xband": {
+    "engineering": "ON",
+    "raw": 1
+  },
+  "eps_temp": {
+    "engineering": 32.842972128050825,
+    "raw": 1713
+  },
+  "fault_protection_task_state": {
+    "engineering": "ENABLED",
+    "raw": 2
+  },
+  "fault_protection_watchpoint_0_state": {
+    "engineering": "ENABLED",
+    "raw": 2
+  },
+  "fault_protection_watchpoint_1_state": {
+    "engineering": "ENABLED",
+    "raw": 2
+  },
+  "fault_protection_watchpoint_2_state": {
+    "engineering": "ENABLED",
+    "raw": 2
+  },
+  "fault_protection_watchpoint_3_state": {
+    "engineering": "ENABLED",
+    "raw": 2
+  },
+  "fault_protection_watchpoint_4_state": {
+    "engineering": "ENABLED",
+    "raw": 2
+  },
+  "fault_protection_watchpoint_5_state": {
+    "engineering": "ENABLED",
+    "raw": 2
+  },
+  "fault_protection_watchpoint_6_state": {
+    "engineering": "ENABLED",
+    "raw": 2
+  },
+  "ifb_therm1": {
+    "engineering": 20.849364468263722,
+    "raw": 2231
+  },
+  "mode_seconds_since_mode_change": {
+    "engineering": 862,
+    "raw": 862
+  },
+  "mode_system_mode": {
+    "engineering": "SCIENCE",
+    "raw": 2
+  },
+  "num_sc_resets": {
+    "engineering": 2897,
+    "raw": 2897
+  },
+  "partition_read_adcs": {
+    "engineering": 381,
+    "raw": 381
+  },
+  "partition_read_dsps": {
+    "engineering": 603,
+    "raw": 603
+  },
+  "partition_read_hk": {
+    "engineering": 455,
+    "raw": 455
+  },
+  "partition_read_sci": {
+    "engineering": 529,
+    "raw": 529
+  },
+  "partition_write_adcs": {
+    "engineering": 344,
+    "raw": 344
+  },
+  "partition_write_dsps": {
+    "engineering": 566,
+    "raw": 566
+  },
+  "partition_write_hk": {
+    "engineering": 418,
+    "raw": 418
+  },
+  "partition_write_sci": {
+    "engineering": 492,
+    "raw": 492
+  },
+  "rail_3v3_current": {
+    "engineering": 0.11118108,
+    "raw": 1380
+  },
+  "rail_3v3_voltage": {
+    "engineering": 2.1639759,
+    "raw": 1343
+  },
+  "sa_minus_y_temp": {
+    "engineering": 20.02024929854658,
+    "raw": 2268
+  },
+  "sa_plus_y_temp": {
+    "engineering": 19.193797389895124,
+    "raw": 2305
+  },
+  "solar_array_8_cell_string_current": {
+    "engineering": 3.0776975999999996,
+    "raw": 1528
+  },
+  "solar_array_8_cell_string_voltage": {
+    "engineering": 14.4018672,
+    "raw": 1491
+  },
+  "solar_array_9_cell_string_current": {
+    "engineering": 3.2267484,
+    "raw": 1602
+  },
+  "solar_array_9_cell_string_voltage": {
+    "engineering": 15.116648,
+    "raw": 1565
+  },
+  "spacecraft_time_fine_raw": {
+    "engineering": 1234,
+    "raw": 1234
+  },
+  "spacecraft_time_seconds_since_2000": {
+    "engineering": 833326475,
+    "raw": 833326475
+  },
+  "store_partition_write_log": {
+    "engineering": 640,
+    "raw": 640
+  },
+  "telescope_door_pin_pulled": {
+    "engineering": "PULLED",
+    "raw": 0
+  },
+  "time_alive": {
+    "engineering": 788,
+    "raw": 788
+  },
+  "time_mission_elapsed_time": {
+    "engineering": 825,
+    "raw": 825
+  },
+  "time_since_boot": {
+    "engineering": 751,
+    "raw": 751
+  },
+  "uhf_alive": {
+    "engineering": "ALIVE",
+    "raw": 1
+  },
+  "uhf_current": {
+    "engineering": 3.9720023999999996,
+    "raw": 1972
+  },
+  "uhf_temp": {
+    "engineering": -64,
+    "raw": -64
+  },
+  "uhf_voltage": {
+    "engineering": 17.1485505,
+    "raw": 1935
+  },
+  "xact_current": {
+    "engineering": 3.8229515999999997,
+    "raw": 1898
+  },
+  "xact_voltage": {
+    "engineering": 16.4927403,
+    "raw": 1861
+  },
+  "xband_current": {
+    "engineering": 4.1210531999999995,
+    "raw": 2046
+  },
+  "xband_data_source": {
+    "engineering": "CDH",
+    "raw": 1
+  },
+  "xband_pa_current": {
+    "engineering": 2.160741738,
+    "raw": 1306
+  },
+  "xband_pa_temp": {
+    "engineering": 1.2392578125,
+    "raw": 1269
+  },
+  "xband_voltage": {
+    "engineering": 17.8043607,
+    "raw": 2009
+  }
+}

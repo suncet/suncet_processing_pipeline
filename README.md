@@ -11,6 +11,8 @@ post-launch identification through SatNOGS are tracked in the
 [SunCET SatNOGS onboarding plan](docs/SATNOGS_ONBOARDING_PLAN.md).
 The repository also hosts the canonical
 [SunCET public beacon specification](docs/SUNCET_PUBLIC_BEACON_SPEC.md).
+The offline spacecraft/transmitter form entries are maintained in the
+[SatNOGS DB submission draft](docs/SATNOGS_DB_SUBMISSION_DRAFT.md).
 
 ## Portable data roots
 

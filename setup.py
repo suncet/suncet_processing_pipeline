@@ -40,7 +40,12 @@ setup(
     python_requires='>=3.12',
     packages=find_packages(),
     package_data={
-        'suncet_processing_pipeline.satnogs': ['public_beacon_schema.csv'],
+        'suncet_processing_pipeline.satnogs': [
+            'public_beacon_schema.csv',
+            'suncet_apid1.ksy',
+            'test_data/*.hex',
+            'test_data/*.json',
+        ],
     },
     zip_safe=False,
 )
