@@ -16,7 +16,9 @@ from ..make_level0_5 import (
     UHF_SEGMENT_FLAG_START,
     _csie_preview_rgb_uint8,
     _decode_csie_jpegls_uint16,
+    _decode_recovered_csie_jpegls,
     _record_sort_time,
+    _trim_jpegls_at_eoi,
     _write_csie_png,
     assemble_csie_uncompressed_image,
     build_fixed_binary,
@@ -224,6 +226,33 @@ def test_csie_jpegls_decode_preserves_uint16_pixels():
 
     assert decoded.dtype == np.uint16
     np.testing.assert_array_equal(decoded, source)
+
+
+def test_csie_jpegls_recovery_decompresses_reversed_32bit_words():
+    source = (np.arange(48, dtype=np.uint16).reshape(6, 8) * 997) % 65535
+    codestream = imagecodecs.jpegls_encode(source)
+    padded = codestream + b"\x00" * (-len(codestream) % 4)
+    reversed_words = b"".join(
+        padded[i : i + 4][::-1] for i in range(0, len(padded), 4)
+    )
+
+    decoded, recovered, mode, _prefix_removed, _trailing_removed = (
+        _decode_recovered_csie_jpegls(reversed_words)
+    )
+
+    assert mode == "reverse_32bit_words"
+    assert recovered == codestream
+    np.testing.assert_array_equal(decoded, source)
+
+
+def test_jpegls_trim_ignores_eoi_without_preceding_soi():
+    recovered, eoi_found, trimmed = _trim_jpegls_at_eoi(
+        b"partial entropy data\xff\xd9trailing bytes"
+    )
+
+    assert recovered == b"partial entropy data\xff\xd9trailing bytes"
+    assert eoi_found is False
+    assert trimmed == 0
 
 
 def test_csie_png_uses_rotated_inferno_preview(tmp_path):

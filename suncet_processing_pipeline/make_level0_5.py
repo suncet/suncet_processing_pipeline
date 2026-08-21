@@ -96,6 +96,7 @@ CSIE_SECONDARY_HEADER_LEN = 6
 CSIE_ROW_CHECKSUM_LEN = 4
 CSIE_MAX_SENSOR_ROWS = 2000
 CSIE_MAX_SENSOR_COLS = 1504
+JPEG_LS_SOI = b"\xff\xd8"
 JPEG_LS_EOI = b"\xff\xd9"
 # FIXME(FSW/CTDB): APID 35 is present in current hardline data and is named
 # APID_TLM_DSPS_DATA_PKT in generated CTDB constants/state maps, but it is missing
@@ -3128,6 +3129,63 @@ def _decode_csie_jpegls_uint16(codestream: bytes):
     return decoded
 
 
+def _reverse_16bit_words(data: bytes) -> bytes:
+    """Reverse byte order within each complete 16-bit word."""
+    out = bytearray()
+    limit = len(data) - (len(data) % 2)
+    for i in range(0, limit, 2):
+        out.extend(data[i : i + 2][::-1])
+    out.extend(data[limit:])
+    return bytes(out)
+
+
+def _jpegls_marker_bounds(data: bytes) -> tuple[int | None, int | None]:
+    """Return the first SOI and its following EOI, ignoring incidental earlier EOIs."""
+    soi_at = data.find(JPEG_LS_SOI)
+    if soi_at < 0:
+        return None, None
+    eoi_at = data.find(JPEG_LS_EOI, soi_at + len(JPEG_LS_SOI))
+    if eoi_at < 0:
+        return soi_at, None
+    return soi_at, eoi_at + len(JPEG_LS_EOI)
+
+
+def _decode_recovered_csie_jpegls(codestream: bytes):
+    """Decode recovered JPEG-LS bytes, trying known CSIE byte-lane views.
+
+    The decoder is always called for the native recovered stream. When that fails,
+    marker-bounded native, 16-bit-swapped, and 32-bit-reversed candidates are tried.
+    The returned codestream is the exact successfully decoded candidate so the saved
+    ``.jls`` intermediate agrees with the decompressed FITS/preview products.
+    """
+    candidates: list[tuple[str, bytes, int, int]] = [("native", codestream, 0, 0)]
+    seen = {codestream}
+    for mode, transformed in (
+        ("native_marker_bounded", codestream),
+        ("reverse_16bit_words", _reverse_16bit_words(codestream)),
+        ("reverse_32bit_words", reverse_32bit_words(codestream)),
+    ):
+        soi_at, end = _jpegls_marker_bounds(transformed)
+        if soi_at is None:
+            continue
+        candidate = transformed[soi_at:end]
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        trailing = len(transformed) - end if end is not None else 0
+        candidates.append((mode, candidate, soi_at, trailing))
+
+    errors: list[str] = []
+    for mode, candidate, prefix_removed, trailing_removed in candidates:
+        try:
+            image = _decode_csie_jpegls_uint16(candidate)
+        except Exception as exc:
+            errors.append(f"{mode}: {type(exc).__name__}: {exc}")
+            continue
+        return image, candidate, mode, prefix_removed, trailing_removed
+    raise ValueError("; ".join(errors))
+
+
 def assemble_csie_uncompressed_image(
     rows: dict[int, object],
     selected_quality: dict[int, object],
@@ -3282,11 +3340,10 @@ def _write_csie_meta_json(
 
 
 def _trim_jpegls_at_eoi(data: bytes) -> tuple[bytes, bool, int]:
-    """Trim bytes after the first JPEG/JPEG-LS EOI marker."""
-    eoi_at = data.find(JPEG_LS_EOI)
-    if eoi_at < 0:
+    """Trim after EOI only when a preceding JPEG/JPEG-LS SOI marker exists."""
+    _soi_at, end = _jpegls_marker_bounds(data)
+    if end is None:
         return data, False, 0
-    end = eoi_at + len(JPEG_LS_EOI)
     return data[:end], True, len(data) - end
 
 
@@ -3891,9 +3948,15 @@ def write_csie_image_products(
         meta_json_path = ""
         jpegls_chunks = ""
         jpegls_selected_chunks = ""
+        jpegls_first_sequence_count = ""
+        jpegls_last_sequence_count = ""
+        jpegls_missing_chunks = ""
         jpegls_bytes = ""
+        jpegls_soi_found = ""
+        jpegls_soi_offset = ""
         jpegls_eoi_found = ""
         jpegls_bytes_trimmed_after_eoi = ""
+        jpegls_decode_mode = ""
         jpegls_decoded: bool | str = ""
         jpegls_decode_error = ""
         suffix = format_product_suffix(output_suffix)
@@ -3916,25 +3979,52 @@ def write_csie_image_products(
                 selected_chunks_by_seq[sequence_count]
                 for sequence_count in sorted(selected_chunks_by_seq)
             ]
+            selected_sequence_counts = sorted(selected_chunks_by_seq)
+            first_sequence_count = selected_sequence_counts[0]
+            last_sequence_count = selected_sequence_counts[-1]
+            missing_sequence_counts = set(
+                range(first_sequence_count, last_sequence_count + 1)
+            ) - set(selected_sequence_counts)
+            # CSIE starts the compressed chunk counter at zero for each image.
+            missing_chunks = first_sequence_count + len(missing_sequence_counts)
             codestream = b"".join(
                 bytes(chunk.get("payload", b"")) for chunk in selected_chunks
             )
-            codestream, eoi_found, bytes_trimmed = _trim_jpegls_at_eoi(codestream)
+            soi_at, eoi_end = _jpegls_marker_bounds(codestream)
+            eoi_found = eoi_end is not None
+            bytes_trimmed = 0
             jls_file = output_dir / f"image_{image_id}{suffix}.jls"
             jls_file.write_bytes(codestream)
             jpegls_path = str(jls_file)
             jpegls_chunks = len(compressed_chunks)
             jpegls_selected_chunks = len(selected_chunks)
+            jpegls_first_sequence_count = first_sequence_count
+            jpegls_last_sequence_count = last_sequence_count
+            jpegls_missing_chunks = missing_chunks
             jpegls_bytes = len(codestream)
+            jpegls_soi_found = soi_at is not None
+            jpegls_soi_offset = soi_at if soi_at is not None else ""
             jpegls_eoi_found = eoi_found
             jpegls_bytes_trimmed_after_eoi = bytes_trimmed
             stats.jpegls_written += 1
             stats.compressed_images_written += 1
             stats.images_written += 1
             stats.output_paths.append(jls_file)
-            if eoi_found and bytes_trimmed:
+            if missing_chunks:
                 warnings.append(
-                    f"trimmed {bytes_trimmed} byte(s) after first JPEG-LS EOI marker"
+                    f"compressed stream is missing at least {missing_chunks} chunk(s): "
+                    f"first={first_sequence_count}, last={last_sequence_count}, "
+                    f"internal_gaps={len(missing_sequence_counts)}"
+                )
+            if soi_at is None:
+                warnings.append(
+                    "JPEG-LS SOI marker 0xffd8 was not found; the compressed stream "
+                    "is missing or corrupt at its beginning"
+                )
+            elif soi_at:
+                warnings.append(
+                    f"recovered stream does not begin with JPEG-LS SOI; first marker-like "
+                    f"sequence occurs at byte offset {soi_at}"
                 )
             elif not eoi_found:
                 warnings.append(
@@ -3942,13 +4032,36 @@ def write_csie_image_products(
                 )
 
             try:
-                image = _decode_csie_jpegls_uint16(codestream)
+                (
+                    image,
+                    decoded_codestream,
+                    jpegls_decode_mode,
+                    prefix_removed,
+                    bytes_trimmed,
+                ) = _decode_recovered_csie_jpegls(codestream)
             except Exception as exc:
                 jpegls_decoded = False
                 jpegls_decode_error = f"{type(exc).__name__}: {exc}"
                 stats.compressed_decode_failures += 1
                 warnings.append(f"JPEG-LS decode failed: {jpegls_decode_error}")
             else:
+                if decoded_codestream != codestream:
+                    jls_file.write_bytes(decoded_codestream)
+                    codestream = decoded_codestream
+                    jpegls_bytes = len(codestream)
+                    jpegls_bytes_trimmed_after_eoi = bytes_trimmed
+                    if prefix_removed:
+                        warnings.append(
+                            f"JPEG-LS recovery removed {prefix_removed} byte(s) before SOI"
+                        )
+                    if bytes_trimmed:
+                        warnings.append(
+                            f"JPEG-LS recovery removed {bytes_trimmed} byte(s) after EOI"
+                        )
+                if jpegls_decode_mode != "native":
+                    warnings.append(
+                        f"JPEG-LS decompressed using recovery mode {jpegls_decode_mode}"
+                    )
                 jpegls_decoded = True
                 stats.compressed_images_decoded += 1
                 expected_shape = (
@@ -4094,9 +4207,15 @@ def write_csie_image_products(
             "jpegls_path": jpegls_path,
             "jpegls_chunks": jpegls_chunks,
             "jpegls_selected_chunks": jpegls_selected_chunks,
+            "jpegls_first_sequence_count": jpegls_first_sequence_count,
+            "jpegls_last_sequence_count": jpegls_last_sequence_count,
+            "jpegls_missing_chunks": jpegls_missing_chunks,
             "jpegls_bytes": jpegls_bytes,
+            "jpegls_soi_found": jpegls_soi_found,
+            "jpegls_soi_offset": jpegls_soi_offset,
             "jpegls_eoi_found": jpegls_eoi_found,
             "jpegls_bytes_trimmed_after_eoi": jpegls_bytes_trimmed_after_eoi,
+            "jpegls_decode_mode": jpegls_decode_mode,
             "jpegls_decoded": jpegls_decoded,
             "jpegls_decode_error": jpegls_decode_error,
             "meta_json_path": meta_json_path,
@@ -4143,9 +4262,15 @@ def write_csie_image_products(
             "jpegls_path",
             "jpegls_chunks",
             "jpegls_selected_chunks",
+            "jpegls_first_sequence_count",
+            "jpegls_last_sequence_count",
+            "jpegls_missing_chunks",
             "jpegls_bytes",
+            "jpegls_soi_found",
+            "jpegls_soi_offset",
             "jpegls_eoi_found",
             "jpegls_bytes_trimmed_after_eoi",
+            "jpegls_decode_mode",
             "jpegls_decoded",
             "jpegls_decode_error",
             "meta_json_path",
