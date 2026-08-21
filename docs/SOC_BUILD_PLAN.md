@@ -60,6 +60,16 @@ under its hostname.
   Dropbox integration. Dropbox is a replication/publication path, not the
   processing queue, sole backup, or authority for in-progress files. Do not use
   the unsupported native Dropbox Linux client or begin with bidirectional sync.
+- Treat the LASP-owned AWS delivery buckets as operational landing areas, not
+  long-term archives. Configure AWS-native S3 replication into a LASP-owned raw
+  archive bucket using the `DEEP_ARCHIVE` destination storage class, followed
+  by lifecycle expiration of the replicated delivery copy after a documented
+  retention interval. LASP and the APL SOC independently pull the ordinary
+  delivery copy; neither downloader archives or deletes it.
+- Continue evaluating outbound SFTP from the Jetson to the existing LASP public
+  server for product publication. Do not replace SFTP with an AWS staging bucket
+  unless the network path proves unavailable or operationally unreliable. Do
+  not host a public service on the Jetson.
 - Begin with manual data transfer and processing. Do not add unattended jobs
   until the manual workflow is reliable and observable.
 - Do not expose SSH directly to the public Internet. Use the APL VPN or another
@@ -192,6 +202,35 @@ that need APLNIS connectivity to the InfoSec exception process; this build does
 not currently need that extension. Reopen this decision before moving to
 Ethernet/APLNIS or expanding the node's data and service exposure.
 
+### 4.1 Configure LASP AWS raw-data custody — ready to execute
+
+This work is independent of the Jetson NVMe installation and can proceed first.
+
+- Enable S3 Versioning on the LASP-owned X-band delivery bucket and raw archive
+  bucket, if it is not already enabled. Apply the same design to the UHF landing
+  bucket when its final location is established.
+- Configure same-account S3 replication for new pass files from the delivery
+  bucket to the raw archive bucket, preserving the object key and selecting
+  `DEEP_ARCHIVE` as the replica storage class.
+- Initially retain each ordinary delivery object for 30 days so LASP and the
+  Jetson can pull independently without a race. Revisit the interval after
+  measuring actual volume and operational recovery needs.
+- Add source-bucket lifecycle rules to expire current delivery versions after
+  the retention interval, permanently expire noncurrent versions after an
+  additional short recovery interval, and abort incomplete multipart uploads.
+- Monitor replication failures and inventory `PENDING`, `COMPLETED`, and
+  `FAILED` states. Lifecycle must remain the deletion authority; neither the
+  LASP downloader nor the Jetson may delete delivery objects.
+- Restrict the Jetson AWS identity to the minimum list/read permissions needed
+  for ingest. Record object key, version, size, and a content checksum in the SOC
+  ingest ledger or processing manifest.
+- Simplify the LASP local-ingest script so it only downloads and verifies new
+  delivery files. Remove its archive-copy and source-deletion responsibilities
+  after AWS replication and lifecycle behavior have been validated.
+- Validate the policy with a test object before relying on it for flight data:
+  confirm the replica reaches `COMPLETED`, has storage class `DEEP_ARCHIVE`, and
+  remains recoverable after source expiration.
+
 ### 5. Establish the short-term data layout and manual ingest — pending
 
 - After NVMe installation, create the permanent data root and export it as
@@ -292,11 +331,13 @@ build.
 
 ## Immediate next action
 
-Install and validate the NVMe in Roadmap Step 7, then establish the permanent
-`suncet_data` root and manual LASP/Dropbox transfer workflow in Roadmap Step 5.
-After the required CTDB versions and a known dataset are available, execute the
-representative Level 0.5 comparison in Roadmap Step 6. No data-ingest automation
-should begin before those manual validation gates pass.
+Configure and validate the LASP AWS replication/lifecycle design in Roadmap Step
+4.1. In parallel, determine whether Staff Wi-Fi permits outbound TCP/2022 from
+the Jetson and whether LASP accepts that source path. Install and validate the
+NVMe in Roadmap Step 7 when it arrives, then establish the permanent
+`suncet_data` root and manual ingest workflow in Roadmap Step 5. No unattended
+data ingest or publication should begin before those manual validation gates
+pass.
 
 ## Definition of an initial operational SOC
 
