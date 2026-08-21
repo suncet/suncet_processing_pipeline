@@ -229,6 +229,11 @@ This work is independent of the Jetson NVMe installation and can proceed first.
 - Restrict the Jetson AWS identity to the minimum list/read permissions needed
   for ingest. Record object key, version, size, and a content checksum in the SOC
   ingest ledger or processing manifest.
+- The existing LASP software IAM principal was authorized on 2026-08-21 to
+  locate and list the UHF delivery bucket and to upload, verify, and manage
+  multipart uploads under `uhf/`. It has no permission to delete UHF delivery
+  objects; lifecycle remains the deletion authority. No additional long-lived
+  access key was created.
 - Simplify the LASP local-ingest script so it only downloads and verifies new
   delivery files. Remove its archive-copy and source-deletion responsibilities
   after AWS replication and lifecycle behavior have been validated.
@@ -338,14 +343,13 @@ build.
 
 ## Immediate next action
 
-Create the Jetson's least-privilege AWS ingest identity, create or authorize the
-LASP UHF uploader identity for writes under `uhf/`, and add replication failure
-monitoring under Roadmap Step 4.1. In parallel, have LASP whitelist the Jetson's
-APL Staff Wi-Fi egress address for outbound TCP/2022. Install and validate the
-NVMe in Roadmap Step 7 when it arrives, then establish the permanent
-`suncet_data` root and manual ingest workflow in Roadmap Step 5. No unattended
-data ingest or publication should begin before those manual validation gates
-pass.
+Create the Jetson's least-privilege AWS ingest identity and add replication
+failure monitoring under Roadmap Step 4.1. In parallel, have LASP whitelist the
+Jetson's APL Staff Wi-Fi egress address for outbound TCP/2022. Install and
+validate the NVMe in Roadmap Step 7 when it arrives, then establish the
+permanent `suncet_data` root and manual ingest workflow in Roadmap Step 5. No
+unattended data ingest or publication should begin before those manual
+validation gates pass.
 
 ## Definition of an initial operational SOC
 
