@@ -32,10 +32,11 @@ rolling history.
 
 ## Onboard Time
 
-The top-left **Onboard UTC** value and plot x-axis times come from the first
-`ccsdsSecHeader2_sec*` coarse time in each decoded packet whenever that secondary
-header is present. The realtime config treats that coarse time as FSW J2000
-seconds since midnight UTC and adds post-J2000 leap seconds before display:
+The top-left **Onboard UTC** value and plot x-axis times combine the first
+`ccsdsSecHeader2_sec*` coarse field in each decoded packet with the matching
+`ccsdsSecHeader2_sub*` integer-millisecond field. The realtime config treats
+that time as FSW J2000 seconds since midnight UTC and adds post-J2000 leap
+seconds before display:
 
 ```ini
 [time]

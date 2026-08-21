@@ -204,6 +204,13 @@ def generate_kaitai() -> str:
                     "      expr: _ == _io.size - 7",
                 ]
             )
+        elif field.public_name == "spacecraft_time_milliseconds":
+            lines.extend(
+                [
+                    "    valid:",
+                    "      max: 999",
+                ]
+            )
 
         lines.append("    doc: |")
         lines.extend(_indent_block(_doc_lines(field), 6))

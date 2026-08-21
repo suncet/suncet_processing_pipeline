@@ -375,9 +375,9 @@
     "engineering": 15.116648,
     "raw": 1565
   },
-  "spacecraft_time_fine_raw": {
-    "engineering": 1234,
-    "raw": 1234
+  "spacecraft_time_milliseconds": {
+    "engineering": 234,
+    "raw": 234
   },
   "spacecraft_time_seconds_since_2000": {
     "engineering": 833326475,

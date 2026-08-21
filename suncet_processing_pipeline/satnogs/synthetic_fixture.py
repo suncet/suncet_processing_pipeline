@@ -42,7 +42,7 @@ def _candidate_raw_value(field: PublicBeaconField, index: int) -> int | float:
         "ccsds_sequence_count": 42,
         "ccsds_packet_length_field": 244,
         "spacecraft_time_seconds_since_2000": 833_326_475,
-        "spacecraft_time_fine_raw": 1_234,
+        "spacecraft_time_milliseconds": 234,
         "mode_system_mode": 2,
         "dsps_flare_phase": 40,
         "uhf_alive": 1,

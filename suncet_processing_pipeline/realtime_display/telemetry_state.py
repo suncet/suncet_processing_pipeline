@@ -11,6 +11,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from suncet_processing_pipeline.spacecraft_time import (
+    combine_spacecraft_time_seconds,
+)
+
 from .color_limits import ColorLimitEvaluator
 from .packet_decoder import DecodedPacket
 
@@ -308,9 +312,13 @@ class TelemetryStore:
         }
 
     def _packet_time(self, packet: DecodedPacket, fallback: float) -> tuple[float, str]:
-        secondary = self._secondary_header_coarse_seconds(packet)
+        secondary = self._secondary_header_seconds(packet)
         if secondary is not None:
-            return secondary, "ccsds_secondary_header_coarse"
+            return secondary, "ccsds_secondary_header"
+        if any(
+            name.startswith("ccsdsSecHeader2_sec") for name in packet.fields
+        ):
+            return float("nan"), "ccsds_secondary_header"
 
         explicit = self._explicit_packet_time(packet)
         if explicit is not None:
@@ -344,7 +352,7 @@ class TelemetryStore:
             return "packet time is negative"
         min_j2000 = self.min_valid_j2000_seconds
         if (
-            packet_time_source == "ccsds_secondary_header_coarse"
+            packet_time_source == "ccsds_secondary_header"
             and min_j2000 > 0
             and packet_time < min_j2000
         ):
@@ -409,20 +417,33 @@ class TelemetryStore:
         )
 
     @staticmethod
-    def _secondary_header_coarse_seconds(packet: DecodedPacket) -> float | None:
+    def _secondary_header_seconds(packet: DecodedPacket) -> float | None:
         for name, value in packet.fields.items():
             if name.startswith("ccsdsSecHeader2_sec"):
-                return _as_float(value)
+                coarse = _as_float(value)
+                if coarse is None:
+                    return None
+                suffix = name[len("ccsdsSecHeader2_sec") :]
+                fine = _as_float(
+                    packet.fields.get(f"ccsdsSecHeader2_sub{suffix}", 0)
+                )
+                if fine is None:
+                    return None
+                try:
+                    return combine_spacecraft_time_seconds(coarse, fine)
+                except ValueError:
+                    return None
         return None
 
     def _onboard_utc(self, packet: DecodedPacket) -> str | None:
-        seconds = self._secondary_header_coarse_seconds(packet)
+        seconds = self._secondary_header_seconds(packet)
         if seconds is None:
             return None
         if self.add_post_j2000_leap_seconds:
             seconds += _leap_seconds_after_j2000(seconds, self.j2000_epoch_utc)
         utc = self.j2000_epoch_utc + timedelta(seconds=seconds)
-        return utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        timespec = "milliseconds" if utc.microsecond else "seconds"
+        return utc.isoformat(timespec=timespec).replace("+00:00", "Z")
 
     def _packet_onboard_utc(self, packet: DecodedPacket) -> str | None:
         return self._onboard_utc(packet)

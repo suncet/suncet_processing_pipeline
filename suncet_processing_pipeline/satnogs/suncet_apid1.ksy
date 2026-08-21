@@ -17,7 +17,7 @@ doc: |
   :field ccsds_sequence_count: ccsds_sequence_count
   :field ccsds_packet_length_field: ccsds_packet_length_field
   :field spacecraft_time_seconds_since_2000: spacecraft_time_seconds_since_2000
-  :field spacecraft_time_fine_raw: spacecraft_time_fine_raw
+  :field spacecraft_time_milliseconds: spacecraft_time_milliseconds
   :field partition_write_adcs: partition_write_adcs
   :field partition_read_adcs: partition_read_adcs
   :field partition_write_hk: partition_write_hk
@@ -144,11 +144,13 @@ seq:
     doc: |
       Whole seconds elapsed since 2000-01-01T00:00:00Z.
       Engineering units: s
-  - id: spacecraft_time_fine_raw
+  - id: spacecraft_time_milliseconds
     type: u2
+    valid:
+      max: 999
     doc: |
-      Raw fine-time field; intended as microseconds after the coarse second, but 16-bit serialization remains unresolved.
-      Engineering units: µs intended; raw encoding TBC
+      Integer milliseconds after the coarse whole second; valid values are 0 through 999.
+      Engineering units: ms
   - id: partition_write_adcs
     type: u4
     doc: |

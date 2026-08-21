@@ -14,13 +14,13 @@ def _beacon_packet(
     *,
     apid: int = 1,
     coarse_seconds: int = 833_326_475,
-    fine_time_raw: int = 1_234,
+    fine_milliseconds: int = 234,
     sequence_count: int = 42,
 ) -> bytes:
     opaque_length = total_length - 6 - 6 - 4
     secondary_and_data = (
         coarse_seconds.to_bytes(4, "big")
-        + fine_time_raw.to_bytes(2, "big")
+        + fine_milliseconds.to_bytes(2, "big")
         + bytes((index % 251 for index in range(opaque_length)))
     )
     first_word = 0x0800 | apid
@@ -47,7 +47,9 @@ def test_parses_both_current_candidate_lengths(packet_length):
     assert packet.sequence_flags == 3
     assert packet.sequence_count == 42
     assert packet.coarse_seconds == 833_326_475
-    assert packet.fine_time_raw == 1_234
+    assert packet.fine_milliseconds == 234
+    assert packet.fine_time_raw == 234
+    assert packet.timestamp_seconds == 833_326_475.234
     assert packet.checksum == int.from_bytes(packet.raw[-4:], "big")
 
 
@@ -75,6 +77,11 @@ def test_rejects_corrupt_checksum():
 
     with pytest.raises(BeaconValidationError, match="Fletcher-32 mismatch"):
         parse_beacon_packet(bytes(packet))
+
+
+def test_rejects_fine_time_outside_one_second():
+    with pytest.raises(BeaconValidationError, match="expected 0-999 ms"):
+        parse_beacon_packet(_beacon_packet(fine_milliseconds=1_000))
 
 
 def test_rejects_packet_without_secondary_header():

@@ -158,18 +158,18 @@ def test_parser_emits_ax25_wrapped_direct_packet():
     assert out[0].source == "ax25_direct"
 
 
-def test_decoder_injects_raw_secondary_header_when_generated_fields_are_absent():
+def test_decoder_injects_secondary_header_when_generated_fields_are_absent():
     decoder = RealtimePacketDecoder(None)
     packet = _ccsds_packet(
         apid=537,
-        body=(833326475).to_bytes(4, "big") + (1234).to_bytes(2, "big") + b"data",
+        body=(833326475).to_bytes(4, "big") + (234).to_bytes(2, "big") + b"data",
     )
 
     decoded = decoder.decode(packet)
 
     assert decoded is not None
     assert decoded.fields["ccsdsSecHeader2_sec"] == 833326475
-    assert decoded.fields["ccsdsSecHeader2_sub"] == 1234
+    assert decoded.fields["ccsdsSecHeader2_sub"] == 234
 
 
 def test_parser_reassembles_ax25_segmented_packet():
@@ -228,7 +228,7 @@ def test_telemetry_store_selects_temperatures_and_voltages():
         packet_name="BEACON",
         fields={
             "ccsdsSecHeader2_sec_beacon": 0,
-            "ccsdsSecHeader2_sub_beacon": 0,
+            "ccsdsSecHeader2_sub_beacon": 250,
             "beac_time_mission_elapsed_time": 123.0,
             "beac_ana_cdh_temp": 22.5,
             "beac_ana_sa_minus_y_temp": 19.0,
@@ -247,10 +247,10 @@ def test_telemetry_store_selects_temperatures_and_voltages():
     names = {field["field"] for field in snapshot["fields"]}
 
     assert snapshot["last_packet"]["packet_time"] is not None
-    assert snapshot["last_packet"]["packet_time"] == 0.0
-    assert snapshot["last_packet"]["time_source"] == "ccsds_secondary_header_coarse"
-    assert snapshot["last_packet"]["onboard_utc"] == "2000-01-01T00:00:00Z"
-    assert snapshot["onboard_utc"] == "2000-01-01T00:00:00Z"
+    assert snapshot["last_packet"]["packet_time"] == 0.25
+    assert snapshot["last_packet"]["time_source"] == "ccsds_secondary_header"
+    assert snapshot["last_packet"]["onboard_utc"] == "2000-01-01T00:00:00.250Z"
+    assert snapshot["onboard_utc"] == "2000-01-01T00:00:00.250Z"
     assert "beac_ana_cdh_temp" in names
     assert "beac_ana_eps_bus_v" in names
     assert "beac_ana_bat1_v" in names
@@ -376,7 +376,7 @@ def test_packet_time_uses_secondary_header_instead_of_nonclock_time_fields():
         packet_name="csie_hk",
         fields={
             "ccsdsSecHeader2_sec_csie_hk": 100,
-            "ccsdsSecHeader2_sub_csie_hk": 32768,
+            "ccsdsSecHeader2_sub_csie_hk": 500,
             "csie_exposure_time": 3000,
             "csie_adc_core_temp": 21.0,
         },
@@ -387,15 +387,15 @@ def test_packet_time_uses_secondary_header_instead_of_nonclock_time_fields():
     store.add_packet(packet)
     snapshot = store.snapshot()
 
-    assert snapshot["last_packet"]["packet_time"] == 100.0
-    assert snapshot["last_packet"]["time_source"] == "ccsds_secondary_header_coarse"
+    assert snapshot["last_packet"]["packet_time"] == 100.5
+    assert snapshot["last_packet"]["time_source"] == "ccsds_secondary_header"
     csie_temp = next(
         field
         for field in snapshot["fields"]
         if field["field"] == "csie_adc_core_temp"
     )
-    assert csie_temp["packet_time"] == 100.0
-    assert csie_temp["packet_utc"] == "2000-01-01T00:01:40Z"
+    assert csie_temp["packet_time"] == 100.5
+    assert csie_temp["packet_utc"] == "2000-01-01T00:01:40.500Z"
 
 
 def test_secondary_header_packet_updates_plot_history_without_met_calibration():
@@ -547,6 +547,32 @@ def test_low_secondary_header_time_does_not_update_plots_or_onboard_utc():
     assert snapshot["last_packet"]["onboard_utc"] is None
     assert snapshot["last_packet"]["time_status"] == "rejected"
     assert "below minimum" in snapshot["last_packet"]["time_rejection_reason"]
+
+
+def test_invalid_secondary_header_milliseconds_are_rejected():
+    store = TelemetryStore(
+        selector=TelemetrySelector(field_patterns=["*temp*"]),
+        history_points=5,
+    )
+    packet = DecodedPacket(
+        apid=16,
+        packet_name="payload_hk",
+        fields={
+            "ccsdsSecHeader2_sec_payload_hk": 800_000_000,
+            "ccsdsSecHeader2_sub_payload_hk": 1_000,
+            "payload_temp": 19.0,
+        },
+        header={"apid": 16},
+        decode_status="decoded",
+    )
+
+    store.add_packet(packet)
+    snapshot = store.snapshot()
+
+    assert snapshot["fields"] == []
+    assert snapshot["last_packet"]["time_source"] == "ccsds_secondary_header"
+    assert snapshot["last_packet"]["time_status"] == "rejected"
+    assert "not finite" in snapshot["last_packet"]["time_rejection_reason"]
 
 
 def test_beacon_power_states_are_exposed_for_status_summary():

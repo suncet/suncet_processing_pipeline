@@ -25,6 +25,8 @@ def test_tracked_kaitai_definition_is_generated_from_public_schema():
     assert "https://github.com/suncet/suncet_processing_pipeline/" in tracked
     assert "bit-endian: be" in tracked
     assert "if: _io.size == 252" in tracked
+    assert "id: spacecraft_time_milliseconds" in tracked
+    assert "max: 999" in tracked
     assert "source_field" not in tracked
     assert CTDB_PACKET_BITS == 2008
     assert CHECKSUM_BITS == 32
@@ -47,7 +49,8 @@ def test_synthetic_fixture_is_stable_and_contract_valid():
     parsed = parse_beacon_packet(packet, accepted_lengths={251})
     assert parsed.sequence_count == 42
     assert parsed.coarse_seconds == 833_326_475
-    assert parsed.fine_time_raw == 1_234
+    assert parsed.fine_milliseconds == 234
+    assert parsed.timestamp_seconds == 833_326_475.234
 
 
 def test_fixture_is_explicitly_synthetic_not_flight_data():

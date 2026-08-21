@@ -359,8 +359,9 @@ launch and does not block the pre-launch work. This workstream is tracked in the
 The APID 1 public-field review is complete: 112 fields are approved for public
 decoding and 24 remain opaque. The first generated bare-CCSDS Kaitai decoder
 pass and a synthetic public test vector now compile and validate successfully.
-AX.25/RF integration, packet length, and fine-time serialization remain the
-technical follow-ups before upstream submission.
+AX.25/RF integration and packet length remain the technical follow-ups before
+upstream submission. Fine time is now empirically resolved as integer
+milliseconds and implemented in the pipeline and public decoder artifacts.
 
 ## Immediate next action
 

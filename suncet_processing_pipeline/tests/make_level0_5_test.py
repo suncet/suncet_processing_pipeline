@@ -15,6 +15,7 @@ from ..make_level0_5 import (
     UHF_SEGMENT_FLAG_MIDDLE,
     UHF_SEGMENT_FLAG_START,
     _csie_preview_rgb_uint8,
+    _capture_timestamp_seconds,
     _decode_csie_jpegls_uint16,
     _decode_recovered_csie_jpegls,
     _record_sort_time,
@@ -40,6 +41,15 @@ def _capture_meta(integration_ms, capture_id, coarse, *, right_shift, filtered):
         "_capture_time_coarse": coarse,
         "_capture_time_fine": 0,
     }
+
+
+def test_capture_timestamp_combines_integer_milliseconds():
+    assert _capture_timestamp_seconds(
+        {"_capture_time_coarse": 100, "_capture_time_fine": 234}
+    ) == 100.234
+    assert _capture_timestamp_seconds(
+        {"_capture_time_coarse": 100, "_capture_time_fine": 1_000}
+    ) is None
 
 
 def test_csie_metadata_capture_set_derives_timing_and_normalization():

@@ -35,6 +35,9 @@ from suncet_processing_pipeline.run_provenance import (
     ProcessingRunProvenance,
     resolved_config_snapshot,
 )
+from suncet_processing_pipeline.spacecraft_time import (
+    combine_spacecraft_time_seconds,
+)
 
 
 SYNC_MARKER = b"\x1a\xcf\xfc\x1d"
@@ -2816,7 +2819,10 @@ def _capture_timestamp_seconds(meta: dict[str, object]) -> float | None:
     )
     if coarse is None:
         return None
-    return float(coarse) + (float(fine or 0) / 65536.0)
+    try:
+        return combine_spacecraft_time_seconds(coarse, fine or 0)
+    except ValueError:
+        return None
 
 
 def effective_stack_exposure_seconds(

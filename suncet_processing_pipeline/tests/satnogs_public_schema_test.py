@@ -45,13 +45,15 @@ def test_reviewed_units_and_dualsps_scaling_are_encoded():
     assert "40/IN_FLARE_RISING" in phase.conversion_or_status_map
 
 
-def test_storage_pointers_are_public_but_fine_time_remains_raw():
+def test_storage_pointers_and_resolved_millisecond_time_are_public():
     fields = _by_name()
 
     assert fields["partition_write_adcs"].unit == "raw address"
     assert fields["partition_read_sci"].unit == "raw address"
-    assert fields["spacecraft_time_fine_raw"].data_type == "U16"
-    assert "TBC" in fields["spacecraft_time_fine_raw"].unit
+    fine_time = fields["spacecraft_time_milliseconds"]
+    assert fine_time.data_type == "U16"
+    assert fine_time.unit == "ms"
+    assert "0 through 999" in fine_time.description
 
 
 def test_csie_histogram_defaults_and_beacon_truncation_are_documented():

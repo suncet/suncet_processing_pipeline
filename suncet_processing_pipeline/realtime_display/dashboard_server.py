@@ -1063,7 +1063,7 @@ DASHBOARD_HTML = r"""<!doctype html>
 
     function formatShortUtc(value) {
       if (!value) return "";
-      const match = String(value).match(/T(\d{2}:\d{2}:\d{2})Z$/);
+      const match = String(value).match(/T(\d{2}:\d{2}:\d{2}(?:\.\d{3})?)Z$/);
       return match ? `${match[1]}Z` : String(value);
     }
 
@@ -1073,7 +1073,10 @@ DASHBOARD_HTML = r"""<!doctype html>
       const leapSeconds = leapSecondsAfterJ2000(numeric);
       const date = new Date(Date.UTC(2000, 0, 1, 0, 0, 0) + (numeric + leapSeconds) * 1000);
       if (Number.isNaN(date.getTime())) return "-";
-      const iso = date.toISOString().replace(/\.\d{3}Z$/, "Z");
+      const fullIso = date.toISOString();
+      const iso = fullIso.endsWith(".000Z")
+        ? fullIso.replace(".000Z", "Z")
+        : fullIso;
       return short ? formatShortUtc(iso) : iso;
     }
 

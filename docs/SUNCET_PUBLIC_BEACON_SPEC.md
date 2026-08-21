@@ -2,7 +2,7 @@
 
 Status: **Pre-publication draft — not yet authoritative**
 
-Revision: draft-0.4
+Revision: draft-0.5
 Last updated: 2026-08-21
 
 Canonical URL:
@@ -154,22 +154,28 @@ authoritative definition.
 | Offset after CCSDS primary header | Size | Meaning |
 | --- | --- | --- |
 | 0 | 4 bytes | J2000 coarse seconds, big endian |
-| 4 | 2 bytes in the current CTDB | Microseconds after the coarse whole second, big endian; serialized width/encoding conflict **TBC** |
+| 4 | 2 bytes | Integer milliseconds after the coarse whole second, big endian; valid range 0-999 |
 
 The FSW 2.0.4 user's guide defines the epoch as `2000-01-01T00:00:00` and
 describes the secondary header as seconds and microseconds elapsed from that
 epoch. Flight software has now confirmed the intended interpretation as coarse
 seconds since `2000-01-01T00:00:00Z` plus microseconds after that whole second.
-This supersedes the pipeline's current binary-fraction interpretation
-(`fine / 65536`) and its extra post-J2000 leap-second correction.
+The transmitted resolution is one millisecond, so the conceptual microsecond
+value is `fine_milliseconds * 1000`. The combined timestamp is therefore
+`coarse_seconds + fine_milliseconds / 1000` seconds after the epoch.
 
-One serialization question remains: a literal microsecond-of-second value
-ranges from 0 through 999999 and therefore needs at least 20 bits, while the
-current CTDB and decoder allocate only 16 bits. Before changing production time
-conversion, flight software must identify whether the transmitted field is
-actually wider, scaled into 16 bits, truncated, or otherwise encoded. Until
-then, the public contract exposes the fine value raw and does not manufacture a
-UTC timestamp from it.
+This wire interpretation was resolved empirically against processed SunCET
+test data. Across 338,152 structurally valid APID 1 candidates from 23 packet
+captures, all 336,763 packets that passed the public Fletcher-32 contract had a
+fine value between 27 and 974 milliseconds. Every candidate with a value above
+999 failed Fletcher-32. The 26 distinct valid fine values were distributed
+throughout the second, which rules out the pipeline's former binary-fraction
+interpretation (`fine / 65536`).
+
+The fine-time result does not by itself determine whether a post-J2000 leap-
+second adjustment belongs in UTC display conversion. That separate epoch/time-
+scale policy remains under review; this revision changes only the transmitted
+fine-field unit and scaling.
 
 ### Packet checksum
 
@@ -203,21 +209,18 @@ descriptions, types, units, conversions, and status maps. NAND read/write
 pointers are intentionally public because their progression provides useful
 evidence that recording and stored-data playback are functioning.
 
-One published field retains technical-definition debt without reopening the
-publication decision:
-
-- `spacecraft_time_fine_raw` remains raw until the 16-bit serialization is
-  reconciled with the confirmed microsecond semantics.
+The public field `spacecraft_time_milliseconds` exposes the 16-bit wire value in
+milliseconds and constrains it to 0 through 999.
 
 ### Provisional decoder and synthetic vector
 
 The generated
 [`suncet_apid1.ksy`](../suncet_processing_pipeline/satnogs/suncet_apid1.ksy)
 is a provisional Kaitai decoder for a bare CCSDS APID 1 packet. It exposes all
-112 approved fields, consumes the 24 excluded fields as anonymous gaps, leaves
-fine time raw, rejects a non-APID-1 CCSDS primary word, and accepts either the
-251- or 252-byte packet form. It deliberately does not guess the unresolved
-AX.25 wrapper.
+112 approved fields, consumes the 24 excluded fields as anonymous gaps,
+validates fine time as 0-999 milliseconds, rejects a non-APID-1 CCSDS primary
+word, and accepts either the 251- or 252-byte packet form. It deliberately does
+not guess the unresolved AX.25 wrapper.
 
 The repository also contains a fully synthetic, non-flight
 [`251-byte packet`](../suncet_processing_pipeline/satnogs/test_data/suncet_apid1_synthetic_251.hex)

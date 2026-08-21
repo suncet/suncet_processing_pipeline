@@ -2,12 +2,10 @@
 
 This module intentionally stops at the boundaries that are still awaiting
 flight-software or RF confirmation. It validates the CCSDS packet and the
-mission Fletcher-32 checksum. FSW has confirmed that the secondary time header
-means coarse seconds since 2000-01-01T00:00:00Z plus microseconds after the
-coarse second, but the current 16-bit field cannot literally cover 0-999999.
-The module therefore exposes fine time raw until its serialization is resolved,
-and temporarily accepts both the CTDB-declared and flight-data-observed packet
-lengths.
+mission Fletcher-32 checksum. The secondary time header is coarse seconds since
+2000-01-01T00:00:00Z plus an integer 0-999 milliseconds after the coarse
+second. It temporarily accepts both the CTDB-declared and flight-data-observed
+packet lengths.
 
 It contains no private CTDB definitions and can serve as an independent oracle
 for the future SatNOGS Kaitai decoder and RF validation fixtures.
@@ -17,6 +15,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Collection
+
+from suncet_processing_pipeline.spacecraft_time import (
+    FINE_MILLISECONDS_MAX,
+    combine_spacecraft_time_seconds,
+)
 
 
 BEACON_APID = 1
@@ -41,12 +44,26 @@ class BeaconPacket:
     sequence_flags: int
     sequence_count: int
     coarse_seconds: int
-    fine_time_raw: int
+    fine_milliseconds: int
     checksum: int
 
     @property
     def packet_length(self) -> int:
         return len(self.raw)
+
+    @property
+    def timestamp_seconds(self) -> float:
+        """Seconds since 2000-01-01T00:00:00Z, including milliseconds."""
+
+        return combine_spacecraft_time_seconds(
+            self.coarse_seconds, self.fine_milliseconds
+        )
+
+    @property
+    def fine_time_raw(self) -> int:
+        """Compatibility alias for callers predating the resolved wire unit."""
+
+        return self.fine_milliseconds
 
 
 def suncet_fletcher32(data: bytes) -> int:
@@ -78,8 +95,8 @@ def parse_beacon_packet(
 
     ``accepted_lengths`` is explicit so a flight-confirmed length can be used
     immediately by a caller before the repository-wide default is updated.
-    The function does not convert spacecraft time to UTC while the confirmed
-    microsecond meaning conflicts with the current 16-bit field width.
+    The function exposes combined epoch seconds but deliberately does not apply
+    a leap-second policy or format a UTC string.
     """
 
     minimum_length = (
@@ -128,12 +145,18 @@ def parse_beacon_packet(
             f"stored 0x{stored_checksum:08x}, calculated 0x{calculated_checksum:08x}"
         )
 
+    fine_milliseconds = int.from_bytes(packet[10:12], "big")
+    if fine_milliseconds > FINE_MILLISECONDS_MAX:
+        raise BeaconValidationError(
+            f"fine spacecraft time is {fine_milliseconds} ms; expected 0-999 ms"
+        )
+
     sequence_word = int.from_bytes(packet[2:4], "big")
     return BeaconPacket(
         raw=bytes(packet),
         sequence_flags=(sequence_word >> 14) & 0x03,
         sequence_count=sequence_word & 0x3FFF,
         coarse_seconds=int.from_bytes(packet[6:10], "big"),
-        fine_time_raw=int.from_bytes(packet[10:12], "big"),
+        fine_milliseconds=fine_milliseconds,
         checksum=stored_checksum,
     )

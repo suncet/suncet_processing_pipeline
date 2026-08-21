@@ -7,7 +7,7 @@ Packet metadata,2,16,0,2,U2,SEQ_FLGS,ccsds_sequence_flags,CCSDS packet sequence 
 Packet metadata,2,18,2,14,U14,SEQ_CTR,ccsds_sequence_count,CCSDS packet sequence counter.,count,
 Packet metadata,4,32,0,16,U16,PKT_LEN,ccsds_packet_length_field,CCSDS packet length field: bytes after the primary header minus one.,bytes,
 Time,6,48,0,32,U32,ccsdsSecHeader2_sec_beacon,spacecraft_time_seconds_since_2000,Whole seconds elapsed since 2000-01-01T00:00:00Z.,s,
-Time,10,80,0,16,U16,ccsdsSecHeader2_sub_beacon,spacecraft_time_fine_raw,"Raw fine-time field; intended as microseconds after the coarse second, but 16-bit serialization remains unresolved.",µs intended; raw encoding TBC,
+Time,10,80,0,16,U16,ccsdsSecHeader2_sub_beacon,spacecraft_time_milliseconds,Integer milliseconds after the coarse whole second; valid values are 0 through 999.,ms,
 Internal storage,12,96,0,32,U32,sw_store_partition_write_adcs_beac,partition_write_adcs,Current write pointer in the NAND ADCS partition.,raw address,
 Internal storage,16,128,0,32,U32,sw_store_partition_read_adcs_beac,partition_read_adcs,Current read pointer in the NAND ADCS partition.,raw address,
 Internal storage,20,160,0,32,U32,sw_store_partition_write_hk_beac,partition_write_hk,Current write pointer in the NAND housekeeping partition.,raw address,
