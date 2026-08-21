@@ -202,22 +202,25 @@ that need APLNIS connectivity to the InfoSec exception process; this build does
 not currently need that extension. Reopen this decision before moving to
 Ethernet/APLNIS or expanding the node's data and service exposure.
 
-### 4.1 Configure LASP AWS raw-data custody — ready to execute
+### 4.1 Configure LASP AWS raw-data custody — replication and retention active
 
 This work is independent of the Jetson NVMe installation and can proceed first.
 
-- Enable S3 Versioning on the LASP-owned X-band delivery bucket and raw archive
-  bucket, if it is not already enabled. Apply the same design to the UHF landing
-  bucket when its final location is established.
-- Configure same-account S3 replication for new pass files from the delivery
-  bucket to the raw archive bucket, preserving the object key and selecting
-  `DEEP_ARCHIVE` as the replica storage class.
+- S3 Versioning was enabled on the LASP-owned X-band delivery bucket and raw
+  archive bucket on 2026-08-21. Apply the same design to the UHF landing bucket
+  when its final location is established. Exact AWS resource names are kept out
+  of this public repository.
+- Same-account live replication is enabled for new objects from the X-band
+  delivery bucket to the raw archive bucket, preserving the object key and
+  selecting `DEEP_ARCHIVE` as the replica storage class. Source delete markers
+  are not replicated, so source cleanup cannot delete the raw archive copy.
 - Initially retain each ordinary delivery object for 30 days so LASP and the
   Jetson can pull independently without a race. Revisit the interval after
   measuring actual volume and operational recovery needs.
-- Add source-bucket lifecycle rules to expire current delivery versions after
-  the retention interval, permanently expire noncurrent versions after an
-  additional short recovery interval, and abort incomplete multipart uploads.
+- Source-bucket lifecycle rules were enabled on 2026-08-21 to expire current
+  delivery versions after 30 days, permanently expire noncurrent versions after
+  an additional 7-day recovery interval, remove expired delete markers, and
+  abort incomplete multipart uploads after 7 days.
 - Monitor replication failures and inventory `PENDING`, `COMPLETED`, and
   `FAILED` states. Lifecycle must remain the deletion authority; neither the
   LASP downloader nor the Jetson may delete delivery objects.
@@ -227,9 +230,11 @@ This work is independent of the Jetson NVMe installation and can proceed first.
 - Simplify the LASP local-ingest script so it only downloads and verifies new
   delivery files. Remove its archive-copy and source-deletion responsibilities
   after AWS replication and lifecycle behavior have been validated.
-- Validate the policy with a test object before relying on it for flight data:
-  confirm the replica reaches `COMPLETED`, has storage class `DEEP_ARCHIVE`, and
-  remains recoverable after source expiration.
+- Live replication was validated on 2026-08-21 with
+  `system-tests/2026-08-21/suncet-replication-smoke-test.txt`: the source reached
+  `COMPLETED` and the destination reported `REPLICA` in `DEEP_ARCHIVE`. Lifecycle
+  activation was verified through the S3 API; confirm the first time-based
+  expiration after the 30-day retention window elapses.
 
 ### 5. Establish the short-term data layout and manual ingest — pending
 
@@ -331,13 +336,13 @@ build.
 
 ## Immediate next action
 
-Configure and validate the LASP AWS replication/lifecycle design in Roadmap Step
-4.1. In parallel, determine whether Staff Wi-Fi permits outbound TCP/2022 from
-the Jetson and whether LASP accepts that source path. Install and validate the
-NVMe in Roadmap Step 7 when it arrives, then establish the permanent
-`suncet_data` root and manual ingest workflow in Roadmap Step 5. No unattended
-data ingest or publication should begin before those manual validation gates
-pass.
+Create the Jetson's least-privilege AWS ingest identity and add replication
+failure monitoring under Roadmap Step 4.1. In parallel, have LASP whitelist the
+Jetson's APL Staff Wi-Fi egress address for outbound TCP/2022. Install and
+validate the NVMe in Roadmap Step 7 when it arrives, then establish the
+permanent `suncet_data` root and manual ingest workflow in Roadmap Step 5. No
+unattended data ingest or publication should begin before those manual
+validation gates pass.
 
 ## Definition of an initial operational SOC
 
