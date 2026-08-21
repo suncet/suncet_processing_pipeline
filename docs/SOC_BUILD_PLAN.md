@@ -234,9 +234,15 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   multipart uploads under `uhf/`. It has no permission to delete UHF delivery
   objects; lifecycle remains the deletion authority. No additional long-lived
   access key was created.
+- The same LASP principal was reduced to list/read-only access on the X-band
+  delivery bucket on 2026-08-21. Upload, deletion, and multipart-write actions
+  are denied so the legacy script will fail visibly until its archive-copy and
+  source-deletion responsibilities are removed. Its historical direct-write
+  permissions on the archive remain separate cleanup debt; remove them after
+  confirming that no retained LASP workflow needs them.
 - Simplify the LASP local-ingest script so it only downloads and verifies new
-  delivery files. Remove its archive-copy and source-deletion responsibilities
-  after AWS replication and lifecycle behavior have been validated.
+  delivery files. AWS replication and lifecycle are now the archive and source
+  cleanup authorities.
 - Live replication was validated independently for the X-band and UHF paths on
   2026-08-21: each source reached `COMPLETED` and each destination reported
   `REPLICA` in `DEEP_ARCHIVE`. Lifecycle activation was verified through the S3
