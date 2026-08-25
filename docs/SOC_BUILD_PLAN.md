@@ -1,6 +1,6 @@
 # SunCET SOC Jetson Build and Operations Plan
 
-Last updated: 2026-08-21
+Last updated: 2026-08-25
 
 ## Purpose
 
@@ -66,10 +66,11 @@ under its hostname.
   by lifecycle expiration of the replicated delivery copy after a documented
   retention interval. LASP and the APL SOC independently pull the ordinary
   delivery copy; neither downloader archives or deletes it.
-- Continue evaluating outbound SFTP from the Jetson to the existing LASP public
-  server for product publication. Do not replace SFTP with an AWS staging bucket
-  unless the network path proves unavailable or operationally unreliable. Do
-  not host a public service on the Jetson.
+- Use outbound SFTP from the Jetson to the existing LASP public server for
+  product publication. The port-22 path, key authentication, read/write/delete
+  permissions, and byte-for-byte round trip were validated on 2026-08-25. Keep
+  publication manual and checksum-verified until the product policy is mature.
+  Do not host a public service on the Jetson.
 - Begin with manual data transfer and processing. Do not add unattended jobs
   until the manual workflow is reliable and observable.
 - Do not expose SSH directly to the public Internet. Use the APL VPN or another
@@ -279,8 +280,28 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   <https://lasp.colorado.edu/data/store/suncet/>.
 - Verify downloaded files with server metadata or checksums where available.
 - Define retention thresholds so the eMMC cannot be filled by an ingest.
-- Defer AWS/Leaf Space credentials and LASP write-back until their operational
-  interfaces and authorization are known.
+- Defer AWS/Leaf Space ingest credentials until their operational interfaces
+  and authorization are known. LASP public-server write-back is now authorized
+  and manually validated as described below.
+
+### 5.1 Publish finalized products to LASP — manual transport validated
+
+- LASP whitelisted the Jetson's stable APL Staff Wi-Fi egress address. Outbound
+  TCP/22 connectivity and dedicated-key SFTP authentication were verified on
+  2026-08-25.
+- The host-local SSH alias `lasp-sfs` keeps the endpoint, username, port, and
+  identity path outside the public repository.
+- A controlled test listed the remote public-data tree, uploaded and downloaded
+  a 54-byte file, passed byte-for-byte `cmp`, and deleted all test artifacts.
+- The repository's
+  [`publish_sftp` workflow](LASP_SFTP_PUBLICATION.md) is dry-run-first and maps
+  only explicit paths below `suncet_data`. It stages remotely, performs full
+  SHA-256 read-back verification, atomically finalizes files, writes checksum
+  sidecars and JSON transfer logs, retries bounded transient failures, skips
+  matching content idempotently, and refuses conflicting content.
+- Before routine publication, define the approved local-to-public directory
+  mapping, product naming/versioning rules, release authority, and representative
+  product validation. Do not schedule unattended publication yet.
 
 ### 6. Validate the end-to-end manual processing workflow — pending
 
@@ -341,11 +362,13 @@ After manual operations are dependable:
 - Make retries idempotent and prevent concurrent processing of the same input.
 - Coordinate maintenance and reboot windows with mission operations.
 
-### 10. Consider product publication — future and authorization-dependent
+### 10. Establish product-publication policy — transport complete, policy pending
 
-Public hosting on APL infrastructure or product write-back to LASP requires a
-separate architecture and permission review. It is not part of the initial SOC
-build.
+Product write-back to LASP is authorized and its manual transport is validated
+under Step 5.1. Remaining work is operational policy: approved product levels,
+directory and filename conventions, release authority, revision handling,
+public documentation, alerting, and recovery. Public hosting on APL
+infrastructure remains outside the initial SOC build.
 
 ### 11. Establish the public SatNOGS mission presence — in progress
 
@@ -366,10 +389,10 @@ milliseconds and implemented in the pipeline and public decoder artifacts.
 ## Immediate next action
 
 Create the Jetson's least-privilege AWS ingest identity and add replication
-failure monitoring under Roadmap Step 4.1. In parallel, have LASP whitelist the
-Jetson's APL Staff Wi-Fi egress address for outbound TCP/2022. Install and
-validate the NVMe in Roadmap Step 7 when it arrives, then establish the
-permanent `suncet_data` root and manual ingest workflow in Roadmap Step 5. No
+failure monitoring under Roadmap Step 4.1. Install and validate the NVMe in
+Roadmap Step 7 when it arrives, then establish the permanent `suncet_data` root
+and manual ingest workflow in Roadmap Step 5. Define and review the LASP product
+mapping before using the verified Step 5.1 publisher on mission products. No
 unattended data ingest or publication should begin before those manual
 validation gates pass.
 

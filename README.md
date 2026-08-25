@@ -138,6 +138,25 @@ python -m suncet_processing_pipeline.make_telemetry_file \
 
 Images are not stored in this database; they remain separate FITS products.
 
+## Publishing finalized products
+
+The SOC can publish reviewed public products through a host-local OpenSSH SFTP
+alias without storing LASP credentials in this repository. The publisher is a
+dry run unless `--execute` is explicitly supplied:
+
+```sh
+python -m suncet_processing_pipeline.publish_sftp \
+  --local-base "$suncet_data/level1" \
+  "$suncet_data/level1/2027"
+```
+
+It uploads through a temporary remote name, downloads the staged file for full
+SHA-256 verification, atomically finalizes it, and writes a checksum sidecar
+and JSON transfer log. It skips matching content idempotently and refuses to
+overwrite a differing remote file. See the
+[LASP SFTP publication procedure](docs/LASP_SFTP_PUBLICATION.md) before using
+`--execute`.
+
 ## Running the Code
 The code uses a lightweight run management system. First, a new run is created which makes a new directory for the run. Then, the user copies the input data (binary packet telemetary) to the input sub-directory for the run. When that is done, one or more commands are executed to perform the processing, which will leave data in output sub-directories.
 

@@ -52,6 +52,8 @@ DATA_DIRECTORIES = (
     "telemetry",
     "test_data",
     "trends",
+    "transfer_logs/lasp_publication",
+    "transfer_staging/lasp_publication",
 )
 
 FITS_REQUIRED_VARIABLES = {
