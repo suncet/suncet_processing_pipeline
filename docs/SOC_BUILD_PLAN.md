@@ -172,9 +172,8 @@ Completed on the Jetson on 2026-08-20:
   artificial worst case; operational SunCET code consumes JPEG-LS by decoding,
   so this is recorded as a test-tool behavior rather than a processing blocker.
 - Initially created `/home/james/suncet_ctdb` with mode `700` and deliberately
-  left `suncet_data` undefined until permanent storage was ready. The original
-  CTDB tree remains on eMMC temporarily as a verified rollback source after the
-  NVMe migration described in Step 7.
+  left `suncet_data` undefined until permanent storage was ready. After the
+  verified NVMe migration in Step 7, the redundant eMMC CTDB tree was removed.
 - Miniforge, both environments, and the shared package cache use about 4.7 GB;
   approximately 40 GB remains free on eMMC.
 
@@ -322,8 +321,9 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   CTDB tree is not nested inside the public data tree.
 - Copied 1,611 CTDB files totaling 185,914,112 bytes from eMMC to the NVMe with
   metadata preservation. Checksum comparisons before and after reboot reported
-  no differences. The eMMC source remains temporarily as an explicit rollback
-  copy and should be removed only as a separate cleanup decision.
+  no differences. A final comparison again passed before the redundant
+  `/home/james/suncet_ctdb` source was deleted on 2026-08-25; the Jetson now has
+  one CTDB tree at `/srv/suncet/ctdb`.
 - Initialized the canonical `suncet_data` directory tree and downloaded the
   validated `v1.0.2dev` FITS and NetCDF/Zarr metadata exports. Mission-approved
   calibration FITS assets are not present yet.
