@@ -15,8 +15,8 @@ be added after the pipeline and its data sources are stable.
 - Administrator account: `james`
 - Operating system: Ubuntu 24.04.4 LTS, ARM64
 - NVIDIA platform: L4T R39.2.1, Jetson AGX Orin
-- Current storage: internal eMMC; a Samsung 990 PRO 2 TB NVMe is scheduled for
-  installation
+- Current storage: Ubuntu and the minimal runtime on internal eMMC; SunCET data
+  on a Samsung 990 PRO 2 TB NVMe mounted at `/srv/suncet`
 - Current network: `JHUAPL-Staff` Wi-Fi using DHCP
 - Remote administration: SSH through the APL VPN
 - Repository: <https://github.com/suncet/suncet_processing_pipeline>
@@ -49,9 +49,9 @@ under its hostname.
   products, processing scratch space, large caches, optional development
   environments, and container storage. This is the intended permanent layout,
   not merely a migration stage.
-- Preserve the local `suncet_data` directory organization on the Jetson. After
-  NVMe installation, point `suncet_data` at the NVMe data root so the pipeline
-  does not depend on the physical storage location.
+- Preserve the local `suncet_data` directory organization on the Jetson. It is
+  rooted at `/srv/suncet/data` on the NVMe so the pipeline does not depend on
+  the physical storage location.
 - Keep private CTDB content outside `suncet_data`, which is publicly exposed and
   synchronized on development systems. Define the separate host-local
   `suncet_ctdb` root on every system. On the Jetson it will be a local directory,
@@ -171,13 +171,10 @@ Completed on the Jetson on 2026-08-20:
   explicit output buffer. The default encoder buffer can be too small for that
   artificial worst case; operational SunCET code consumes JPEG-LS by decoding,
   so this is recorded as a test-tool behavior rather than a processing blocker.
-- Created `/home/james/suncet_ctdb` with mode `700`, exported it as
-  `suncet_ctdb` from `.bashrc`, and retained a pre-change Bash configuration
-  backup. CTDB content, inventory, and transfer records are deliberately kept
-  outside this public repository.
-- Intentionally left `suncet_data` undefined until the NVMe is mounted at its
-  permanent path. Validation used a temporary data root, preventing an interim
-  eMMC location from becoming operational by accident.
+- Initially created `/home/james/suncet_ctdb` with mode `700` and deliberately
+  left `suncet_data` undefined until permanent storage was ready. The original
+  CTDB tree remains on eMMC temporarily as a verified rollback source after the
+  NVMe migration described in Step 7.
 - Miniforge, both environments, and the shared package cache use about 4.7 GB;
   approximately 40 GB remains free on eMMC.
 
@@ -311,14 +308,31 @@ This work is independent of the Jetson NVMe installation and can proceed first.
 - Write a concise operator runbook covering input discovery, processing,
   product review, retry, and recovery.
 
-### 7. Add NVMe storage and establish the permanent storage split — hardware ordered
+### 7. Add NVMe storage and establish the permanent storage split — complete
 
-- Install the Samsung 990 PRO 2 TB M.2 2280 NVMe with suitable thermal contact.
-- Partition it as ext4 and mount it by UUID at a stable, documented location.
-- Allow the operating system to boot into a maintainable state if the NVMe is
-  absent, but require the mount before any processing service can start.
-- Move any temporary data with a metadata-preserving copy, verify the copy, and
-  only then change `suncet_data`; retain the source until validation succeeds.
+- Installed the Samsung 990 PRO 2 TB M.2 2280 NVMe. Its initial SMART report
+  showed zero critical warnings, media errors, unsafe shutdowns, and endurance
+  use, with 100% available spare.
+- Created one GPT partition containing an ext4 filesystem labeled
+  `SUNCET_NVME`. It is mounted by UUID at `/srv/suncet` with `noatime`, `nofail`,
+  and a bounded systemd device timeout so an absent NVMe does not prevent
+  recovery boot. The periodic `fstrim` timer is enabled and active.
+- Set `suncet_data=/srv/suncet/data` and
+  `suncet_ctdb=/srv/suncet/ctdb`. The paths are siblings: the mode-`700` private
+  CTDB tree is not nested inside the public data tree.
+- Copied 1,611 CTDB files totaling 185,914,112 bytes from eMMC to the NVMe with
+  metadata preservation. Checksum comparisons before and after reboot reported
+  no differences. The eMMC source remains temporarily as an explicit rollback
+  copy and should be removed only as a separate cleanup decision.
+- Initialized the canonical `suncet_data` directory tree and downloaded the
+  validated `v1.0.2dev` FITS and NetCDF/Zarr metadata exports. Mission-approved
+  calibration FITS assets are not present yet.
+- Verified the mount identity and fstab syntax, shell and Conda path behavior,
+  pipeline path resolution, directory ownership, and available 1.8 TiB data
+  capacity. A controlled reboot on 2026-08-25 automatically restored the
+  correct UUID-backed mount and environment paths. The mount unit, checksum
+  comparison, and a SHA-256 write/read/delete test all passed after boot.
+- Require the mount before any future processing service can start.
 - Keep the OS, SSH recovery path, repository, and minimal production runtime on
   eMMC. Direct high-volume and write-heavy storage to NVMe.
 - Review Mamba package caches, optional environments, and Docker's data root
@@ -389,12 +403,11 @@ milliseconds and implemented in the pipeline and public decoder artifacts.
 ## Immediate next action
 
 Create the Jetson's least-privilege AWS ingest identity and add replication
-failure monitoring under Roadmap Step 4.1. Install and validate the NVMe in
-Roadmap Step 7 when it arrives, then establish the permanent `suncet_data` root
-and manual ingest workflow in Roadmap Step 5. Define and review the LASP product
-mapping before using the verified Step 5.1 publisher on mission products. No
-unattended data ingest or publication should begin before those manual
-validation gates pass.
+failure monitoring under Roadmap Step 4.1, then exercise the permanent
+`suncet_data` root through the manual ingest workflow in Roadmap Step 5. Define
+and review the LASP product mapping before using the verified Step 5.1 publisher
+on mission products. No unattended data ingest or publication should begin
+before those manual validation gates pass.
 
 ## Definition of an initial operational SOC
 
