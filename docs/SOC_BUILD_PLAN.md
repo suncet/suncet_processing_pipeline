@@ -1,6 +1,6 @@
 # SunCET SOC Jetson Build and Operations Plan
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
 
 ## Purpose
 
@@ -127,6 +127,13 @@ development tools, containers, and LCMS/BigFix status. Important findings:
 - eMMC has adequate short-term capacity but is not the intended production data
   volume.
 - Time synchronization is active through `systemd-timesyncd`.
+- The 2026-08-26 maintenance pass installed 34 standard Ubuntu updates,
+  including security updates. Seven ordinary packages remained deferred by
+  Ubuntu phased updates; `dpkg --audit` was clean and no reboot was required.
+  Do not run the currently suggested `apt autoremove`, because its candidate
+  list includes Jetson boot-support packages. Three pre-existing DHCP/DNS
+  services remain failed and should be reviewed before changing networking;
+  they did not affect Staff Wi-Fi, VPN/SSH, SFTP, or AWS connectivity.
 
 ### 2. Make the Python environment portable and Jetson-ready — complete
 
@@ -152,7 +159,7 @@ Completed in the repository:
   implementation and its dead batch helper were removed; their history remains
   available in Git.
 
-Completed on the Jetson on 2026-08-20:
+Completed on the Jetson and refreshed on 2026-08-26:
 
 - Cloned `main` at commit `f61c75f9ccbccea984765a98ed7db24637e2a2ae`
   into `/home/james/src/suncet_processing_pipeline`; the checkout was clean at
@@ -165,7 +172,13 @@ Completed on the Jetson on 2026-08-20:
 - Verified native ARM64 Python 3.14.7, `imagecodecs` 2026.8.16, the complete
   science-package import set, and `pip check` with no broken requirements.
 - Created a cloned `suncet-test` validation environment with only pytest and
-  coverage tooling added. All 59 repository tests passed in 8.12 seconds.
+  coverage tooling added. After refreshing both environments from the current
+  lock, all 116 repository tests passed in 5.80 seconds. The runtime includes
+  DuckDB 1.5.5; both environments pass `pip check`.
+- Promoted the refreshed Python 3.14.7 environments to the conventional
+  `suncet` and `suncet-test` names. The earlier environments remain temporarily
+  available under dated `prelock` rollback names; remove them only after a
+  reasonable operational soak period.
 - Verified lossless 16-bit JPEG-LS encode/decode with representative image data.
   An incompressible random-image encoder stress test also passed when given an
   explicit output buffer. The default encoder buffer can be too small for that
@@ -177,8 +190,7 @@ Completed on the Jetson on 2026-08-20:
 - Miniforge, both environments, and the shared package cache use about 4.7 GB;
   approximately 40 GB remains free on eMMC.
 
-A representative Level 0.5 dataset comparison remains in Roadmap Step 6 after
-the NVMe data root and required CTDB contents are available.
+The representative Level 0.5 comparison is recorded in Roadmap Step 6.
 
 ### 3. Improve processing-run reproducibility — complete
 
@@ -199,7 +211,7 @@ that need APLNIS connectivity to the InfoSec exception process; this build does
 not currently need that extension. Reopen this decision before moving to
 Ethernet/APLNIS or expanding the node's data and service exposure.
 
-### 4.1 Configure LASP AWS raw-data custody — replication and retention active
+### 4.1 Configure LASP AWS raw-data custody — replication, retention, and SOC read active
 
 This work is independent of the Jetson NVMe installation and can proceed first.
 
@@ -226,6 +238,13 @@ This work is independent of the Jetson NVMe installation and can proceed first.
 - Restrict the Jetson AWS identity to the minimum list/read permissions needed
   for ingest. Record object key, version, size, and a content checksum in the SOC
   ingest ledger or processing manifest.
+- A dedicated non-console SOC identity was created on 2026-08-26. Its policy is
+  restricted to locating/listing the two delivery buckets and reading their
+  objects and versions from the approved SOC public IPv4 address. Simulation
+  and live tests confirmed that archive access, writes, deletes, and reads from
+  another source address are denied. The initial manual workflow uses one
+  mode-`0600` access key; migrate to temporary external-workload credentials
+  before unattended production operation.
 - The existing LASP software IAM principal was authorized on 2026-08-21 to
   locate and list the UHF delivery bucket and to upload, verify, and manage
   multipart uploads under `uhf/`. It has no permission to delete UHF delivery
@@ -246,12 +265,21 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   API; confirm the first time-based expirations after the 30-day retention
   windows elapse.
 
-### 5. Establish the short-term data layout and manual ingest — pending
+### 5. Establish the short-term data layout and manual ingest — in progress
 
-- After NVMe installation, create the permanent data root and export it as
-  `suncet_data` for shell and non-interactive processing contexts.
-- Reproduce the directory organization currently rooted at
-  `/Users/masonjp2/Dropbox/suncet_dropbox/9000 Processing/data/` on the Mac.
+- The permanent NVMe-backed data root is active at `/srv/suncet/data`, exported
+  as `suncet_data`, and initialized with the portable directory structure.
+- The repository now provides a host-independent, dry-run-first AWS ingest
+  command. Resource names and credentials remain in mode-`0600` host-local
+  files. Each executed pull stages on NVMe, verifies reported size, computes
+  SHA-256, atomically finalizes content, refuses conflicts, and writes a JSON
+  receipt below `transfer_logs/aws_ingest`. It never changes the source object.
+- A 29-byte real X-band delivery object was pulled successfully on 2026-08-26.
+  A second execution reported `ALREADY_PRESENT`, left no partial file, and wrote
+  a second idempotency receipt. Both delivery sources can be listed from the
+  Jetson with the least-privilege identity.
+- The remaining work in this step is public-data synchronization, the LASP
+  public-server download path, and operational disk/retention thresholds.
 - Install the ARM64 build of `rclone` and configure a Dropbox remote using a
   dedicated identity that can access only SunCET public data, if that account
   arrangement is available. Avoid placing a token for the owner's full personal
@@ -276,9 +304,8 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   <https://lasp.colorado.edu/data/store/suncet/>.
 - Verify downloaded files with server metadata or checksums where available.
 - Define retention thresholds so the eMMC cannot be filled by an ingest.
-- Defer AWS/Leaf Space ingest credentials until their operational interfaces
-  and authorization are known. LASP public-server write-back is now authorized
-  and manually validated as described below.
+- LASP public-server write-back is authorized and manually validated as
+  described below.
 
 ### 5.1 Publish finalized products to LASP — manual transport validated
 
@@ -299,10 +326,24 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   mapping, product naming/versioning rules, release authority, and representative
   product validation. Do not schedule unattended publication yet.
 
-### 6. Validate the end-to-end manual processing workflow — pending
+### 6. Validate the end-to-end manual processing workflow — in progress
 
-- Process a known dataset from ingest through the currently implemented levels.
-- Compare Jetson products and manifests against a known-good Mac run.
+- A clean Python 3.14 ARM64 Mac run and a clean Python 3.14 ARM64 Jetson run
+  processed the same checksum-verified 61,457,952-byte representative X-band
+  file at repository commit `a7b2de2` on 2026-08-26.
+- Both recovered 8,822 packets without decode failures and produced the same
+  59-file non-provenance inventory, including ten CSIE image products. Forty-one
+  binary and image artifacts matched SHA-256 exactly. A field-by-field
+  comparison of the remaining CSVs found 1,431,630 identical non-path cells and
+  zero data-value differences; the only differences were expected absolute
+  working-directory strings.
+- The first comparison exposed a stale private CTDB copy on the Jetson through
+  32 beacon-cell differences. A checksum-based, non-destructive CTDB refresh
+  resolved every value difference. Formal CTDB snapshot versioning and a
+  repeatable refresh/verification procedure are therefore operational
+  requirements, not optional housekeeping.
+- Processing through later science levels remains dependent on approved
+  calibration files.
 - Measure elapsed time, peak memory, disk growth, and failure behavior.
 - Write a concise operator runbook covering input discovery, processing,
   product review, retry, and recovery.
@@ -404,12 +445,12 @@ the pipeline and public decoder artifacts.
 
 ## Immediate next action
 
-Create the Jetson's least-privilege AWS ingest identity and add replication
-failure monitoring under Roadmap Step 4.1, then exercise the permanent
-`suncet_data` root through the manual ingest workflow in Roadmap Step 5. Define
-and review the LASP product mapping before using the verified Step 5.1 publisher
-on mission products. No unattended data ingest or publication should begin
-before those manual validation gates pass.
+Add AWS replication-failure monitoring, define CTDB snapshot/refresh checks, and
+complete the manual public-data synchronization and LASP download procedures in
+Roadmap Step 5. Then measure resource use for the representative processing run
+and write the operator runbook in Step 6. Define and review the LASP product
+mapping before using the verified Step 5.1 publisher on mission products. No
+unattended ingest or publication should begin before those gates pass.
 
 ## Definition of an initial operational SOC
 
