@@ -44,6 +44,8 @@ $suncet_data/                  public or synchronized
 ├── processing_runs/
 ├── synthetic/
 ├── test_data/
+├── telemetry/incoming/{uhf,xband}/
+├── transfer_logs/
 └── trends/
 
 $suncet_ctdb/                  private and host-managed
@@ -137,6 +139,24 @@ python -m suncet_processing_pipeline.make_telemetry_file \
 ```
 
 Images are not stored in this database; they remain separate FITS products.
+
+## Pulling raw delivery objects
+
+The SOC uses a read-only, host-local AWS profile to pull exact X-band or UHF
+delivery objects. Resource names and credentials are not stored in this
+repository. The command downloads through a partial file, calculates SHA-256,
+atomically finalizes the object below `telemetry/incoming/`, and records an
+ingest receipt below `transfer_logs/aws_ingest/`. It never changes or deletes
+the source object.
+
+```sh
+python -m suncet_processing_pipeline.ingest_s3 list xband
+python -m suncet_processing_pipeline.ingest_s3 pull xband OBJECT_KEY
+python -m suncet_processing_pipeline.ingest_s3 pull xband OBJECT_KEY --execute
+```
+
+See the [AWS delivery ingest procedure](docs/AWS_INGEST.md) for the private INI
+template, security boundary, and operator checklist.
 
 ## Publishing finalized products
 

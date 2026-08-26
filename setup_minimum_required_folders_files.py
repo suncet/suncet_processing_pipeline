@@ -49,9 +49,11 @@ DATA_DIRECTORIES = (
     "processing_runs",
     "synthetic/level1",
     "synthetic/level2",
-    "telemetry",
+    "telemetry/incoming/uhf",
+    "telemetry/incoming/xband",
     "test_data",
     "trends",
+    "transfer_logs/aws_ingest",
     "transfer_logs/lasp_publication",
     "transfer_staging/lasp_publication",
 )
