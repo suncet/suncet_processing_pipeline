@@ -2,8 +2,8 @@
 
 Status: **Pre-publication draft — not yet authoritative**
 
-Revision: draft-0.5
-Last updated: 2026-08-21
+Revision: draft-0.6
+Last updated: 2026-08-26
 
 Canonical URL:
 <https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md>
@@ -89,31 +89,39 @@ and likely before launch if the schedule slips materially.
 
 ## Link framing
 
-The processing repository contains the following candidate values from earlier
-ground-system integration. They are not yet asserted as flight over-air values:
+Flight software constructs the following radio-interface frame buffer:
 
-| Item | Candidate value |
+| Item | Confirmed software-side value |
 | --- | --- |
 | Link layer | AX.25 UI frame |
 | Destination callsign | `LASP-0` |
 | Source callsign | `SUN1-0` |
 | AX.25 control | `0x03` |
 | AX.25 PID | `0xF0` |
-| AX.25 FCS | Presence, byte order, and SatNOGS stripping behavior **TBC** |
+| AX.25 FCS | CRC-16/X-25 over header and information field; transmitted low byte first |
 
-The flight-software constants show the destination character bytes as
-`98 82 a6 a0 40 40` (bit-shifted `LASP  `) and source character bytes as
-`a6 aa 9c 62 40 40` (bit-shifted `SUN1  `). Both shown SSID octets are `0x41`,
-which gives an SSID value of zero but is unusual for a conventional two-address
-AX.25 header because both octets have the address-extension bit set and the
-reserved bits are not the conventional pair. The flight-software/radio
-integration team must confirm whether these are literal radio-interface bytes
-or macros adjusted during frame assembly, along with the C/H and reserved bits
-and control/PID. Radio documentation or an RF capture must establish what the
-radio actually transmits, including flags and FCS. Separately, laboratory
-validation of the selected SatNOGS receiver path must establish whether that
-ground-side path removes flags or FCS before passing the frame to the telemetry
-decoder. Those are distinct questions.
+The literal 16-byte header is destination
+`98 82 a6 a0 40 40 41`, source `a6 aa 9c 62 40 40 41`, control `03`, and PID
+`f0`. The character octets decode to the bit-shifted callsigns `LASP  ` and
+`SUN1  `. Both `0x41` SSID octets are intentional and remain unchanged on the
+way to the radio, even though setting the address-extension bit in both address
+octets is unconventional for a two-address AX.25 frame.
+
+Flight software copies the CCSDS packet immediately after that header, computes
+the FCS over every header and payload byte, appends two FCS bytes, and gives the
+complete buffer to the radio. The FCS parameters are width 16, reflected
+polynomial `0x8408` (the reflected representation of `0x1021`), initial value
+`0xffff`, reflected input/output, and final complement `0xffff`. The CRC routine
+performs a final byte swap and the caller writes the returned high byte followed
+by its low byte; together these operations place the conventional un-swapped
+CRC-16/X-25 value low byte first in the transmitted buffer. Flags are not part
+of the CRC input.
+
+An RF capture must still establish any radio-added preamble, flags, bit
+stuffing, or other physical/link framing. Separately, laboratory validation of
+the selected SatNOGS receiver path must establish whether that ground-side path
+removes flags, the AX.25 header, or FCS before passing bytes to the telemetry
+decoder.
 
 The APID 1 beacon is carried directly in the AX.25 information field. The FSW
 2.0.4 user's guide states that only UHF packets larger than the 256-byte AX.25
@@ -220,7 +228,8 @@ is a provisional Kaitai decoder for a bare CCSDS APID 1 packet. It exposes all
 112 approved fields, consumes the 24 excluded fields as anonymous gaps,
 validates fine time as 0-999 milliseconds, rejects a non-APID-1 CCSDS primary
 word, and accepts either the 251- or 252-byte packet form. It deliberately does
-not guess the unresolved AX.25 wrapper.
+does not yet wrap the packet in AX.25 because laboratory validation must first
+establish the actual SatNOGS decoder-input boundary.
 
 The repository also contains a fully synthetic, non-flight
 [`251-byte packet`](../suncet_processing_pipeline/satnogs/test_data/suncet_apid1_synthetic_251.hex)

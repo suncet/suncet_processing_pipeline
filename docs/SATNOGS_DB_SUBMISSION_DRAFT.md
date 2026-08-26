@@ -1,6 +1,6 @@
 # SunCET SatNOGS DB Submission Draft
 
-Last updated: 2026-08-21
+Last updated: 2026-08-26
 
 ## Purpose
 
@@ -74,8 +74,8 @@ that requires a different receiver configuration is represented separately.
 Before copying these values into SatNOGS DB:
 
 1. Promote the beacon specification from draft to a reviewed revision.
-2. Resolve or explicitly bound the AX.25 construction, waveform settings, and
-   packet-length discrepancy.
+2. Incorporate the confirmed flight-software AX.25/FCS construction and resolve
+   or explicitly bound the waveform settings and packet-length discrepancy.
 3. Validate a flight-equivalent RF recording and complete AX.25 frame.
 4. Recheck the current SatNOGS form choices for owner/operator, status, mode,
    and service.
