@@ -31,9 +31,9 @@ under its hostname.
 
 | Workstream | Status on 2026-08-31 | Next completion gate |
 |---|---|---|
-| Jetson platform, SSH, NVMe, and portable environment | Release `4fbd7b9` deployed in a locked Python 3.14 runtime; 348 Jetson tests pass in stock 30 W mode | Use the release runtime for the next representative manual run while retaining rollback environments |
+| Jetson platform, SSH, NVMe, and portable environment | Release `3da31c5` deployed in a locked Python 3.14 runtime; 358 Jetson tests pass in stock 30 W mode | Use the release runtime for the next representative manual run while retaining `4fbd7b9` as rollback |
 | AWS X-band/UHF custody | Live and tested; AWS CLI and version-aware monitor deployed and healthy | Confirm the first lifecycle expirations and complete an independent archive inventory/restore drill |
-| Manual ingest and public-data synchronization | Safe ingest/preflight deployed; personal-account Dropbox OAuth and metadata-only rclone policy validated | Deploy the narrowed filter and complete its first immutable copy/check; validate product push separately |
+| Manual ingest and public-data synchronization | Safe ingest/preflight and the metadata-only Dropbox copy/check are operationally validated | Validate a separately approved, manifest-gated product push |
 | Level 0.5 decoding | Mac/Jetson parity validated; the single Jetson CTDB tree passes exact off-host manifest verification | Require the CTDB gate before every representative decode |
 | Level 1 calibration | Prototype only | Finish the end-to-end writer and approve/version the calibration set |
 | Level 2 PSF deconvolution | Development interface fixture complete; science calibration pending | Validate regularized/provisional deconvolution choices against approved PSFs after Level 1 is operational |
@@ -236,6 +236,21 @@ checkpoint while retaining its environments for rollback:
   the system remained in stock `MODE_30W` (mode 2), and the prior `suncet`,
   `suncet-test`, and dated rollback environments were retained.
 
+The metadata-distribution maintenance release later on 2026-08-31 advanced the
+reviewed deployment while retaining `4fbd7b9` as rollback:
+
+- `main` was fast-forwarded cleanly to
+  `3da31c59ce6e8880323f1b31a46b8608c25c02f6`.
+- The unchanged exact lock was installed with micromamba at
+  `/home/james/.local/share/mamba/envs/suncet-release-3da31c5`. A wheel built
+  from that commit has SHA-256
+  `d9c95519f7c4b5dbe8b271edda669f818c0500ae83a9766fe551df9d0c5e3d63`;
+  the installed package resolves inside that prefix and `pip check` passes.
+- The retained isolated ARM64 test environment ran the clean checkout's full
+  358-test suite in 46.77 seconds. The production wheel independently passed
+  the live metadata dry-run, execute, and verification path outside the source
+  checkout.
+
 The representative Level 0.5 comparison is recorded in Roadmap Step 6.
 
 ### 3. Improve processing-run reproducibility — complete
@@ -365,9 +380,9 @@ This work is independent of the Jetson NVMe installation.
   deployed. The mode-`0600` host policy validates the NVMe source, ext4 type,
   filesystem UUID, writable data path, byte/inode reserves, and a write probe;
   both the baseline check and a representative 1 GiB input reservation passed.
-  Remaining work is the first metadata-only immutable copy/check, a separately
-  approved representative product push, the LASP public-server download path,
-  and measurement-driven refinement of the commissioning thresholds.
+  Remaining work is a separately approved representative product push, the
+  LASP public-server download path, and measurement-driven refinement of the
+  commissioning thresholds.
 - A checksum-verified native ARM64 `rclone` 1.75.0 binary is installed at
   `/home/james/.local/bin/rclone`. OAuth against the owner's paid Dropbox
   account was completed on 2026-08-31 after explicitly accepting its broader
@@ -375,6 +390,16 @@ This work is independent of the Jetson NVMe installation.
   credential and task configuration are mode `0600`, remain outside the public
   data tree, and name only the reviewed SunCET root. A dedicated paid/team
   identity remains preferable if one becomes available.
+- The pull task is rooted at the Dropbox and Jetson `metadata` directories and
+  accepts only numeric `MAJOR.MINOR.PATCH` stable/development FITS and
+  NetCDF/Zarr CSV filename families. The first execution correctly failed
+  closed on modification-time differences in the independently installed
+  files; no bytes changed. Pull comparison was then made content-checksum based
+  while retaining `--immutable`. The final dry run and execution returned zero,
+  the mandatory one-way check found zero differences and two matching files,
+  and both authoritative `v1.0.2dev` SHA-256 values match the Mac/Dropbox
+  copies. The obsolete Excel workbook was removed from Dropbox and its local
+  deletion propagation was confirmed.
 - Use explicit one-way `rclone copy` commands rather than `sync` or `bisync`:
   copy versioned metadata definitions from Dropbox to the Jetson, and copy
   finalized products and processing manifests from the Jetson to Dropbox.
@@ -472,9 +497,10 @@ This work is independent of the Jetson NVMe installation.
   monitor have been exercised successfully on the Jetson. Dropbox OAuth,
   read-only root discovery, and a broad diagnostic dry run succeeded; that run
   exposed an unwanted 50.1 GiB test/synthetic scope, so no files were copied and
-  the pull policy was narrowed to immutable metadata CSVs only. The first
-  metadata-only copy/check and representative product push remain before the
-  complete runbook is operationally proven end to end.
+  the pull policy was narrowed to immutable metadata CSVs only. The narrowed
+  metadata dry-run, execute, checksum comparison, and post-copy verification
+  now pass. The representative product push remains before the complete runbook
+  is operationally proven end to end.
 
 ### 7. Add NVMe storage and establish the permanent storage split — complete
 
@@ -615,12 +641,11 @@ the pipeline and public decoder artifacts.
 
 ## Immediate next action
 
-Deploy and execute the metadata-only Dropbox copy/check, validate a separately
-approved manifest-gated product push, then share the explicitly
-provisional Level 2 bundle with the Level 3 developer together with its contract
-and checksum list. Confirm the first 30-day source lifecycle expirations and
-perform an independent archive inventory/restore drill. When Meng Jin's
-additional simulations arrive, generate reviewed manifests, freeze
+Validate a separately approved manifest-gated Dropbox product push, then share
+the explicitly provisional Level 2 bundle with the Level 3 developer together
+with its contract and checksum list. Confirm the first 30-day source lifecycle
+expirations and perform an independent archive inventory/restore drill. When
+Meng Jin's additional simulations arrive, generate reviewed manifests, freeze
 development/validation cases, and run the same raw and temporal-median
 configurations before changing thresholds or adding GPU work. SatNOGS can
 resume when the APID 1 length and flight-equivalent RF package arrive. No

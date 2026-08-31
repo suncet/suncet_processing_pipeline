@@ -75,7 +75,7 @@ threshold requires an operations review.
 
    ```sh
    cd "$HOME"
-   suncet_runtime_prefix=/home/james/.local/share/mamba/envs/suncet-release-4fbd7b9
+   suncet_runtime_prefix=/home/james/.local/share/mamba/envs/suncet-release-3da31c5
    suncet_python="$suncet_runtime_prefix/bin/python"
    suncet_aws_cli=/home/james/.local/bin/aws
    if [ ! -x "$suncet_python" ] || [ ! -x "$suncet_aws_cli" ]; then
@@ -286,7 +286,7 @@ Jetson before resuming:
 
 ```sh
 ssh james@suncet-soc \
-  '/home/james/.local/share/mamba/envs/suncet-release-4fbd7b9/bin/python -m suncet_processing_pipeline.ctdb_snapshot verify --root /srv/suncet/ctdb --manifest /srv/suncet/ctdb/.suncet_ctdb_snapshot.json'
+  '/home/james/.local/share/mamba/envs/suncet-release-3da31c5/bin/python -m suncet_processing_pipeline.ctdb_snapshot verify --root /srv/suncet/ctdb --manifest /srv/suncet/ctdb/.suncet_ctdb_snapshot.json'
 ```
 
 Exact verification, the focused Level 0.5 tests, and a representative decode
