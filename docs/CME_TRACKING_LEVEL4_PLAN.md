@@ -1055,12 +1055,16 @@ eight-degree-padded sector for detailed sparse-path recovery. This recovers the
 known event without the reviewed 220--330-degree prior; it remains known-window
 sector discovery, not continuous autonomous event discovery.
 
-The complete repository test suite passes after the automatic coherent-sector
-path, particle/FOV regressions, temporal outlier screen, temporal-median A/B,
-benchmark instrumentation, and first CPU fast path were added.
-The focused suite passes under Python 3.12, and the complete
-120-frame workflow also runs under Python 3.14.7 with numerically identical
-headline results. A fully hash-verified smoke run on `bright_fast/no jitter`
+The 2026-08-31 release/deployment checkpoint is commit
+`4fbd7b9aeda539ffd7a057d3a49d063a4f503edb`. GitHub Actions run 87 succeeded,
+and that same checkpoint is deployed on `suncet-soc` in the locked micromamba
+runtime with Python 3.14.7. The full repository suite, including the automatic
+coherent-sector path, particle/FOV regressions, temporal outlier screen,
+temporal-median A/B, benchmark instrumentation, and first CPU fast path, passed
+all 348 tests on the Jetson in 49.24 s. The Jetson was restored to stock
+`MODE_30W` (mode ID 2) for normal operation. The complete 120-frame workflow
+has numerically identical headline results across the verified development and
+Jetson runtimes. A fully hash-verified smoke run on `bright_fast/no jitter`
 follows a smooth outward feature to an uncensored height of 4.24 solar radii,
 flags first field-of-view contact at frame 95, and retains later measurements
 only as censored observations. Confidence/coverage gating leaves frames 14--93

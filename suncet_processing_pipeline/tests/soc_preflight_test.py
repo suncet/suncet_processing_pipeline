@@ -97,6 +97,22 @@ def test_load_storage_targets_expands_environment_and_validates(tmp_path, monkey
         load_storage_targets(config)
 
 
+def test_commissioning_policy_probes_data_but_not_system_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("suncet_data", str(tmp_path))
+    config = (
+        Path(__file__).resolve().parents[2]
+        / "operations"
+        / "soc_operations.example.ini"
+    )
+
+    targets = {target.name: target for target in load_storage_targets(config)}
+
+    assert targets["data"].require_writable
+    assert targets["data"].write_probe
+    assert not targets["system"].require_writable
+    assert not targets["system"].write_probe
+
+
 def test_planned_input_requires_one_workload_target(tmp_path):
     target = _target(tmp_path, accepts_workload=False)
     with pytest.raises(SOCPreflightError, match="Exactly one"):

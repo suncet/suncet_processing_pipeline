@@ -11,7 +11,8 @@ consume a Level 1 image after radiometric and detector corrections. Level 3
 will then apply fine geometric corrections such as precise Sun centering and
 rotation to put solar north up.
 
-The 2026-08-28 fixture uses a corrected-timestamp synthetic Level 0.5 image
+The distributable fixture regenerated on 2026-08-31 uses a corrected-timestamp
+synthetic Level 0.5 image
 directly because the end-to-end Level 1 writer and mission-approved calibration
 set are not complete. The source array is already declared in `DN/s`, so it is
 not passed through the obsolete fixed-exposure development calibrator. The
@@ -83,7 +84,10 @@ replacement.
 Processing manifests distributed with public fixtures use the public privacy
 profile. Host identity and user-bearing absolute paths are omitted or replaced
 by portable aliases. Richer internal operational records must remain outside
-the public data tree.
+the public data tree. The current distributable was regenerated from clean
+release checkpoint `4fbd7b9aeda539ffd7a057d3a49d063a4f503edb`; its checksum
+list covers only the current FITS image, calibration manifest, README, and
+sanitized provenance manifest.
 
 ## Known limitations
 

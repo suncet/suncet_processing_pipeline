@@ -48,7 +48,8 @@ warning_free_inode_percent = 5
 critical_free_inode_percent = 2
 work_multiplier = 1
 accepts_workload = false
-require_writable = true
+# The unprivileged SOC operator is not expected to write directly to `/`.
+require_writable = false
 write_probe = false
 ```
 
@@ -73,13 +74,37 @@ threshold requires an operations review.
    deployment, and record the commit and Jetson power mode:
 
    ```sh
-   cd /home/james/src/suncet_processing_pipeline
-   git status --short
-   git rev-parse HEAD
-   nvpmodel -q
+   cd "$HOME"
+   suncet_runtime_prefix=/home/james/.local/share/mamba/envs/suncet-release-4fbd7b9
+   suncet_python="$suncet_runtime_prefix/bin/python"
+   suncet_aws_cli=/home/james/.local/bin/aws
+   if [ ! -x "$suncet_python" ] || [ ! -x "$suncet_aws_cli" ]; then
+     printf 'STOP: reviewed Python or AWS CLI is unavailable\n' >&2
+     false
+   else
+     (
+       set -e
+       "$suncet_python" --version
+       cd /tmp
+       "$suncet_python" -c \
+         'from importlib.metadata import version; import suncet_processing_pipeline as p; print(version("suncet"), p.__file__)'
+       git -C /home/james/src/suncet_processing_pipeline status --short
+       git -C /home/james/src/suncet_processing_pipeline rev-parse HEAD
+       nvpmodel -q
+     )
+   fi
    ```
 
-   Do not claim a reproducible production run from a dirty checkout.
+   Stop immediately if the block prints `STOP` or any command fails. Running the
+   import check from `/tmp` prevents the source checkout from shadowing the
+   installed wheel, while `git -C` records the checkout without changing the
+   shell's working directory.
+
+   The package path must be below the reviewed runtime prefix, not the source
+   checkout or an older environment. Do not claim a reproducible production
+   run from a dirty checkout. Update the exact prefix only as part of a reviewed
+   release deployment; do not silently point it at a mutable development
+   environment.
 
 2. Confirm the two managed roots and the NVMe mount. The roots must be siblings,
    never nested:
@@ -93,8 +118,8 @@ threshold requires an operations review.
    supply it so the expansion reserve participates in backpressure:
 
    ```sh
-   python -m suncet_processing_pipeline.soc_preflight
-   python -m suncet_processing_pipeline.soc_preflight \
+   "$suncet_python" -m suncet_processing_pipeline.soc_preflight
+   "$suncet_python" -m suncet_processing_pipeline.soc_preflight \
      --planned-input-bytes OBJECT_SIZE_BYTES
    ```
 
@@ -115,7 +140,7 @@ threshold requires an operations review.
 5. Verify the active private CTDB snapshot before decoding:
 
    ```sh
-   python -m suncet_processing_pipeline.ctdb_snapshot verify \
+   "$suncet_python" -m suncet_processing_pipeline.ctdb_snapshot verify \
      --manifest "$suncet_ctdb/.suncet_ctdb_snapshot.json"
    ```
 
@@ -125,21 +150,36 @@ threshold requires an operations review.
 
 ## Discover, preserve, and ingest a delivery
 
-Check both configured sources as appropriate:
+Check both configured sources as appropriate. The simple listing shows the
+current objects; the version-aware monitor supplies the immutable version ID
+and simultaneously checks replication custody:
 
 ```sh
-python -m suncet_processing_pipeline.ingest_s3 list xband
-python -m suncet_processing_pipeline.ingest_s3 list uhf
+"$suncet_python" -m suncet_processing_pipeline.ingest_s3 \
+  --aws-cli "$suncet_aws_cli" list xband
+"$suncet_python" -m suncet_processing_pipeline.ingest_s3 \
+  --aws-cli "$suncet_aws_cli" list uhf
+"$suncet_python" -m suncet_processing_pipeline.aws_replication_monitor \
+  xband uhf --aws-cli "$suncet_aws_cli" \
+  --pending-hours 24 --retention-days 37
 ```
 
-Review the exact key, version, timestamp, and size. Preview one object without
-contacting or writing S3, rerun the storage preflight with its byte size, and
-then execute the exact pull:
+Do not proceed if the monitor is nonzero. Review the exact key, version,
+timestamp, size, and `COMPLETED` state, then copy the selected source, key, and
+version ID exactly. Preview the operation without contacting or writing S3,
+rerun the storage preflight with its byte size, and execute the exact versioned
+pull:
 
 ```sh
-python -m suncet_processing_pipeline.ingest_s3 pull SOURCE OBJECT_KEY
-python -m suncet_processing_pipeline.ingest_s3 \
-  pull SOURCE OBJECT_KEY --execute
+source_name=SOURCE
+object_key='OBJECT_KEY'
+object_version='VERSION_ID_FROM_MONITOR'
+"$suncet_python" -m suncet_processing_pipeline.ingest_s3 \
+  --aws-cli "$suncet_aws_cli" \
+  pull "$source_name" "$object_key" --version-id "$object_version"
+"$suncet_python" -m suncet_processing_pipeline.ingest_s3 \
+  --aws-cli "$suncet_aws_cli" \
+  pull "$source_name" "$object_key" --version-id "$object_version" --execute
 ```
 
 Confirm the final local path, SHA-256, S3 version/ETag/checksum information, and
@@ -147,13 +187,6 @@ mode-`0600` JSON receipt under
 `$HOME/.local/state/suncet/aws_ingest/`. A repeated pull of
 identical content should report `already_present`; different content at an
 existing filename is a conflict and must not be overwritten.
-
-Independently inspect every source-object version in the lifecycle risk window:
-
-```sh
-python -m suncet_processing_pipeline.aws_replication_monitor \
-  xband uhf --pending-hours 24 --retention-days 37
-```
 
 The monitor uses the version listing rather than only current keys and inspects
 every object version inside the complete current-plus-noncurrent lifecycle risk
@@ -193,11 +226,14 @@ be relabeled as a science product.
 
 ## CTDB refresh and exact verification
 
-Stop CTDB writers and any process that generates or refreshes packet
-definitions on the authoritative development host. Then create a timestamped
-private manifest from that quiescent tree:
+On the authoritative development host, stop CTDB writers and any process that
+generates or refreshes packet definitions. Activate the reviewed development
+environment there, confirm `python` resolves inside it, and create a timestamped
+private manifest from the quiescent tree. Do not use the Jetson-only
+`$suncet_python` path for this step:
 
 ```sh
+command -v python
 python -m suncet_processing_pipeline.ctdb_snapshot snapshot \
   --root "$suncet_ctdb" \
   --output PRIVATE_CTDB_MANIFEST_PATH
@@ -229,8 +265,14 @@ rsync --archive --checksum --delete-delay --itemize-changes \
   "$suncet_ctdb/" \
   james@suncet-soc:/srv/suncet/ctdb/
 
-scp PRIVATE_CTDB_MANIFEST_PATH \
-  james@suncet-soc:/srv/suncet/ctdb/.suncet_ctdb_snapshot.json
+if scp PRIVATE_CTDB_MANIFEST_PATH \
+    james@suncet-soc:/srv/suncet/ctdb/.suncet_ctdb_snapshot.json.incoming; then
+  ssh james@suncet-soc \
+    'chmod 600 /srv/suncet/ctdb/.suncet_ctdb_snapshot.json.incoming && mv -f /srv/suncet/ctdb/.suncet_ctdb_snapshot.json.incoming /srv/suncet/ctdb/.suncet_ctdb_snapshot.json'
+else
+  printf 'STOP: CTDB manifest transfer failed; the active manifest was not replaced\n' >&2
+  false
+fi
 ```
 
 Because this one-copy procedure does not retain an on-Jetson rollback tree, an
@@ -239,12 +281,12 @@ copy is rerun and exact verification passes. The authoritative off-host tree
 and its manifest are the recovery source. Do not resume decoding after a
 partial or unreviewed refresh.
 
-Verify the canonical tree before resuming:
+From the development host, explicitly run the locked release verifier on the
+Jetson before resuming:
 
 ```sh
-python -m suncet_processing_pipeline.ctdb_snapshot verify \
-  --root /srv/suncet/ctdb \
-  --manifest /srv/suncet/ctdb/.suncet_ctdb_snapshot.json
+ssh james@suncet-soc \
+  '/home/james/.local/share/mamba/envs/suncet-release-4fbd7b9/bin/python -m suncet_processing_pipeline.ctdb_snapshot verify --root /srv/suncet/ctdb --manifest /srv/suncet/ctdb/.suncet_ctdb_snapshot.json'
 ```
 
 Exact verification, the focused Level 0.5 tests, and a representative decode

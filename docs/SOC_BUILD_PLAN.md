@@ -31,10 +31,10 @@ under its hostname.
 
 | Workstream | Status on 2026-08-31 | Next completion gate |
 |---|---|---|
-| Jetson platform, SSH, NVMe, and portable environment | Operational for controlled manual work | Record the deployed Git commit/power mode after the next repository checkpoint |
-| AWS X-band/UHF custody | Live and tested; version-aware monitor implemented locally | Deploy/run the monitor and confirm the first lifecycle expirations |
-| Manual ingest and public-data synchronization | Safe ingest/preflight/rclone tooling implemented locally | Install the host-private configuration and validate representative one-way copies |
-| Level 0.5 decoding | Mac/Jetson parity validated; CTDB snapshot/runbook implemented locally | Deploy and execute the quiescent exact-verification CTDB procedure |
+| Jetson platform, SSH, NVMe, and portable environment | Release `4fbd7b9` deployed in a locked Python 3.14 runtime; 348 Jetson tests pass in stock 30 W mode | Use the release runtime for the next representative manual run while retaining rollback environments |
+| AWS X-band/UHF custody | Live and tested; AWS CLI and version-aware monitor deployed and healthy | Confirm the first lifecycle expirations and complete an independent archive inventory/restore drill |
+| Manual ingest and public-data synchronization | Safe ingest and storage preflight deployed; rclone wrapper and binary ready | Complete dedicated Dropbox OAuth and validate representative one-way copies |
+| Level 0.5 decoding | Mac/Jetson parity validated; the single Jetson CTDB tree passes exact off-host manifest verification | Require the CTDB gate before every representative decode |
 | Level 1 calibration | Prototype only | Finish the end-to-end writer and approve/version the calibration set |
 | Level 2 PSF deconvolution | Development interface fixture complete; science calibration pending | Validate regularized/provisional deconvolution choices against approved PSFs after Level 1 is operational |
 | Level 4 CME tracking | Strong known-window engineering prototype | Test the frozen raw/temporal-median variants on Meng Jin's additional scenarios, then add held-out evaluation and broader event association |
@@ -126,6 +126,8 @@ user-space environment work.
 
 - Important local pipeline work was committed and pushed to `main`.
 - GitHub Actions passes on Python 3.12 and Python 3.14.
+- Release checkpoint `4fbd7b9aeda539ffd7a057d3a49d063a4f503edb` was pushed
+  on 2026-08-31; GitHub Actions run 87 completed successfully.
 - Portable environment modernization is in commit `95b56bc`.
 - Processing-run provenance is in commit `a24cd1d`.
 
@@ -206,6 +208,26 @@ Completed on the Jetson and refreshed on 2026-08-26:
 - Miniforge, both environments, and the shared package cache use about 4.7 GB;
   approximately 37 GB remains free on eMMC at the latest observation.
 
+Release deployment on 2026-08-31 supersedes the earlier repository/test
+checkpoint while retaining its environments for rollback:
+
+- The prior uncommitted CME-development checkout was preserved as named stash
+  `pre-release-20260831-ff8c17b`, then `main` was fast-forwarded cleanly to
+  `4fbd7b9aeda539ffd7a057d3a49d063a4f503edb`.
+- The exact four-platform lock was installed with micromamba at
+  `/home/james/.local/share/mamba/envs/suncet-release-4fbd7b9`. Conda's
+  standalone and Miniforge installers both encountered package-cache
+  bookkeeping for an available, checksum-pinned epoch-versioned `x264`
+  artifact; micromamba installed the same locked URLs and hashes without
+  changing the environment solution.
+- A wheel built from the named commit was installed into that isolated runtime.
+  Native ARM64 Python 3.14.7, packaged resource discovery, ffmpeg 9.0.1, and
+  `pip check` all pass outside the source checkout.
+- A separate locked test prefix with only pytest tooling added passed all 348
+  repository tests in 49.24 seconds on the Jetson. The checkout remained clean,
+  the system remained in stock `MODE_30W` (mode 2), and the prior `suncet`,
+  `suncet-test`, and dated rollback environments were retained.
+
 The representative Level 0.5 comparison is recorded in Roadmap Step 6.
 
 ### 3. Improve processing-run reproducibility — complete
@@ -257,6 +279,13 @@ This work is independent of the Jetson NVMe installation.
   current-plus-noncurrent lifecycle risk window. Failed, stale pending/unknown,
   or truncated coverage fails closed; destination inventory and restore tests
   remain an independent archive-custody requirement.
+- AWS CLI v2.36.34 and the monitor were deployed on the Jetson on 2026-08-31.
+  Its first read-only run failed closed because the ingest identity lacked
+  `s3:ListBucketVersions`. That single bucket-level action was added for only
+  the two delivery buckets while preserving the approved `/32` source-address
+  condition and the existing object-version read resources. The rerun inspected
+  all five source versions in the 37-day risk window; all reported
+  `COMPLETED`, neither source was empty, and the monitor exited successfully.
 - Restrict the Jetson AWS identity to the minimum list/read permissions needed
   for ingest. Record object key, version, size, and a content checksum in the SOC
   ingest ledger or processing manifest.
@@ -324,11 +353,13 @@ This work is independent of the Jetson NVMe installation.
   A second execution reported `ALREADY_PRESENT`, left no partial file, and wrote
   a second idempotency receipt. Both delivery sources can be listed from the
   Jetson with the least-privilege identity.
-- Dry-run-first public-copy and operational storage-preflight tooling is now
-  implemented locally. The remaining work is Jetson deployment and host-private
-  configuration, representative pull/push validation, the LASP public-server
-  download path, and measurement-driven refinement of the commissioning
-  thresholds.
+- Dry-run-first public-copy and operational storage-preflight tooling is
+  deployed. The mode-`0600` host policy validates the NVMe source, ext4 type,
+  filesystem UUID, writable data path, byte/inode reserves, and a write probe;
+  both the baseline check and a representative 1 GiB input reservation passed.
+  Remaining work is Dropbox authorization and representative pull/push
+  validation, the LASP public-server download path, and measurement-driven
+  refinement of the commissioning thresholds.
 - A checksum-verified native ARM64 `rclone` 1.75.0 binary is installed at
   `/home/james/.local/bin/rclone`. Configure a Dropbox remote using a dedicated
   identity that can access only SunCET public data, if that account arrangement
@@ -400,11 +431,18 @@ This work is independent of the Jetson NVMe installation.
   resolved every value difference. Formal CTDB snapshot versioning and a
   repeatable refresh/verification procedure are therefore operational
   requirements, not optional housekeeping.
-- On 2026-08-28 a representative Level 2 handoff bundle was generated from the
-  corrected-timestamp middle frame of the 241-frame synthetic sequence. It
+- On 2026-08-31 the authoritative off-host CTDB generated a private manifest
+  covering 1,521 files and 167,013,965 bytes. The Jetson's sole CTDB tree
+  matched its expected tree hash exactly with zero missing, unexpected, or
+  mismatched files. The mode-`0600` manifest now resides inside the private
+  CTDB root and is excluded from its own inventory.
+- On 2026-08-31 the representative Level 2 handoff bundle was regenerated from
+  the corrected-timestamp middle frame of the 241-frame synthetic sequence and
+  clean release checkpoint `4fbd7b9aeda539ffd7a057d3a49d063a4f503edb`. It
   contains a checksum-valid 750 by 1000 floating-point FITS image, a successful
-  processing manifest with SHA-256 hashes for the source and four provisional
-  deconvolution inputs, an external checksum list, and the
+  public-profile processing manifest with SHA-256 hashes for the source and
+  four provisional deconvolution inputs, a content-addressed calibration-set
+  manifest, a complete external checksum list, and the
   [Level 2 handoff contract](LEVEL2_HANDOFF_CONTRACT.md). Astropy FITS/WCS and
   SunPy independently load the product. The header explicitly records
   `SYNTHET = T`, `L1BYPASS = T`, and `PROCSTAT = 'PROVISIONAL'`; it is suitable
@@ -417,10 +455,13 @@ This work is independent of the Jetson NVMe installation.
 - Measure elapsed time, peak memory, disk growth, and failure behavior.
 - A manual operator runbook now covers input discovery, private receipts,
   version-aware replication checks, quiescent CTDB integrity and exact refresh
-  verification,
-  storage backpressure, processing review, publication, retry, and recovery.
-  Deploy it with the checkpointed code and execute representative acceptance
-  runs before treating it as an operationally proven procedure.
+  verification, storage backpressure, processing review, publication, retry,
+  and recovery. The release/checksum gate, full repository tests, corrected
+  metadata installation, CTDB integrity check, baseline/workload storage
+  preflight, NVMe identity, power mode, public-IP check, and version-aware AWS
+  monitor have been exercised successfully on the Jetson. The rclone
+  publication path awaits dedicated Dropbox OAuth and representative copies,
+  so the complete runbook is not yet operationally proven end to end.
 
 ### 7. Add NVMe storage and establish the permanent storage split — complete
 
@@ -439,11 +480,16 @@ This work is independent of the Jetson NVMe installation.
   no differences. A final comparison again passed before the redundant
   `/home/james/suncet_ctdb` source was deleted on 2026-08-25; the Jetson now has
   one CTDB tree at `/srv/suncet/ctdb`.
+  This is the historical migration count, not the current authoritative
+  inventory: subsequent source cleanup plus the snapshot's documented cache
+  exclusions account for the later 1,521-file checkpoint. The exact manifest
+  verification recorded in Step 6 is the current integrity gate.
 - Initialized the canonical `suncet_data` directory tree and downloaded the
   validated `v1.0.2dev` FITS and NetCDF/Zarr metadata exports. The corrected
-  2026-08-31 UTC/CALPSF/DATAMIN/DATAMAX exports supersede those initial copies
-  and must be copied and checksum-verified during the release deployment.
-  Mission-approved calibration FITS assets are not present yet.
+  2026-08-31 UTC/CALPSF/DATAMIN/DATAMAX exports superseded those initial copies
+  and were atomically installed and checksum-verified on the Jetson during the
+  release deployment. Mission-approved calibration FITS assets are not present
+  yet.
 - Verified the mount identity and fstab syntax, shell and Conda path behavior,
   pipeline path resolution, directory ownership, and available 1.8 TiB data
   capacity. A controlled reboot on 2026-08-25 automatically restored the
@@ -556,18 +602,16 @@ the pipeline and public decoder artifacts.
 
 ## Immediate next action
 
-First review and checkpoint the current coherent Level 4 and Level 2 work, run
-public CI, and deploy one named commit to the Jetson. Share the explicitly
+Complete dedicated Dropbox authorization and representative manifest-gated
+one-way copies, then share the explicitly
 provisional Level 2 bundle with the Level 3 developer together with its contract
-and checksum list. When Meng Jin's additional simulations arrive, generate
-reviewed manifests, freeze development/validation cases, and run the same raw
-and temporal-median configurations before changing thresholds or adding GPU
-work. In parallel, deploy and exercise the newly implemented version-aware AWS
-replication checks, formal CTDB refresh verification, manifest-gated one-way
-public-data copies, disk/backpressure policy, and Step 6 operator runbook.
-SatNOGS can resume when the APID 1 length and flight-equivalent RF package
-arrive. No unattended ingest or publication should begin before those gates
-pass.
+and checksum list. Confirm the first 30-day source lifecycle expirations and
+perform an independent archive inventory/restore drill. When Meng Jin's
+additional simulations arrive, generate reviewed manifests, freeze
+development/validation cases, and run the same raw and temporal-median
+configurations before changing thresholds or adding GPU work. SatNOGS can
+resume when the APID 1 length and flight-equivalent RF package arrive. No
+unattended ingest or publication should begin before those gates pass.
 
 ## Definition of an initial operational SOC
 
