@@ -2,7 +2,9 @@
 
 This helper does not edit shell profiles or guess private paths. It creates or
 updates the named Mamba environment, installs the checkout in editable mode, and
-initializes the public data tree using explicit absolute paths.
+initializes the public data tree using explicit absolute paths. It validates
+reviewed metadata already delivered through Dropbox/rclone and never downloads
+the mutable live Google Sheet.
 """
 
 from __future__ import annotations
@@ -41,11 +43,7 @@ def get_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Only initialize the data tree (useful after an environment exists).",
     )
-    parser.add_argument(
-        "--skip-metadata-download",
-        action="store_true",
-        help="Create directories without downloading the live metadata exports.",
-    )
+    setup_minimum_required_folders_files.add_metadata_policy_arguments(parser)
     return parser
 
 
@@ -122,7 +120,9 @@ def bootstrap(argv: list[str] | None = None) -> Path:
 
     os.environ["suncet_data"] = str(args.data_root)
     os.environ["suncet_ctdb"] = str(args.ctdb_root)
-    initializer_args = ["--skip-metadata-download"] if args.skip_metadata_download else []
+    initializer_args = (
+        ["--allow-missing-metadata"] if args.allow_missing_metadata else []
+    )
     data_root = setup_minimum_required_folders_files.run(initializer_args)
 
     print("\nAdd these lines to the appropriate shell profile on this host:")

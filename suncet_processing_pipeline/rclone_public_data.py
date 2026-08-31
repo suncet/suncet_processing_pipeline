@@ -30,6 +30,16 @@ REMOTE_PATTERN = re.compile(r"^[A-Za-z0-9_-]+:.*$")
 TASK_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 PUBLICATION_SCHEMA_VERSION = 1
 PUBLICATION_INCLUDE_PATTERN = re.compile(r"^\+ /([^*?\[\]{}\\]+)/\*\*$")
+# Rclone anchors /{{REGEXP}} to the task root.  Pulls accept only this
+# deliberately small versioned-basename grammar; arbitrary regexes stay invalid.
+PULL_VERSIONED_FILENAME_INCLUDE_PATTERN = re.compile(
+    r"^\+ /\{\{"
+    r"[A-Za-z0-9][A-Za-z0-9_-]*_v"
+    r"\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+"
+    r"(?:dev)?"
+    r"-[A-Za-z0-9][A-Za-z0-9_-]*\\\.[A-Za-z0-9][A-Za-z0-9_-]*"
+    r"\}\}$"
+)
 SUPPORTED_PUBLICATION_EXCLUSIONS = {
     "- **/*.partial",
     "- **/*.partial.*",
@@ -170,8 +180,13 @@ def _write_private_json(
         temporary.unlink(missing_ok=True)
 
 
-def _literal_filter_roots(filter_file: Path, *, label: str) -> tuple[Path, ...]:
-    """Extract a deliberately simple top-level allowlist from an rclone filter."""
+def _literal_filter_roots(
+    filter_file: Path,
+    *,
+    label: str,
+    allow_versioned_filename_regexes: bool = False,
+) -> tuple[Path, ...]:
+    """Extract literal destination roots from a deliberately simple allowlist."""
 
     roots: list[Path] = []
     active_lines = [
@@ -191,14 +206,25 @@ def _literal_filter_roots(filter_file: Path, *, label: str) -> tuple[Path, ...]:
                     f"narrower literal include root instead: {line!r}"
                 )
             continue
-        match = PUBLICATION_INCLUDE_PATTERN.fullmatch(line)
-        if match is None:
+        literal_match = PUBLICATION_INCLUDE_PATTERN.fullmatch(line)
+        filename_match = None
+        if literal_match is None and allow_versioned_filename_regexes:
+            filename_match = PULL_VERSIONED_FILENAME_INCLUDE_PATTERN.fullmatch(line)
+        if literal_match is None and filename_match is None:
+            supported_includes = "literal '/PATH/**' rules"
+            if allow_versioned_filename_regexes:
+                supported_includes += (
+                    " or rooted versioned-filename regular expressions"
+                )
             raise RclonePublicError(
-                f"{label} filter includes must be literal '/PATH/**' rules: {line!r}"
+                f"{label} filter includes must be {supported_includes}: {line!r}"
             )
-        root = Path(match.group(1))
-        if root.is_absolute() or not root.parts or ".." in root.parts:
-            raise RclonePublicError(f"unsafe publication root in filter: {line!r}")
+        if literal_match is None:
+            root = Path(".")
+        else:
+            root = Path(literal_match.group(1))
+            if root.is_absolute() or not root.parts or ".." in root.parts:
+                raise RclonePublicError(f"unsafe publication root in filter: {line!r}")
         roots.append(root)
     if not roots:
         raise RclonePublicError(f"{label} filter contains no allowlist roots")
@@ -218,7 +244,11 @@ def _publication_roots(filter_file: Path) -> tuple[Path, ...]:
 def _validate_pull_destination_tree(local_root: Path, filter_file: Path) -> None:
     """Reject symlinks that could redirect an allowed pull outside its root."""
 
-    for relative_root in _literal_filter_roots(filter_file, label="pull safety"):
+    for relative_root in _literal_filter_roots(
+        filter_file,
+        label="pull safety",
+        allow_versioned_filename_regexes=True,
+    ):
         destination_root = local_root / relative_root
         if destination_root.is_symlink():
             raise RclonePublicError(

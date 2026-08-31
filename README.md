@@ -103,13 +103,22 @@ Developers using pip should install `requirements-dev.txt` instead. CUDA and Jet
 For a new host, `local_system_setup.py` combines those setup commands into one
 repeatable helper: it creates or updates the Mamba environment, installs this
 checkout in editable mode, initializes the data tree, and prints the two shell
-profile exports. It never edits the shell profile itself.
+profile exports. It never edits the shell profile itself and never downloads
+the mutable live metadata Google Sheet. By default it requires the code-pinned,
+reviewed versioned CSV exports to be present under `$suncet_data/metadata`.
 
 ```sh
 python local_system_setup.py \
   --data-root /absolute/public/data/path \
   --ctdb-root /absolute/private/ctdb/path
 ```
+
+On a completely new host, use `--allow-missing-metadata` for the first bootstrap
+only. Configure the reviewed Dropbox/rclone `pull-metadata` task, run its
+dry-run/execute/check workflow, and then rerun this helper without that option.
+Every reviewed Sheet change is exported under a new SemVer-style filename
+(`dev` during development; omitted for approved major releases); an existing
+published CSV filename is never overwritten.
 
 ## Processing provenance
 

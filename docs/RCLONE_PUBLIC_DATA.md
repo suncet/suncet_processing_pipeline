@@ -29,23 +29,29 @@ joining the transfer. Stop writers and place products atomically in their final
 publication directories before freezing the manifest; a changed source makes
 the operation fail and requires a new manifest.
 
-The reviewed starter filters are:
+The reviewed filters are:
 
-- `operations/rclone/pull_reference.filter`: versioned metadata, synthetic
-  inputs, and public test data from Dropbox to the SOC;
+- `operations/rclone/pull_metadata.filter`: top-level, explicitly versioned
+  FITS and NetCDF/Zarr metadata CSV exports from Dropbox to the SOC;
 - `operations/rclone/push_products.filter`: finalized Levels 1–4, trends, and
   processing manifests from the SOC to Dropbox.
 
-The push filter deliberately excludes raw ingest, Level 0.5, processing-run
-inputs, scratch, staging, transfer logs, and private definitions. Expand it
-only after public-product policy explicitly approves another subtree.
+The pull filter deliberately excludes synthetic data, test data, obsolete
+definitions, example files, workbooks, and mutable unversioned files. The push
+filter deliberately excludes raw ingest, Level 0.5, processing-run inputs,
+scratch, staging, transfer logs, and private definitions. Expand either filter
+only after explicit review.
 
 ## One-time host setup
 
 The checksum-verified native ARM64 `rclone` 1.75.0 binary is installed on the
-Jetson at `/home/james/.local/bin/rclone`. Configure a dedicated Dropbox
-identity limited to SunCET public data when possible; do not store a token
-granting access to an owner's entire personal Dropbox account on the Jetson.
+Jetson at `/home/james/.local/bin/rclone`. The initial deployment uses the
+project owner's paid Dropbox account because a separate free account cannot
+hold the shared data tree. This is an explicitly accepted compromise: the
+Dropbox token has broader account access than the task filters. Keep it mode
+`0600`, never print or copy it, retain SSH-only administration, and revoke the
+connected app promptly if the Jetson or credential may be compromised. A
+dedicated paid/team identity remains the preferred long-term boundary.
 
 Run `rclone config` interactively. Its credential-bearing configuration is
 normally `$HOME/.config/rclone/rclone.conf`; set mode `0600`. Do not copy it,
@@ -65,11 +71,11 @@ checkers = 8
 timeout_seconds = 21600
 state_directory = /home/james/.local/state/suncet/rclone
 
-[task:pull-reference]
+[task:pull-metadata]
 direction = pull
-remote = SUNCET_PUBLIC_REMOTE:PUBLIC_DATA_ROOT
-local = .
-filter_file = /home/james/src/suncet_processing_pipeline/operations/rclone/pull_reference.filter
+remote = SUNCET_PUBLIC_REMOTE:PUBLIC_DATA_ROOT/metadata
+local = metadata
+filter_file = /home/james/src/suncet_processing_pipeline/operations/rclone/pull_metadata.filter
 
 [task:push-products]
 direction = push
@@ -83,13 +89,34 @@ publication manifests, nor operational state belongs below `suncet_data`.
 The wrapper enforces that boundary and refuses either private configuration
 file when group or other users can read it.
 
+## Metadata release discipline
+
+The live Google Sheet is the review/development authority, but is never read by
+the Jetson processing pipeline or by the host setup scripts. After review,
+export both schema tabs as CSVs with a new SemVer-style mission version in each
+filename. Development versions use `MAJOR.MINOR.PATCHdev`; approved major
+releases use `MAJOR.MINOR.PATCH` without `dev`. Never change the content of a
+previously published filename.
+
+Dropbox distributes these immutable exports to development systems. The
+Jetson, which has no Dropbox desktop client, receives them only through the
+explicit `pull-metadata` rclone task. Its remote is rooted directly at the
+Dropbox `metadata` directory and its local destination is rooted directly at
+`$suncet_data/metadata`; its strict filter then admits only the stable and
+development FITS and NetCDF/Zarr filename families. This defense in depth keeps
+synthetic and test trees outside even the task's remote namespace. The task
+copies eligible versions but does not activate a new definition. Activation
+remains a reviewed code and configuration change, and each processing run takes
+its own checksum-guarded metadata snapshot. Obsolete definitions, examples,
+workbooks, synthetic data, and test data never participate in the Jetson pull.
+
 ## Manual pull and push
 
 Before a pull, run the storage preflight in the operator runbook. Preview the
 reviewed task:
 
 ```sh
-python -m suncet_processing_pipeline.rclone_public_data pull-reference
+python -m suncet_processing_pipeline.rclone_public_data pull-metadata
 ```
 
 Read the complete rclone log and confirm that every proposed path matches the
@@ -97,7 +124,7 @@ pull filter. Then repeat the identical named task explicitly:
 
 ```sh
 python -m suncet_processing_pipeline.rclone_public_data \
-  pull-reference --execute
+  pull-metadata --execute
 ```
 
 For finalized products, stop their writers and atomically place the complete,

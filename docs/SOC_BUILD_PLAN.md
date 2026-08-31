@@ -33,7 +33,7 @@ under its hostname.
 |---|---|---|
 | Jetson platform, SSH, NVMe, and portable environment | Release `4fbd7b9` deployed in a locked Python 3.14 runtime; 348 Jetson tests pass in stock 30 W mode | Use the release runtime for the next representative manual run while retaining rollback environments |
 | AWS X-band/UHF custody | Live and tested; AWS CLI and version-aware monitor deployed and healthy | Confirm the first lifecycle expirations and complete an independent archive inventory/restore drill |
-| Manual ingest and public-data synchronization | Safe ingest and storage preflight deployed; rclone wrapper and binary ready | Complete dedicated Dropbox OAuth and validate representative one-way copies |
+| Manual ingest and public-data synchronization | Safe ingest/preflight deployed; personal-account Dropbox OAuth and metadata-only rclone policy validated | Deploy the narrowed filter and complete its first immutable copy/check; validate product push separately |
 | Level 0.5 decoding | Mac/Jetson parity validated; the single Jetson CTDB tree passes exact off-host manifest verification | Require the CTDB gate before every representative decode |
 | Level 1 calibration | Prototype only | Finish the end-to-end writer and approve/version the calibration set |
 | Level 2 PSF deconvolution | Development interface fixture complete; science calibration pending | Validate regularized/provisional deconvolution choices against approved PSFs after Level 1 is operational |
@@ -56,9 +56,17 @@ under its hostname.
 - Store mission-length telemetry in DuckDB, with one table per APID so each
   packet stream retains its own sampling cadence. Images remain separate FITS
   products; use ASOF joins for ad hoc cross-APID trending.
-- Treat versioned CSV exports below `$suncet_data/metadata` as the current
-  development definitions, and copy checksum-guarded snapshots into each named
-  processing run. A run never follows later edits to the live Google Sheet.
+- Treat versioned CSV exports below `$suncet_data/metadata` as immutable,
+  reviewed definition candidates. Code and configuration explicitly pin the
+  active version, and each named processing run receives a checksum-guarded
+  snapshot. A run never follows later edits to the live Google Sheet.
+- Use the live Google Sheet only for metadata review and development. Publish
+  each changed FITS and NetCDF/Zarr export to Dropbox under a new SemVer-style
+  mission filename; retain the `dev` suffix during development and omit it for
+  approved major releases. Never mutate a previously published filename.
+- The Jetson pulls only top-level versioned metadata CSVs from Dropbox. It does
+  not pull synthetic data, test data, obsolete definitions, example files, or
+  workbooks, and the presence of a new CSV does not activate it for processing.
 - Keep the operating system, boot support, SSH access, source checkout, and a
   small reproducible production environment on eMMC. Use NVMe for SunCET data,
   products, processing scratch space, large caches, optional development
@@ -357,25 +365,27 @@ This work is independent of the Jetson NVMe installation.
   deployed. The mode-`0600` host policy validates the NVMe source, ext4 type,
   filesystem UUID, writable data path, byte/inode reserves, and a write probe;
   both the baseline check and a representative 1 GiB input reservation passed.
-  Remaining work is Dropbox authorization and representative pull/push
-  validation, the LASP public-server download path, and measurement-driven
-  refinement of the commissioning thresholds.
+  Remaining work is the first metadata-only immutable copy/check, a separately
+  approved representative product push, the LASP public-server download path,
+  and measurement-driven refinement of the commissioning thresholds.
 - A checksum-verified native ARM64 `rclone` 1.75.0 binary is installed at
-  `/home/james/.local/bin/rclone`. Configure a Dropbox remote using a dedicated
-  identity that can access only SunCET public data, if that account arrangement
-  is available. Avoid placing a token for the owner's full personal Dropbox
-  account on the Jetson. Store the rclone configuration with permissions
-  restricted to `james`. OAuth configuration and representative copies remain
-  pending.
+  `/home/james/.local/bin/rclone`. OAuth against the owner's paid Dropbox
+  account was completed on 2026-08-31 after explicitly accepting its broader
+  token scope; a separate free account could not hold the shared tree. The
+  credential and task configuration are mode `0600`, remain outside the public
+  data tree, and name only the reviewed SunCET root. A dedicated paid/team
+  identity remains preferable if one becomes available.
 - Use explicit one-way `rclone copy` commands rather than `sync` or `bisync`:
-  copy reference inputs from Dropbox to the Jetson, and copy finalized products
-  and processing manifests from the Jetson to Dropbox. Because `copy` does not
-  delete destination files, remote or local deletion will not be propagated by
-  the initial workflow.
-- Maintain a reviewed rclone filter file that includes only intended public
-  subtrees. Exclude scratch space, caches, temporary/partial products, package
-  stores, and all private material. `suncet_ctdb` is outside `suncet_data` and
-  must never be an rclone source or destination.
+  copy versioned metadata definitions from Dropbox to the Jetson, and copy
+  finalized products and processing manifests from the Jetson to Dropbox.
+  Because `copy` does not delete destination files, remote or local deletion
+  will not be propagated by the initial workflow.
+- Maintain reviewed direction-specific rclone filters. The pull task admits
+  only top-level versioned metadata CSVs and is rooted at the metadata directory
+  on both ends; the push task admits only finalized product subtrees. Exclude
+  scratch space, caches, temporary/partial products, package stores, and all
+  private material. `suncet_ctdb` is outside `suncet_data` and must never be an
+  rclone source or destination.
 - Write products outside the exported Dropbox subtree while they are incomplete,
   then move completed products atomically into their publication location.
 - Before each push, freeze and review a private exact publication manifest. The
@@ -459,9 +469,12 @@ This work is independent of the Jetson NVMe installation.
   and recovery. The release/checksum gate, full repository tests, corrected
   metadata installation, CTDB integrity check, baseline/workload storage
   preflight, NVMe identity, power mode, public-IP check, and version-aware AWS
-  monitor have been exercised successfully on the Jetson. The rclone
-  publication path awaits dedicated Dropbox OAuth and representative copies,
-  so the complete runbook is not yet operationally proven end to end.
+  monitor have been exercised successfully on the Jetson. Dropbox OAuth,
+  read-only root discovery, and a broad diagnostic dry run succeeded; that run
+  exposed an unwanted 50.1 GiB test/synthetic scope, so no files were copied and
+  the pull policy was narrowed to immutable metadata CSVs only. The first
+  metadata-only copy/check and representative product push remain before the
+  complete runbook is operationally proven end to end.
 
 ### 7. Add NVMe storage and establish the permanent storage split — complete
 
@@ -602,8 +615,8 @@ the pipeline and public decoder artifacts.
 
 ## Immediate next action
 
-Complete dedicated Dropbox authorization and representative manifest-gated
-one-way copies, then share the explicitly
+Deploy and execute the metadata-only Dropbox copy/check, validate a separately
+approved manifest-gated product push, then share the explicitly
 provisional Level 2 bundle with the Level 3 developer together with its contract
 and checksum list. Confirm the first 30-day source lifecycle expirations and
 perform an independent archive inventory/restore drill. When Meng Jin's

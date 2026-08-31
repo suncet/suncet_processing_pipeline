@@ -1,14 +1,33 @@
+from configparser import ConfigParser
 import json
+from pathlib import Path
 
 import pytest
 
 from ..metadata_snapshots import (
     FITS_SOURCE_FILENAME,
     FITS_SNAPSHOT_FILENAME,
+    METADATA_VERSION,
     NETCDF_ZARR_SOURCE_FILENAME,
     snapshot_metadata_for_run,
     verify_run_metadata_snapshot,
 )
+
+
+def test_active_metadata_filenames_share_the_code_pinned_version():
+    config = ConfigParser()
+    config.read(
+        Path(__file__).parents[1] / "config_files" / "config_default.ini",
+        encoding="utf-8",
+    )
+
+    assert config["structure"]["base_metadata_filename"] == FITS_SOURCE_FILENAME
+    assert FITS_SOURCE_FILENAME == (
+        f"suncet_metadata_definition_v{METADATA_VERSION}-FITS.csv"
+    )
+    assert NETCDF_ZARR_SOURCE_FILENAME == (
+        f"suncet_metadata_definition_v{METADATA_VERSION}-NetCDF-Zarr.csv"
+    )
 
 
 def test_run_metadata_snapshot_is_versioned_and_checksum_guarded(tmp_path):

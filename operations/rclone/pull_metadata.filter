@@ -1,0 +1,12 @@
+# Reviewed, immutable metadata definitions copied from Dropbox to the SOC.
+# The task root is the metadata directory; only strict, top-level versioned
+# CSV exports are eligible. Stable and development filenames remain separate.
+- **/*.partial
+- **/*.partial.*
+- **/*.tmp
+- **/.*/**
++ /{{suncet_metadata_definition_v[0-9]+\.[0-9]+\.[0-9]+-FITS\.csv}}
++ /{{suncet_metadata_definition_v[0-9]+\.[0-9]+\.[0-9]+dev-FITS\.csv}}
++ /{{suncet_metadata_definition_v[0-9]+\.[0-9]+\.[0-9]+-NetCDF-Zarr\.csv}}
++ /{{suncet_metadata_definition_v[0-9]+\.[0-9]+\.[0-9]+dev-NetCDF-Zarr\.csv}}
+- /**

@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -14,18 +15,35 @@ from suncet_processing_pipeline.rclone_public_data import (
 )
 
 
-def _task_config(tmp_path, data_root, *, local=".", direction="pull"):
+PULL_METADATA_FILTER = (
+    Path(__file__).resolve().parents[2] / "operations" / "rclone" / "pull_metadata.filter"
+)
+
+
+def _task_config(
+    tmp_path,
+    data_root,
+    *,
+    local=".",
+    direction="pull",
+    filter_path=None,
+    remote="public:suncet-data",
+):
     tmp_path.mkdir(parents=True, exist_ok=True)
     rclone_config = tmp_path / "rclone.conf"
     rclone_config.write_text("[public]\ntype = dropbox\n", encoding="utf-8")
     rclone_config.chmod(0o600)
-    filter_file = tmp_path / "public.filter"
-    filter_file.write_text(
-        "+ /metadata/**\n- /**\n"
-        if direction == "pull"
-        else "+ /level2/**\n- /**\n",
-        encoding="utf-8",
-    )
+    if filter_path is None:
+        filter_file = tmp_path / "public.filter"
+        filter_file.write_text(
+            "+ /metadata/**\n- /**\n"
+            if direction == "pull"
+            else "+ /level2/**\n- /**\n",
+            encoding="utf-8",
+        )
+    else:
+        filter_file = Path(filter_path)
+    task_name = "pull-metadata" if direction == "pull" else "push-products"
     state_directory = tmp_path / "state"
     config = tmp_path / "rclone_public.ini"
     config.write_text(
@@ -36,9 +54,9 @@ def _task_config(tmp_path, data_root, *, local=".", direction="pull"):
         "checkers = 3\n"
         "timeout_seconds = 60\n"
         f"state_directory = {state_directory}\n\n"
-        "[task:pull-reference]\n"
+        f"[task:{task_name}]\n"
         f"direction = {direction}\n"
-        "remote = public:suncet-data\n"
+        f"remote = {remote}\n"
         f"local = {local}\n"
         f"filter_file = {filter_file}\n",
         encoding="utf-8",
@@ -51,7 +69,7 @@ def test_load_task_is_host_local_and_copy_is_dry_run_by_default(tmp_path):
     data_root = tmp_path / "data"
     data_root.mkdir()
     task = load_task(
-        _task_config(tmp_path, data_root), "pull-reference", data_root=data_root
+        _task_config(tmp_path, data_root), "pull-metadata", data_root=data_root
     )
     log = tmp_path / "copy.log"
 
@@ -73,12 +91,12 @@ def test_load_task_rejects_local_escape_and_public_credentials(tmp_path):
     data_root.mkdir()
     config = _task_config(tmp_path, data_root, local="../ctdb")
     with pytest.raises(RclonePublicError, match="below suncet_data"):
-        load_task(config, "pull-reference", data_root=data_root)
+        load_task(config, "pull-metadata", data_root=data_root)
 
     config = _task_config(tmp_path / "second", data_root)
     config.chmod(0o644)
     with pytest.raises(RclonePublicError, match="group/other"):
-        load_task(config, "pull-reference", data_root=data_root)
+        load_task(config, "pull-metadata", data_root=data_root)
 
     config.chmod(0o600)
     with pytest.raises(RclonePublicError, match="task name"):
@@ -96,7 +114,7 @@ def test_load_task_rejects_local_escape_and_public_credentials(tmp_path):
         encoding="utf-8",
     )
     with pytest.raises(RclonePublicError, match="outside suncet_data"):
-        load_task(config, "pull-reference", data_root=data_root)
+        load_task(config, "pull-metadata", data_root=data_root)
 
 
 def test_load_task_rejects_all_control_files_and_state_below_public_data(tmp_path):
@@ -109,7 +127,7 @@ def test_load_task_rejects_all_control_files_and_state_below_public_data(tmp_pat
     public_config.write_bytes(config.read_bytes())
     public_config.chmod(0o600)
     with pytest.raises(RclonePublicError, match="outside suncet_data"):
-        load_task(public_config, "pull-reference", data_root=data_root)
+        load_task(public_config, "pull-metadata", data_root=data_root)
 
     public_filter = data_root / "level2" / "public.filter"
     public_filter.write_text("+ /metadata/**\n- /**\n", encoding="utf-8")
@@ -121,7 +139,7 @@ def test_load_task_rejects_all_control_files_and_state_below_public_data(tmp_pat
         encoding="utf-8",
     )
     with pytest.raises(RclonePublicError, match="outside suncet_data"):
-        load_task(filter_config, "pull-reference", data_root=data_root)
+        load_task(filter_config, "pull-metadata", data_root=data_root)
 
     state_config = _task_config(tmp_path / "state-case", data_root)
     state_config.write_text(
@@ -131,7 +149,7 @@ def test_load_task_rejects_all_control_files_and_state_below_public_data(tmp_pat
         encoding="utf-8",
     )
     with pytest.raises(RclonePublicError, match="outside suncet_data"):
-        load_task(state_config, "pull-reference", data_root=data_root)
+        load_task(state_config, "pull-metadata", data_root=data_root)
 
 
 def test_load_task_rejects_state_directory_that_contains_public_data(tmp_path):
@@ -148,7 +166,7 @@ def test_load_task_rejects_state_directory_that_contains_public_data(tmp_path):
     original_mode = tmp_path.stat().st_mode & 0o777
 
     with pytest.raises(RclonePublicError, match="must not overlap suncet_data"):
-        load_task(config, "pull-reference", data_root=data_root)
+        load_task(config, "pull-metadata", data_root=data_root)
 
     assert tmp_path.stat().st_mode & 0o777 == original_mode
 
@@ -157,7 +175,7 @@ def test_run_task_previews_once_and_executes_then_checks(tmp_path):
     data_root = tmp_path / "data"
     data_root.mkdir()
     task = load_task(
-        _task_config(tmp_path, data_root), "pull-reference", data_root=data_root
+        _task_config(tmp_path, data_root), "pull-metadata", data_root=data_root
     )
     calls = []
 
@@ -188,7 +206,62 @@ def test_run_task_previews_once_and_executes_then_checks(tmp_path):
     assert not (data_root / "transfer_logs").exists()
 
 
-def test_pull_rejects_symlink_below_allowlisted_destination(
+def test_pull_accepts_actual_metadata_filename_filter(tmp_path):
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    task = load_task(
+        _task_config(
+            tmp_path / "config",
+            data_root,
+            local="metadata",
+            filter_path=PULL_METADATA_FILTER,
+            remote="public:suncet-data/metadata",
+        ),
+        "pull-metadata",
+        data_root=data_root,
+    )
+    calls = []
+
+    def runner(command, **_kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    run_task(task, runner=runner, data_root=data_root)
+
+    assert task.local_path == data_root / "metadata"
+    assert task.remote_path == "public:suncet-data/metadata"
+    assert len(calls) == 1
+    assert "--dry-run" in calls[0]
+
+
+def test_actual_metadata_filter_matches_only_versioned_csv_families():
+    include_prefix = "+ /{{"
+    patterns = [
+        re.compile(line.removeprefix(include_prefix).removesuffix("}}"))
+        for line in PULL_METADATA_FILTER.read_text(encoding="utf-8").splitlines()
+        if line.startswith(include_prefix)
+    ]
+
+    assert len(patterns) == 4
+    for filename in (
+        "suncet_metadata_definition_v1.0.2-FITS.csv",
+        "suncet_metadata_definition_v1.0.2dev-FITS.csv",
+        "suncet_metadata_definition_v12.34.56-NetCDF-Zarr.csv",
+        "suncet_metadata_definition_v12.34.56dev-NetCDF-Zarr.csv",
+    ):
+        assert any(pattern.fullmatch(filename) for pattern in patterns)
+    for filename in (
+        "suncet_metadata_definition_v1-FITS.csv",
+        "suncet_metadata_definition_v1.0.x-FITS.csv",
+        "suncet_metadata_definition_v1.0.2rc1-FITS.csv",
+        "other_metadata_definition_v1.0.2-FITS.csv",
+        "suncet_metadata_definition_v1.0.2-FITS.csv.partial",
+        "nested/suncet_metadata_definition_v1.0.2-FITS.csv",
+    ):
+        assert not any(pattern.fullmatch(filename) for pattern in patterns)
+
+
+def test_actual_metadata_filter_checks_literal_parent_for_symlinks(
     tmp_path, monkeypatch
 ):
     data_root = tmp_path / "data"
@@ -196,12 +269,18 @@ def test_pull_rejects_symlink_below_allowlisted_destination(
     private_root = tmp_path / "ctdb"
     private_root.mkdir()
     monkeypatch.setenv("suncet_ctdb", str(private_root))
-    (data_root / "metadata").symlink_to(private_root, target_is_directory=True)
     task = load_task(
-        _task_config(tmp_path / "config", data_root),
-        "pull-reference",
+        _task_config(
+            tmp_path / "config",
+            data_root,
+            local="metadata",
+            filter_path=PULL_METADATA_FILTER,
+            remote="public:suncet-data/metadata",
+        ),
+        "pull-metadata",
         data_root=data_root,
     )
+    (data_root / "metadata").symlink_to(private_root, target_is_directory=True)
     calls = []
 
     def runner(command, **_kwargs):
@@ -218,11 +297,38 @@ def test_pull_rejects_symlink_below_allowlisted_destination(
     )
 
 
+def test_pull_rejects_broad_rooted_filename_regex(tmp_path):
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    config = _task_config(
+        tmp_path / "config",
+        data_root,
+        local="metadata",
+        remote="public:suncet-data/metadata",
+    )
+    filter_file = tmp_path / "config" / "public.filter"
+    filter_file.write_text("+ /{{.*\\.csv}}\n- /**\n", encoding="utf-8")
+    task = load_task(config, "pull-metadata", data_root=data_root)
+    calls = []
+
+    def runner(command, **_kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    with pytest.raises(RclonePublicError, match="pull destination preflight failed"):
+        run_task(task, runner=runner, data_root=data_root)
+
+    assert calls == []
+    receipt = next(task.state_directory.rglob("receipt.json"))
+    error = json.loads(receipt.read_text(encoding="utf-8"))["error"]
+    assert "rooted versioned-filename regular expressions" in error["message"]
+
+
 def test_filter_is_snapshotted_and_mutation_fails_with_receipt(tmp_path):
     data_root = tmp_path / "data"
     data_root.mkdir()
     task = load_task(
-        _task_config(tmp_path, data_root), "pull-reference", data_root=data_root
+        _task_config(tmp_path, data_root), "pull-metadata", data_root=data_root
     )
 
     def runner(command, **_kwargs):
@@ -243,7 +349,7 @@ def test_push_requires_frozen_manifest_and_detects_source_change(tmp_path):
     product.write_bytes(b"final product")
     task = load_task(
         _task_config(tmp_path, data_root, direction="push"),
-        "pull-reference",
+        "push-products",
         data_root=data_root,
     )
     manifest = tmp_path / "publication.json"
@@ -289,7 +395,7 @@ def test_push_manifest_rejects_unmodeled_filter_exclusions(tmp_path):
     product.write_bytes(b"final product")
     task = load_task(
         _task_config(tmp_path, data_root, direction="push"),
-        "pull-reference",
+        "push-products",
         data_root=data_root,
     )
     task.filter_file.write_text(
@@ -299,11 +405,34 @@ def test_push_manifest_rejects_unmodeled_filter_exclusions(tmp_path):
         create_publication_manifest(task, tmp_path / "publication.json", data_root=data_root)
 
 
+def test_push_manifest_rejects_actual_metadata_filename_filter(tmp_path):
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    task = load_task(
+        _task_config(
+            tmp_path / "config",
+            data_root,
+            direction="push",
+            local="metadata",
+            filter_path=PULL_METADATA_FILTER,
+        ),
+        "push-products",
+        data_root=data_root,
+    )
+
+    with pytest.raises(RclonePublicError, match="literal"):
+        create_publication_manifest(
+            task,
+            tmp_path / "publication.json",
+            data_root=data_root,
+        )
+
+
 def test_runner_failure_is_receipted(tmp_path):
     data_root = tmp_path / "data"
     data_root.mkdir()
     task = load_task(
-        _task_config(tmp_path, data_root), "pull-reference", data_root=data_root
+        _task_config(tmp_path, data_root), "pull-metadata", data_root=data_root
     )
 
     def runner(_command, **_kwargs):
@@ -321,7 +450,7 @@ def test_concurrent_operation_lock_fails_closed_and_is_receipted(tmp_path):
     data_root = tmp_path / "data"
     data_root.mkdir()
     task = load_task(
-        _task_config(tmp_path, data_root), "pull-reference", data_root=data_root
+        _task_config(tmp_path, data_root), "pull-metadata", data_root=data_root
     )
     task.state_directory.mkdir(mode=0o700)
     (task.state_directory / ".operation.lock").write_text("held\n", encoding="utf-8")
