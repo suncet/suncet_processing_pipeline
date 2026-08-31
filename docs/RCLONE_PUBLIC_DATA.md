@@ -15,6 +15,9 @@ The repository wrapper adds four further controls:
 - the task file, token-bearing rclone configuration, filter, publication
   manifest, and operational state must all remain outside `suncet_data`;
 - `--immutable` refuses to replace different content at an existing path;
+- pulls compare size and content checksum instead of modification time, so an
+  independently installed identical CSV is accepted while a same-name content
+  change still fails closed;
 - filters are copied into a private invocation snapshot before rclone starts;
 - every executed copy is followed by `rclone check --one-way`, with a private
   log and mode-`0600` JSON receipt below

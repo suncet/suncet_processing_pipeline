@@ -604,6 +604,12 @@ def copy_command(
         "--log-file",
         str(log_path),
     ]
+    if task.direction == "pull":
+        # Reviewed metadata may have been installed locally before Dropbox
+        # synchronization, so modification times are not authoritative.
+        # Content equality keeps --immutable strict without false timestamp
+        # conflicts; a same-name content change still fails closed.
+        command.append("--checksum")
     if files_from_path is not None:
         command.extend(["--files-from-raw", str(files_from_path)])
     else:

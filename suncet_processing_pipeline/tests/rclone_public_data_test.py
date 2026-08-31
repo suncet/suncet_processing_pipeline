@@ -81,6 +81,7 @@ def test_load_task_is_host_local_and_copy_is_dry_run_by_default(tmp_path):
         str(data_root),
     ]
     assert "--immutable" in command
+    assert "--checksum" in command
     assert "--check-first" in command
     assert "--dry-run" in command
     assert check_command(task, log_path=log)[1] == "check"
@@ -374,6 +375,7 @@ def test_push_requires_frozen_manifest_and_detects_source_change(tmp_path):
     )
     assert [command[1] for command in calls] == ["copy", "check"]
     assert all("--files-from-raw" in command for command in calls)
+    assert "--checksum" not in calls[0]
 
     def mutating_runner(command, **_kwargs):
         product.write_bytes(b"changed during upload")
