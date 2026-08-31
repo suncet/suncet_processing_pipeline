@@ -8,6 +8,7 @@ dependencies:
   - numpy>=2.0
   - scipy>=1.13
   - matplotlib>=3.8
+  - ffmpeg>=6
   - pillow>=10.2
   - imagecodecs>=2025.3.30
   - h5netcdf>=1.3
