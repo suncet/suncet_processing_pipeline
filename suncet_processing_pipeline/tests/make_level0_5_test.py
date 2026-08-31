@@ -8,6 +8,7 @@ from ..make_level0_5 import (
     INPUT_MODE_CCSDS,
     PacketRecord,
     PLAYBACK_METADATA_LEN,
+    SYNC_MARKER,
     UHF_MAX_SEGMENT_PAYLOAD_LEN,
     UHF_PLAYBACK_APID,
     UHF_SEGMENTED_APID,
@@ -24,10 +25,14 @@ from ..make_level0_5 import (
     assemble_csie_uncompressed_image,
     build_fixed_binary,
     ccsds_packet_at,
+    fletcher32_words_be,
     packetize_checksum_valid_ccsds,
+    reverse_32bit_words,
+    strip_xband_frame_records,
     summarize_csie_metadata_packets,
     unwrap_direct_playback_stream,
     unwrap_uhf_playback_stream,
+    validate_transfer_frame_checksum_footer,
 )
 
 
@@ -134,6 +139,92 @@ def _direct_playback_packet(payload: bytes, *, sequence: int) -> bytes:
         sequence=sequence,
         secondary_header=False,
     )
+
+
+def _xband_frame(
+    packet_zone: bytes,
+    *,
+    master_count: int,
+    checksum_footer: bool,
+    corrupt_footer: bool = False,
+) -> bytes:
+    first_word = 66 << 4
+    data_field_status = 3 << 11
+    protected_prefix = (
+        first_word.to_bytes(2, "big")
+        + bytes((master_count & 0xFF, master_count & 0xFF))
+        + data_field_status.to_bytes(2, "big")
+        + b"\x00\x00"
+    )
+    if checksum_footer:
+        assert len(packet_zone) == 2040
+        footer = fletcher32_words_be(protected_prefix + packet_zone).to_bytes(
+            4, "big"
+        )
+        if corrupt_footer:
+            footer = footer[:-1] + bytes((footer[-1] ^ 0x01,))
+        data_field = packet_zone + footer
+    else:
+        assert len(packet_zone) == 2044
+        data_field = packet_zone
+    frame = SYNC_MARKER + protected_prefix + data_field
+    assert len(frame) == 2056
+    return frame
+
+
+def test_xband_fixed_checksum_footer_layout_strips_invalid_footers_too():
+    packet_zones = [bytes((value,)) * 2040 for value in (0x11, 0x22, 0x33)]
+    frames = b"".join(
+        _xband_frame(
+            packet_zone,
+            master_count=index,
+            checksum_footer=True,
+            corrupt_footer=index == 2,
+        )
+        for index, packet_zone in enumerate(packet_zones)
+    )
+
+    fixed, stats = strip_xband_frame_records(
+        frames,
+        drop_idle_frames=False,
+        strip_out_of_phase_xband_artifacts=False,
+    )
+
+    assert fixed == reverse_32bit_words(b"".join(packet_zones))
+    assert stats.frame_footer_fletcher32_be == 2
+    assert stats.frame_footer_checksum_failures == 1
+    assert stats.frame_footer_unknown_kept == 0
+    assert stats.frame_footer_bytes_removed == 12
+
+
+def test_xband_footerless_layout_keeps_unknown_trailing_payload_bytes():
+    packet_zones = [bytes((value,)) * 2044 for value in (0x12, 0x34)]
+    frames = b"".join(
+        _xband_frame(
+            packet_zone,
+            master_count=index,
+            checksum_footer=False,
+        )
+        for index, packet_zone in enumerate(packet_zones)
+    )
+
+    assert (
+        validate_transfer_frame_checksum_footer(
+            frames[:2056][12:],
+            protected_prefix=frames[:2056][4:12],
+        )
+        is None
+    )
+    fixed, stats = strip_xband_frame_records(
+        frames,
+        drop_idle_frames=False,
+        strip_out_of_phase_xband_artifacts=False,
+    )
+
+    assert fixed == reverse_32bit_words(b"".join(packet_zones))
+    assert stats.frame_footer_checksum_failures == 0
+    assert stats.frame_footer_unknown_kept == 2
+    assert stats.frame_footer_bytes_removed == 0
 
 
 def test_packetizer_recovers_valid_packets_across_unaligned_gap():

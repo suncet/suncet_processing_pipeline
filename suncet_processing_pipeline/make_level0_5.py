@@ -1030,38 +1030,55 @@ def looks_like_xband_wrapper(
     return True
 
 
-def validate_transfer_frame_checksum_footer(data_field: bytes) -> str | None:
+def validate_transfer_frame_checksum_footer(
+    data_field: bytes,
+    *,
+    protected_prefix: bytes = b"",
+) -> str | None:
     """
-    Validate a future 4-byte transfer-frame Fletcher32 footer when present.
+    Validate a 4-byte transfer-frame Fletcher32 footer when present.
 
-    Current files may have no frame checksum at all, so this returns None unless the
-    last word matches the Fletcher32 calculated over the preceding data-field bytes.
-    Both byte orders are checked while the flight-software convention is still settling.
+    Bluefin transfer frames protect the eight bytes after the ASM (the six-byte TM
+    primary header plus the two-byte padding word) together with the 2040-byte packet
+    zone.  ``protected_prefix`` carries those eight bytes while ``data_field`` carries
+    the packet zone plus footer.  Older captures may have no frame checksum at all, so
+    this returns ``None`` unless the final word matches a supported Fletcher32 view.
 
-    When the temporary ``0x55555555`` trailer is replaced by a mandatory checksum, wire
-    checksum failures into ``TransferFrameStripStats.frame_footer_checksum_failures`` so
-    ``print_fix_summary`` can warn that frame-level corruption was seen before packet
-    checksums are applied.
+    The current Bluefin convention uses big-endian 16-bit words and stores the result
+    big-endian.  The legacy little-endian-word calculation and both stored byte orders
+    remain accepted for compatibility with earlier test captures.
     """
     if len(data_field) < TRANSFER_FRAME_TRAILER_LEN:
         return None
     trailer = data_field[-TRANSFER_FRAME_TRAILER_LEN:]
-    body = data_field[:-TRANSFER_FRAME_TRAILER_LEN]
-    calculated = fletcher32(body)
-    if calculated == int.from_bytes(trailer, "big"):
-        return "fletcher32_be"
-    if calculated == int.from_bytes(trailer, "little"):
-        return "fletcher32_le"
+    protected = protected_prefix + data_field[:-TRANSFER_FRAME_TRAILER_LEN]
+    stored_be = int.from_bytes(trailer, "big")
+    stored_le = int.from_bytes(trailer, "little")
+    for calculated in (
+        fletcher32_words_be(protected),
+        fletcher32(protected),
+    ):
+        if calculated == stored_be:
+            return "fletcher32_be"
+        if calculated == stored_le:
+            return "fletcher32_le"
     return None
 
 
-def classify_transfer_frame_trailer(data_field: bytes) -> str | None:
+def classify_transfer_frame_trailer(
+    data_field: bytes,
+    *,
+    protected_prefix: bytes = b"",
+) -> str | None:
     """
     Return the 4-byte transfer-frame trailer kind if it should be stripped.
 
     ``None`` means the final 4 bytes look like real payload and should be preserved.
     """
-    checksum_kind = validate_transfer_frame_checksum_footer(data_field)
+    checksum_kind = validate_transfer_frame_checksum_footer(
+        data_field,
+        protected_prefix=protected_prefix,
+    )
     if checksum_kind is not None:
         return checksum_kind
     if len(data_field) < TRANSFER_FRAME_TRAILER_LEN:
@@ -1176,11 +1193,31 @@ def strip_xband_frame_records(
     Strip boundary-aligned X-band transfer-frame wrappers and optional 4-byte trailers.
 
     This is intentionally frame-aware but not first-header-pointer-aware: each data
-    field is copied in order after removing only the outer frame wrapper and any trailer
-    that is clearly filler or a valid frame checksum.
+    field is copied in order after removing the outer frame wrapper.  Two independently
+    valid checksums are sufficient to identify the capture's fixed-footer layout; once
+    identified, every record's four-byte footer is removed, including corrupt footers,
+    so a bad frame cannot shift all downstream packet boundaries.
     """
     stats = TransferFrameStripStats(mode="frame_records")
     out = bytearray()
+    fixed_checksum_footer_layout = (
+        sum(
+            validate_transfer_frame_checksum_footer(
+                frame[TRANSFER_FRAME_DATA_START:],
+                protected_prefix=frame[
+                    TRANSFER_FRAME_SYNC_LEN:TRANSFER_FRAME_DATA_START
+                ],
+            )
+            is not None
+            for offset in range(0, len(data), TRANSFER_FRAME_SIZE)
+            if (
+                len(frame := data[offset : offset + TRANSFER_FRAME_SIZE])
+                == TRANSFER_FRAME_SIZE
+                and frame.startswith(SYNC_MARKER)
+            )
+        )
+        >= 2
+    )
     for offset in range(0, len(data), TRANSFER_FRAME_SIZE):
         frame = data[offset : offset + TRANSFER_FRAME_SIZE]
         stats.boundary_records_seen += 1
@@ -1204,11 +1241,22 @@ def strip_xband_frame_records(
         stats.xband_wrappers_removed += 1
         stats.xband_header_bytes_removed += TRANSFER_FRAME_DATA_START
         payload = frame[TRANSFER_FRAME_DATA_START:]
-        trailer_kind = classify_transfer_frame_trailer(payload)
-        _count_trailer(stats, trailer_kind)
+        trailer_kind = classify_transfer_frame_trailer(
+            payload,
+            protected_prefix=frame[
+                TRANSFER_FRAME_SYNC_LEN:TRANSFER_FRAME_DATA_START
+            ],
+        )
         if trailer_kind is not None:
+            _count_trailer(stats, trailer_kind)
             payload = payload[:-TRANSFER_FRAME_TRAILER_LEN]
             stats.frame_footer_bytes_removed += TRANSFER_FRAME_TRAILER_LEN
+        elif fixed_checksum_footer_layout:
+            stats.frame_footer_checksum_failures += 1
+            payload = payload[:-TRANSFER_FRAME_TRAILER_LEN]
+            stats.frame_footer_bytes_removed += TRANSFER_FRAME_TRAILER_LEN
+        else:
+            _count_trailer(stats, trailer_kind)
 
         if drop_idle_frames and _is_idle_payload(payload):
             stats.idle_frames_dropped += 1
@@ -2013,11 +2061,20 @@ def print_fix_summary(stats: FixStats) -> None:
         print(f"  frame Fletcher32 BE trailers stripped: {tf.frame_footer_fletcher32_be:,}")
         print(f"  frame Fletcher32 LE trailers stripped: {tf.frame_footer_fletcher32_le:,}")
         print(f"  frame 0x55555555 trailers stripped:    {tf.frame_footer_filler_55:,}")
+        print(f"  frame checksum failures stripped:      {tf.frame_footer_checksum_failures:,}")
         print(f"  frame trailers kept as payload:        {tf.frame_footer_unknown_kept:,}")
         print(f"  frame trailer bytes removed:           {tf.frame_footer_bytes_removed:,}")
         print(f"  idle frames dropped:                   {tf.idle_frames_dropped:,}")
         print(f"  idle frame bytes dropped:              {tf.idle_frame_bytes_dropped:,}")
         print(f"  frame payload bytes kept pre-ASM scan: {tf.frame_payload_bytes_kept:,}")
+        if tf.frame_footer_checksum_failures:
+            print(
+                "WARNING: stripped "
+                f"{tf.frame_footer_checksum_failures:,} invalid checksum footer(s) "
+                "after detecting a fixed-footer transfer-frame layout; affected frame "
+                "payloads may still be corrupt and are screened again by packet/row "
+                "checksums."
+            )
     print(f"  out-of-phase X-band seqs seen:         {tf.internal_xband_like_sequences_seen:,}")
     print(f"  out-of-phase X-band wrappers removed:  {tf.internal_xband_wrappers_removed:,}")
     print(f"  out-of-phase X-band header bytes rmvd: {tf.internal_xband_wrapper_bytes_removed:,}")
