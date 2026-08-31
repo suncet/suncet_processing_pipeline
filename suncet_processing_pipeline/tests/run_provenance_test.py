@@ -130,3 +130,43 @@ def test_resolved_config_hides_private_ctdb_root(tmp_path):
         "$suncet_ctdb/suncet_v2-0-1/decoders"
     )
     assert str(private_root) not in str(snapshot)
+
+
+def test_public_manifest_is_portable_and_hides_host_identity(tmp_path, monkeypatch):
+    _stub_host_details(monkeypatch)
+    data_root = tmp_path / "public" / "fixture"
+    input_path = tmp_path / "private-input" / "input.fits"
+    input_path.parent.mkdir()
+    input_path.write_bytes(b"input")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "config.ini").write_text("[test]\nvalue = 1\n")
+
+    monkeypatch.setattr(
+        run_provenance,
+        "get_data_root",
+        lambda: (tmp_path / "public").resolve(),
+    )
+    with run_provenance.ProcessingRunProvenance(
+        data_root=data_root,
+        run_kind="public_unit_test",
+        config_path=repository / "config.ini",
+        resolved_config={"data_root": data_root},
+        arguments={"input_path": input_path, "output_path": data_root},
+        argv=["processor", str(input_path), str(data_root)],
+        repository_hint=repository,
+        public=True,
+    ) as provenance:
+        provenance.record_inputs([input_path])
+        (data_root / "output.fits").write_bytes(b"output")
+
+    payload = json.loads(provenance.manifest_path.read_text(encoding="utf-8"))
+    encoded = json.dumps(payload, sort_keys=True)
+    assert payload["privacy_profile"] == "public"
+    assert "hostname" not in payload["system"]
+    assert "fqdn" not in payload["system"]
+    assert "test-host" not in encoded
+    assert str(tmp_path) not in encoded
+    assert payload["data_root"] == "$data_root"
+    assert payload["invocation"]["arguments"]["output_path"] == "$data_root"
+    assert payload["invocation"]["arguments"]["input_path"] == "$external/input.fits"

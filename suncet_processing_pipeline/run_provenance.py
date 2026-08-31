@@ -246,6 +246,70 @@ def _system_snapshot() -> dict[str, object]:
     }
 
 
+def _public_path_aliases(
+    data_root: Path,
+    git_snapshot: Mapping[str, object],
+) -> tuple[tuple[str, str], ...]:
+    """Return longest-first path substitutions for a portable public record."""
+    aliases: dict[str, str] = {str(data_root): "$data_root"}
+    try:
+        aliases[str(get_data_root().expanduser().resolve())] = "$suncet_data"
+    except (KeyError, OSError, RuntimeError, ValueError):
+        pass
+
+    repository_root = git_snapshot.get("repository_root")
+    if repository_root:
+        aliases[str(Path(str(repository_root)).expanduser().resolve())] = "$repository"
+    if sys.prefix:
+        aliases[str(Path(sys.prefix).expanduser().resolve())] = "$python_prefix"
+    aliases[str(Path.home().resolve())] = "$HOME"
+    return tuple(sorted(aliases.items(), key=lambda item: len(item[0]), reverse=True))
+
+
+def _sanitize_public_value(
+    value: object,
+    aliases: Sequence[tuple[str, str]],
+) -> object:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _sanitize_public_value(item, aliases)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple, set)):
+        return [_sanitize_public_value(item, aliases) for item in value]
+    if not isinstance(value, str):
+        return value
+
+    sanitized = value
+    for path_prefix, alias in aliases:
+        sanitized = sanitized.replace(path_prefix, alias)
+    if Path(sanitized).is_absolute():
+        return f"$external/{Path(sanitized).name or 'root'}"
+    return sanitized
+
+
+def _public_manifest_payload(
+    payload: Mapping[str, object],
+    aliases: Sequence[tuple[str, str]],
+) -> dict[str, object]:
+    """Create a portable manifest without host identity or absolute paths."""
+    sanitized = _sanitize_public_value(payload, aliases)
+    assert isinstance(sanitized, dict)
+    system = sanitized.get("system")
+    if isinstance(system, dict):
+        for key in (
+            "hostname",
+            "fqdn",
+            "python_executable",
+            "python_prefix",
+            "conda_prefix",
+            "suncet_data",
+        ):
+            system.pop(key, None)
+    sanitized["privacy_profile"] = "public"
+    return sanitized
+
+
 def _tree_snapshot(root: Path, excluded_root: Path) -> dict[str, tuple[int, int]]:
     snapshot: dict[str, tuple[int, int]] = {}
     if not root.is_dir():
@@ -296,14 +360,22 @@ class ProcessingRunProvenance:
         arguments: Mapping[str, object] | None = None,
         argv: Sequence[str] | None = None,
         repository_hint: str | Path | None = None,
+        public: bool = False,
     ) -> None:
         self.data_root = Path(data_root).expanduser().resolve()
+        self.public = bool(public)
         self.manifest_dir = self.data_root / MANIFEST_DIRNAME
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
         self.run_id = f"{timestamp}_{uuid.uuid4().hex[:8]}"
         self.manifest_path = self.manifest_dir / f"processing_run_{self.run_id}.json"
         self._started_monotonic: float | None = None
         self._before_files: dict[str, tuple[int, int]] = {}
+        git_snapshot = _git_snapshot(
+            Path(repository_hint).expanduser().resolve()
+            if repository_hint is not None
+            else Path.cwd()
+        )
+        self._public_aliases = _public_path_aliases(self.data_root, git_snapshot)
         self._payload: dict[str, object] = {
             "schema_version": SCHEMA_VERSION,
             "run_id": self.run_id,
@@ -319,11 +391,7 @@ class ProcessingRunProvenance:
                 Path(config_path) if config_path is not None else None
             ),
             "resolved_configuration": _json_safe(resolved_config or {}),
-            "git": _git_snapshot(
-                Path(repository_hint).expanduser().resolve()
-                if repository_hint is not None
-                else Path.cwd()
-            ),
+            "git": git_snapshot,
             "system": _system_snapshot(),
             "packages": _installed_packages(),
             "inputs": [],
@@ -368,7 +436,12 @@ class ProcessingRunProvenance:
         }
 
     def _write(self) -> None:
-        _atomic_write_json(self.manifest_path, self._payload)
+        payload = (
+            _public_manifest_payload(self._payload, self._public_aliases)
+            if self.public
+            else self._payload
+        )
+        _atomic_write_json(self.manifest_path, payload)
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> bool:
         self._payload["finished_utc"] = _utc_now()

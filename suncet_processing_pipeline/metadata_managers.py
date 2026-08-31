@@ -11,6 +11,7 @@ Example Usage:
    metadata.generate_fits_header(fits_file)
 """
 from pathlib import Path
+import numbers
 
 from astropy.io import fits
 import numpy as np
@@ -233,6 +234,154 @@ class IncompleteMetadataError(Exception):
             f' level_num={self.level_num}, '
             f' missing_internal_names={repr(self.missing_internal_names)}'
             f')'
+        )
+
+
+class FitsMetadataContractError(ValueError):
+    """Raised when a FITS header violates a versioned metadata definition."""
+
+    def __init__(
+        self,
+        level_num,
+        missing_fits_names,
+        type_mismatches,
+        value_mismatches=(),
+    ):
+        self.level_num = level_num
+        self.missing_fits_names = sorted(missing_fits_names)
+        self.type_mismatches = sorted(type_mismatches)
+        self.value_mismatches = sorted(value_mismatches)
+        problems = []
+        if self.missing_fits_names:
+            problems.append(
+                "missing required FITS cards: "
+                + ", ".join(self.missing_fits_names)
+            )
+        if self.type_mismatches:
+            problems.append(
+                "metadata type mismatches: " + "; ".join(self.type_mismatches)
+            )
+        if self.value_mismatches:
+            problems.append(
+                "metadata value mismatches: " + "; ".join(self.value_mismatches)
+            )
+        super().__init__(
+            f"Level {level_num} FITS metadata contract failed: "
+            + "; ".join(problems)
+        )
+
+
+def validate_fits_header(
+    header,
+    definition_path,
+    level_num,
+    *,
+    float_output_statistics=(),
+):
+    """Validate cumulative FITS requirements through ``level_num``.
+
+    The definition's ``Minimum Level`` is cumulative: a Level 2 product must
+    include every card introduced at Levels 0.5, 1, and 2. Extra FITS cards are
+    permitted so provisional processing provenance can coexist with the
+    authoritative minimum interface.
+
+    Integer detector statistics may become floating-point after a calibrated
+    floating-point transform such as PSF deconvolution. Callers must name those
+    intentional fields explicitly through ``float_output_statistics``; all
+    other declared types are enforced.
+    """
+    definition_path = Path(definition_path)
+    if not definition_path.is_file():
+        raise FileNotFoundError(
+            f"FITS metadata definition file not found: {definition_path}"
+        )
+
+    definitions = _clean_metadata_comments(pd.read_csv(definition_path))
+    names = definitions["FITS variable name"].fillna("").astype(str).str.strip()
+    named = definitions[names != ""]
+    duplicate_names = sorted(
+        set(names[names.duplicated(keep=False) & (names != "")].tolist())
+    )
+    if duplicate_names:
+        raise ValueError(
+            "Duplicate FITS variable names in metadata definition: "
+            + ", ".join(duplicate_names)
+        )
+
+    levels = pd.to_numeric(definitions["Minimum Level"], errors="coerce")
+    invalid_levels = named[levels.loc[named.index].isna()]
+    if not invalid_levels.empty:
+        invalid_names = sorted(
+            invalid_levels["FITS variable name"].astype(str).str.strip().tolist()
+        )
+        raise ValueError(
+            "Named metadata rows have invalid Minimum Level values: "
+            + ", ".join(invalid_names)
+        )
+    required = definitions[levels <= float(level_num)]
+    allowed_float_statistics = set(float_output_statistics)
+    missing = []
+    mismatches = []
+    value_mismatches = []
+
+    for _, row in required.iterrows():
+        fits_name = str(row["FITS variable name"]).strip()
+        if not fits_name or fits_name.lower() == "nan":
+            continue
+        if fits_name not in header:
+            missing.append(fits_name)
+            continue
+
+        expected = str(row["data type"]).strip().lower()
+        value = header[fits_name]
+        if fits_name == "HISTORY":
+            # Astropy represents repeated commentary cards with a sequence-like
+            # proxy instead of returning a plain string.
+            compatible = bool(value)
+        elif expected == "string":
+            compatible = isinstance(value, str)
+        elif expected in {"bool", "boolean"}:
+            compatible = isinstance(value, (bool, np.bool_))
+        elif expected == "int":
+            compatible = isinstance(value, numbers.Integral) and not isinstance(
+                value, (bool, np.bool_)
+            )
+            if fits_name in allowed_float_statistics:
+                compatible = compatible or (
+                    isinstance(value, numbers.Real)
+                    and not isinstance(value, (bool, np.bool_))
+                )
+        elif expected == "float":
+            compatible = isinstance(value, numbers.Real) and not isinstance(
+                value, (bool, np.bool_)
+            )
+        else:
+            raise ValueError(
+                f"Unsupported data type {expected!r} for FITS card {fits_name} "
+                f"in {definition_path}"
+            )
+
+        if not compatible:
+            mismatches.append(
+                f"{fits_name} expected {expected}, got {type(value).__name__}"
+            )
+            continue
+
+        if expected in {"int", "float"} and not np.isfinite(float(value)):
+            value_mismatches.append(f"{fits_name} must be finite, got {value!r}")
+        elif expected == "string" and not str(value).strip():
+            value_mismatches.append(f"{fits_name} cannot be empty")
+        if fits_name == "LEVEL" and float(value) != float(level_num):
+            value_mismatches.append(
+                f"LEVEL must equal validated level {level_num}, got {value!r}"
+            )
+
+    if missing or mismatches or value_mismatches:
+        raise FitsMetadataContractError(
+            level_num,
+            missing,
+            mismatches,
+            value_mismatches,
         )
     
             
