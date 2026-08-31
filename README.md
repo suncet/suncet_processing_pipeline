@@ -6,6 +6,10 @@
 The tracked build and operations roadmap for the Jetson processing node is in
 [the SunCET SOC plan](docs/SOC_BUILD_PLAN.md).
 
+Development, validation, and Jetson compute/power characterization of the
+automated Level 4 CME catalog are tracked in the
+[SunCET Level 4 CME tracking plan](docs/CME_TRACKING_LEVEL4_PLAN.md).
+
 Pre-launch registration, APID 1 beacon decoding, dashboard setup, and
 post-launch identification through SatNOGS are tracked in the
 [SunCET SatNOGS onboarding plan](docs/SATNOGS_ONBOARDING_PLAN.md).
@@ -139,6 +143,72 @@ python -m suncet_processing_pipeline.make_telemetry_file \
 ```
 
 Images are not stored in this database; they remain separate FITS products.
+
+## Provisional Level 4 CME tracking
+
+The first Level 4 vertical slice tracks one expected CME in a supplied image
+window. It remaps images to solar position angle/radius, scores a deterministic
+leading-front likelihood, links outward paths in pixels per frame, fits
+uncertainty-aware height-time kinematics, and writes readable ECSV tables, JSON
+provenance, plots, and a front-overlay mosaic. An opt-in diagnostic MP4 shows
+every input image with the exact retained front samples beside synchronized
+height, speed, and acceleration plots. Acceleration is written in both a full
+uncertainty view and a zero-centered detail view; the detail view clips the
+1-sigma ribbon and marks every interval that continues beyond its axis.
+
+Production input is Level 3: Level 2 has already applied PSF deconvolution and
+Level 3 has applied fine geometry such as precise solar-north alignment. The
+historical synthetic adapter is explicitly labeled as bypassing both stages.
+
+For particle-contaminated known windows, the automatic two-stage association
+method first discovers a coherent outward component over the full circle,
+infers a padded solar-position-angle sector, and then refines the detailed
+front inside that data-derived sector. The timestamp-correct worst-case
+particle-snow configuration is
+`suncet_processing_pipeline/config_files/cme_tracking_config_default_no_particle_filter_20230114_autonomous_v1.json`.
+This removes the former hand-supplied PA prior; continuous event discovery is
+still a separate future layer.
+
+An optional centered three-frame temporal median can reject one-frame particle
+hits on the polar intensity cube before spatial smoothing. It is disabled by
+default (`temporal_median_window_frames: 1`); the validated experiment uses
+`cme_tracking_config_default_no_particle_filter_20230114_temporal_median3_v1.json`.
+The first and last frames are explicitly unsupported, timestamps are not
+shifted, and online use requires one frame of latency. This option remains an
+engineering candidate rather than a universal default because a fast, thin
+front occupying each polar cell for only one frame is suppressed by the same
+operation.
+
+The curated historical smoke test is:
+
+```sh
+python -m suncet_processing_pipeline.make_level4 cme-track \
+  --manifest benchmarks/cme_tracking/manifests/bright_fast_no_jitter_historical.json \
+  --allow-inconsistent-synthetic-geometry \
+  --config suncet_processing_pipeline/config_files/cme_tracking_reference_v0.json \
+  --event-id bright-fast-no-jitter-event-001 \
+  --diagnostic-movie \
+  --movie-fps 10
+```
+
+The movie requires `ffmpeg`. Playback rate changes only presentation speed;
+the scientific time axis continues to use the input timestamps or reviewed
+synthetic cadence.
+
+That manifest uses a verified 30-second relative cadence. The source simulation
+lasted one hour, its native model step was 10 seconds, and the curated sequence
+retains every third source index (`0, 3, ..., 357`). Its 120 sample times span 0
+through 3570 seconds; omitted source index 360 is the 3600-second endpoint. The
+old FITS timestamps remain frozen, so absolute UTC is still unavailable.
+Changing cadence leaves measured heights unchanged, scales speed inversely with
+cadence, and scales acceleration with inverse cadence squared. This is
+known-window research output, not continuous CME discovery or an accepted
+mission product.
+Inputs are hash-verified by default, and a complete event is staged before its
+directory and `COMPLETE.json` marker are published. The first historical smoke
+run tracks a smooth outward feature, but its angular support is too broad for
+the current position angle, width, or acceleration to be treated as validated
+science output.
 
 ## Pulling raw delivery objects
 

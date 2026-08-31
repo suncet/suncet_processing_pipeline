@@ -7,8 +7,9 @@ Reads the requirements.txt file to get dependencies.
 # IMPORTS
 # -----------------------------------------------------------------------------
 
-from setuptools import find_packages, setup
 import configparser
+
+from setuptools import find_packages, setup
 
 
 # -----------------------------------------------------------------------------
@@ -40,6 +41,10 @@ setup(
     python_requires='>=3.12',
     packages=find_packages(),
     package_data={
+        'suncet_processing_pipeline': [
+            'config_files/*.ini',
+            'config_files/*.json',
+        ],
         'suncet_processing_pipeline.satnogs': [
             'public_beacon_schema.csv',
             'suncet_apid1.ksy',

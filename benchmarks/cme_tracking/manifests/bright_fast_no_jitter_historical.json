@@ -1,0 +1,759 @@
+{
+  "frames": [
+    {
+      "frame_number": 0,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_000.fits",
+      "sha256": "95a35c03644a249e4d767a4dd24a0c615afa165a551456493f6839fc3205a988",
+      "source_index": 0
+    },
+    {
+      "frame_number": 1,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_003.fits",
+      "sha256": "1d1156ca783e9e4f22548cef76c2e003b4ef66f29366e482e4118da701950664",
+      "source_index": 3
+    },
+    {
+      "frame_number": 2,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_006.fits",
+      "sha256": "ff0206160a1400f442decb1b94278f299679b662dc8d719315657988d67e59d6",
+      "source_index": 6
+    },
+    {
+      "frame_number": 3,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_009.fits",
+      "sha256": "c9e8c41a90cdd69095ddb68b641922b76dec43db194056c0685b0b298fc8d842",
+      "source_index": 9
+    },
+    {
+      "frame_number": 4,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_012.fits",
+      "sha256": "fd973ce5872dff4ff7ae14d6caa6ad9ba436ad337b44ed3600723a224d6015f1",
+      "source_index": 12
+    },
+    {
+      "frame_number": 5,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_015.fits",
+      "sha256": "b0cb6afcda6f9bf59ee21e3cb2d005aea5692ee273cb2190103584766df3f3c5",
+      "source_index": 15
+    },
+    {
+      "frame_number": 6,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_018.fits",
+      "sha256": "48ec00bbcdc24aba8e4cd1265ecea2f8fa9cdc9d590cd4e2593cabadc9be1cb0",
+      "source_index": 18
+    },
+    {
+      "frame_number": 7,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_021.fits",
+      "sha256": "f823c87a3f796ead6dc258b6f1c4fc71725b79d0f82606f215da28e71c11e803",
+      "source_index": 21
+    },
+    {
+      "frame_number": 8,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_024.fits",
+      "sha256": "a2b839e7dad0d96d2b65290e4d03a86b34182ec8ce68b20c84a3ac16583d2547",
+      "source_index": 24
+    },
+    {
+      "frame_number": 9,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_027.fits",
+      "sha256": "8e948b5f31f777163cb8af1a625d68f686fdcf49fe6584e7d58fedbad99bc5f9",
+      "source_index": 27
+    },
+    {
+      "frame_number": 10,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_030.fits",
+      "sha256": "1a9e081a026bcb63c79a087c0ad995b25f29e76a83280f932df817ce93400182",
+      "source_index": 30
+    },
+    {
+      "frame_number": 11,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_033.fits",
+      "sha256": "6ee3cd769b05b543d315e99780b504445c6672f5122a4fb5f34b6b41320d4565",
+      "source_index": 33
+    },
+    {
+      "frame_number": 12,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_036.fits",
+      "sha256": "b3c43b46017a542aea79e1609f5dc9306b34555135dd82aa2ce75110daed595d",
+      "source_index": 36
+    },
+    {
+      "frame_number": 13,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_039.fits",
+      "sha256": "a4130acdb4284957a7b1c1844b1148d4bd67e0975e37536bc2a42e0244644532",
+      "source_index": 39
+    },
+    {
+      "frame_number": 14,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_042.fits",
+      "sha256": "9c1aea05c3eb179c74d3ae0860adf1909364782be465f60a3c54441be617309b",
+      "source_index": 42
+    },
+    {
+      "frame_number": 15,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_045.fits",
+      "sha256": "8ce1e4f7e38487a4482a860fff724a1e5085a510981ce32af61cb878cd720ee4",
+      "source_index": 45
+    },
+    {
+      "frame_number": 16,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_048.fits",
+      "sha256": "e3fc79b3cdf44912fb490d75a9277dab9c4b53e78e8dce19a38464e24bc16c23",
+      "source_index": 48
+    },
+    {
+      "frame_number": 17,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_051.fits",
+      "sha256": "c9f0fb9881f6162d1967566fcf82cf16c57c3972a55182376dec897142de7d7e",
+      "source_index": 51
+    },
+    {
+      "frame_number": 18,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_054.fits",
+      "sha256": "963225dac001bb72b1176fc03e8f314fa3326706b3e291dd263beed8b836be75",
+      "source_index": 54
+    },
+    {
+      "frame_number": 19,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_057.fits",
+      "sha256": "f9794dda70dbb15f0ec76171abfa198d6d23989b209f9c87f2635447188761cc",
+      "source_index": 57
+    },
+    {
+      "frame_number": 20,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_060.fits",
+      "sha256": "a417349e97e6f0ab378f681a4d8e56555ead6ab3d3d9d342e7388eaf0b09b2c1",
+      "source_index": 60
+    },
+    {
+      "frame_number": 21,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_063.fits",
+      "sha256": "82d6ad2b99325421437cd70a2f376f1f989883ecd5e38bc85f65a8d562ba7a19",
+      "source_index": 63
+    },
+    {
+      "frame_number": 22,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_066.fits",
+      "sha256": "b6dca81715a590208a7b91fdcd31c1654be6e398d575eba1c3e1640eb6bc260c",
+      "source_index": 66
+    },
+    {
+      "frame_number": 23,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_069.fits",
+      "sha256": "faa3c33529079f435a6e55bd548cd3437ca540ff9bf55a5d872d1f4a9d880c12",
+      "source_index": 69
+    },
+    {
+      "frame_number": 24,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_072.fits",
+      "sha256": "7b74e048d716037aa869fbf4057259370827bb7e1a9365478dafa8d9963ff86d",
+      "source_index": 72
+    },
+    {
+      "frame_number": 25,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_075.fits",
+      "sha256": "7b62d7a29126082479fb8b0a39457a786b6791dee5ef56a97f644bb80e39b0b7",
+      "source_index": 75
+    },
+    {
+      "frame_number": 26,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_078.fits",
+      "sha256": "36703f37421afdbd3e871b30537b85d6674b2cec6147f14b063b6dee460c793e",
+      "source_index": 78
+    },
+    {
+      "frame_number": 27,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_081.fits",
+      "sha256": "5f31e1aba3a40dd66fd707bc28d75cd1a1875996c55f6099702d482a4107f6ef",
+      "source_index": 81
+    },
+    {
+      "frame_number": 28,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_084.fits",
+      "sha256": "5b198093c489d4a08091f0e1c3766354ca3216179bc119d28240bb48f65f0f9d",
+      "source_index": 84
+    },
+    {
+      "frame_number": 29,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_087.fits",
+      "sha256": "2d8536e9dd620a864840264fd1c649f457fc5830cfa84e1b5e88dd0502f0cdba",
+      "source_index": 87
+    },
+    {
+      "frame_number": 30,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_090.fits",
+      "sha256": "589cddf431f399b7433b865daaac94737a771c7289e65e6b8d6acbc89f172a19",
+      "source_index": 90
+    },
+    {
+      "frame_number": 31,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_093.fits",
+      "sha256": "9185565dc3d10d6d6c3235391ac7909f5e6417bed3b74a4e2ae04e3213357c08",
+      "source_index": 93
+    },
+    {
+      "frame_number": 32,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_096.fits",
+      "sha256": "2aaeac1c995dc0ae1e1f245c8751f106856aae5f03bc571bcd23e244886a227e",
+      "source_index": 96
+    },
+    {
+      "frame_number": 33,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_099.fits",
+      "sha256": "8e62ea2e648542c3c9b63c05a37a3bc02b8b57d439a0cccaf73351dd4e3b4df7",
+      "source_index": 99
+    },
+    {
+      "frame_number": 34,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_102.fits",
+      "sha256": "808077a404c31b85c7cb0777fbe99477650728f58940e71ee8d024f8049f4d5b",
+      "source_index": 102
+    },
+    {
+      "frame_number": 35,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_105.fits",
+      "sha256": "dbd743d2f11ecc5fb02bf911f0cb659355286b299aa7dbeeeda131b4c58fccd7",
+      "source_index": 105
+    },
+    {
+      "frame_number": 36,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_108.fits",
+      "sha256": "375ab50324f2e81d88943e7efabe3ea2589bddfaeb5d27fece8ab6dd7e19e610",
+      "source_index": 108
+    },
+    {
+      "frame_number": 37,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_111.fits",
+      "sha256": "b58969cdbfb673da6d6f271121f91d2ffd17327a1b3d502916c2bd2088cab3ca",
+      "source_index": 111
+    },
+    {
+      "frame_number": 38,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_114.fits",
+      "sha256": "118fe54cdd1d5230abad495a83279786d76c8f199a0f0ff9df31b149df1a5ad7",
+      "source_index": 114
+    },
+    {
+      "frame_number": 39,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_117.fits",
+      "sha256": "b5b76007a199fc8b26c033195076274a457e8e5ea51028aa6a2179e20c36b7e6",
+      "source_index": 117
+    },
+    {
+      "frame_number": 40,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_120.fits",
+      "sha256": "a49f90bbc0f49c468baa2c8b0c40b4c8199a3d602a163382578d1cfdfafa880c",
+      "source_index": 120
+    },
+    {
+      "frame_number": 41,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_123.fits",
+      "sha256": "e043b14e71b45e77f953484ec33396722c767372828570bc57a760dfe9a68ef6",
+      "source_index": 123
+    },
+    {
+      "frame_number": 42,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_126.fits",
+      "sha256": "fbdb6d34740bc1a7775d3222e519f09e1b98c2c849f943fd41e597841e11cc6e",
+      "source_index": 126
+    },
+    {
+      "frame_number": 43,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_129.fits",
+      "sha256": "6589093fcb19e57983f864bcf387ba6c1ca536938409bfb2305fb7e5528a3f90",
+      "source_index": 129
+    },
+    {
+      "frame_number": 44,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_132.fits",
+      "sha256": "ee9986d4e5440225de39106faed8c871467253e1a96b1be6231c2ec2398f0d3d",
+      "source_index": 132
+    },
+    {
+      "frame_number": 45,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_135.fits",
+      "sha256": "7334fb976d96ec0e1060954bc82bf96d7ce05a16fef34914acafd133c78031f4",
+      "source_index": 135
+    },
+    {
+      "frame_number": 46,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_138.fits",
+      "sha256": "42e2df3626e8aca7e3d9324123ffb32e946b057cbb436386f2d399007ed5dcd8",
+      "source_index": 138
+    },
+    {
+      "frame_number": 47,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_141.fits",
+      "sha256": "5d24e213801bbada3b4620d23835dcaefe349e1c945e9d936a4b7d912a203755",
+      "source_index": 141
+    },
+    {
+      "frame_number": 48,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_144.fits",
+      "sha256": "8c3c4f600e07186344fbb9e8f5f643ee6e052c4d60d5c1cd92c6650bc1ab9130",
+      "source_index": 144
+    },
+    {
+      "frame_number": 49,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_147.fits",
+      "sha256": "b5713aa37da34544289e2134b42d8d3a12165ac9a743c5e1619e2281516f530b",
+      "source_index": 147
+    },
+    {
+      "frame_number": 50,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_150.fits",
+      "sha256": "12cb2fa2f4240058cbf64b74b6ed694b57b6e8bcd74ca9ac044b5f026d8137f6",
+      "source_index": 150
+    },
+    {
+      "frame_number": 51,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_153.fits",
+      "sha256": "4595fdb5cbceee08151da003d38a0df7917f36f91290c95ba45e5e6b2a4a3f55",
+      "source_index": 153
+    },
+    {
+      "frame_number": 52,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_156.fits",
+      "sha256": "ff137126ee9b2b67715b8a1ed32bef7fed1f9d0e53759e9ff0b517c79df5580f",
+      "source_index": 156
+    },
+    {
+      "frame_number": 53,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_159.fits",
+      "sha256": "e7eaea1f07e024908c1dd41752412adb8b44ab42abb8af340a2b94d4003f4f6d",
+      "source_index": 159
+    },
+    {
+      "frame_number": 54,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_162.fits",
+      "sha256": "81fb2919e14468cfdd5f1477065bd7e9c92ffe8447171b834f5fd4230e8bd8cf",
+      "source_index": 162
+    },
+    {
+      "frame_number": 55,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_165.fits",
+      "sha256": "fd5860146798860f751663d42c239dd89f5dc155d459f3023a5af7c285013178",
+      "source_index": 165
+    },
+    {
+      "frame_number": 56,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_168.fits",
+      "sha256": "28b7da42f0e5d76fb834ad018285eff7b00e1e60a07b2a3ab245450fd334396e",
+      "source_index": 168
+    },
+    {
+      "frame_number": 57,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_171.fits",
+      "sha256": "e5fe17113d2573af885f7466a21165ae5c8611a9e95e946eb268b6acbb77378c",
+      "source_index": 171
+    },
+    {
+      "frame_number": 58,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_174.fits",
+      "sha256": "64653232d9da367c6aa7490e5a9dc4ce2f1750b6e19c37ec3f05575a8f6643a1",
+      "source_index": 174
+    },
+    {
+      "frame_number": 59,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_177.fits",
+      "sha256": "6a6659377bf3cc028119b0880a7c22055873864d2054068c5e2dad4eacd8df8a",
+      "source_index": 177
+    },
+    {
+      "frame_number": 60,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_180.fits",
+      "sha256": "423aadee203b591ec4bc86cba6f79163a084a0f94991ac9740fec233fd8d25fc",
+      "source_index": 180
+    },
+    {
+      "frame_number": 61,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_183.fits",
+      "sha256": "7db3eea2c6267b15e61d55909c389a6e5ab4e512dc14b4623ad5a6d1a3afcb65",
+      "source_index": 183
+    },
+    {
+      "frame_number": 62,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_186.fits",
+      "sha256": "a961c8d4bc1180ade1bebba786faa22baab30665bf6796d435edfb2302d6070a",
+      "source_index": 186
+    },
+    {
+      "frame_number": 63,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_189.fits",
+      "sha256": "ee5cd09169b49d5ae250bafe98dde3f6b5ce0ad2dc5a7f372ee73613b3d598fb",
+      "source_index": 189
+    },
+    {
+      "frame_number": 64,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_192.fits",
+      "sha256": "c077008cb0e6e0264e8262e0c6622a4ad05996503ccf98950800ae0304abdcc0",
+      "source_index": 192
+    },
+    {
+      "frame_number": 65,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_195.fits",
+      "sha256": "1b6cb4c1352bd83adc8cb00e61205d7cf021298a3f89cde451355d570c809365",
+      "source_index": 195
+    },
+    {
+      "frame_number": 66,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_198.fits",
+      "sha256": "ddef1403ade7281a61b59732f4451a8df64daedaaeb98490ce5fc5063fea2bc2",
+      "source_index": 198
+    },
+    {
+      "frame_number": 67,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_201.fits",
+      "sha256": "bb7fb7e95f30d3199e8f0b37fc76a82809f3d8de200b5976cc56ba1c04d91ccc",
+      "source_index": 201
+    },
+    {
+      "frame_number": 68,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_204.fits",
+      "sha256": "a78c759ddd892cd721562d1f941deed69c2b90886dfb70fbac0c5e2945ee99a9",
+      "source_index": 204
+    },
+    {
+      "frame_number": 69,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_207.fits",
+      "sha256": "9cc1b9363f8962503adee9633db739e2fa44a9c8685405144a0b75dd803569c8",
+      "source_index": 207
+    },
+    {
+      "frame_number": 70,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_210.fits",
+      "sha256": "d0b1317d16339b68545bf35369fd4a3df3ebbeb6f3aec6a678badc6315f89131",
+      "source_index": 210
+    },
+    {
+      "frame_number": 71,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_213.fits",
+      "sha256": "117c33e69b7ae03a341e59e4a0e2a4e196c7c03990e9849c88c56f5086d26996",
+      "source_index": 213
+    },
+    {
+      "frame_number": 72,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_216.fits",
+      "sha256": "35e0506334a008222eb808bbff5a02def68cd1b21c4dba8523e095ecdd01fd46",
+      "source_index": 216
+    },
+    {
+      "frame_number": 73,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_219.fits",
+      "sha256": "77feeb89f1c6f3955aedab011532610222ed3db6adfc7940d4d1a5697a8ec90c",
+      "source_index": 219
+    },
+    {
+      "frame_number": 74,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_222.fits",
+      "sha256": "1fd439db06f7d462b6c5b2415b235cac5f737a81a34a924cb284cda800075836",
+      "source_index": 222
+    },
+    {
+      "frame_number": 75,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_225.fits",
+      "sha256": "1a59de1426bf1c01e563d0fe08da8a0c88043d3bc3e30a053c865fa8d2dad0bf",
+      "source_index": 225
+    },
+    {
+      "frame_number": 76,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_228.fits",
+      "sha256": "9f51ea66ff08470dce6cb746c67f3fa97828978e38b50b9bceadcec13e85095d",
+      "source_index": 228
+    },
+    {
+      "frame_number": 77,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_231.fits",
+      "sha256": "a396f108b50806dc1144b8bf925e7752130c525207b0c428b6dae9dc7c92b0a8",
+      "source_index": 231
+    },
+    {
+      "frame_number": 78,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_234.fits",
+      "sha256": "7bd05f33143dfac7e33149b25473fab411e3e86537c7535cb11830a01174059f",
+      "source_index": 234
+    },
+    {
+      "frame_number": 79,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_237.fits",
+      "sha256": "b0a1f0b33aad283dc509f5807c8a6d69ec6b54e479a2fd0e67f7798b9153ab32",
+      "source_index": 237
+    },
+    {
+      "frame_number": 80,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_240.fits",
+      "sha256": "b062d839f0073ff667d7a44f9452b6fbbfd810d2b65b6684c81e67e5986380b2",
+      "source_index": 240
+    },
+    {
+      "frame_number": 81,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_243.fits",
+      "sha256": "a70e3c8a19368277951a749243663cd33bb4335730d643584b6f17108d692f9e",
+      "source_index": 243
+    },
+    {
+      "frame_number": 82,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_246.fits",
+      "sha256": "e9d6c823774dfa2284c5b1168647d062220a403434123a6eaf51a498ebbc850e",
+      "source_index": 246
+    },
+    {
+      "frame_number": 83,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_249.fits",
+      "sha256": "0fc5a3e8cbcde4969023a092405b7070470aceeb5696932867b98e6923a604bc",
+      "source_index": 249
+    },
+    {
+      "frame_number": 84,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_252.fits",
+      "sha256": "05205ce1171bf9468c31f5b7874d442e5d8cb00c6f761e83cc9e3df1b4ea56bb",
+      "source_index": 252
+    },
+    {
+      "frame_number": 85,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_255.fits",
+      "sha256": "4298a2f688532776b8d23c7f83ced0e6c557b0595de5516e08d43b9623dcc28a",
+      "source_index": 255
+    },
+    {
+      "frame_number": 86,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_258.fits",
+      "sha256": "fc11d32ef4a7ef89009f80eb93c40870b82c3a5d693ec30ee99b5ea699ebfaf4",
+      "source_index": 258
+    },
+    {
+      "frame_number": 87,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_261.fits",
+      "sha256": "c953b68c9c281b62e5d32eab675399bc7bf7b51243b1993dedc4fffc5c64511f",
+      "source_index": 261
+    },
+    {
+      "frame_number": 88,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_264.fits",
+      "sha256": "a4d6d1c8b3feb6998f631b131b69f6740efcbd24bdd77e80b223c233c06fb31c",
+      "source_index": 264
+    },
+    {
+      "frame_number": 89,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_267.fits",
+      "sha256": "02c00b61e1aeef3c3d0000d9b41d4fecaa3a8f0e7ddfd81e808346eabf1a48f6",
+      "source_index": 267
+    },
+    {
+      "frame_number": 90,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_270.fits",
+      "sha256": "0271fa415e9846db05b21d26a661e2867a9fd6a942074d7725693d30f4f86f32",
+      "source_index": 270
+    },
+    {
+      "frame_number": 91,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_273.fits",
+      "sha256": "91999006f51afb60f134d50f32d5d33ffca0f0c560ad842526c5a469de16ad9c",
+      "source_index": 273
+    },
+    {
+      "frame_number": 92,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_276.fits",
+      "sha256": "6734f2ef42e91944543910164c5b3b522fc5aa502fae4af362401440eb81efc9",
+      "source_index": 276
+    },
+    {
+      "frame_number": 93,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_279.fits",
+      "sha256": "37ce0de476c09f23ad20457c6b9d8d7dbd3051ce8edf75ffc3b44a4621bfad0f",
+      "source_index": 279
+    },
+    {
+      "frame_number": 94,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_282.fits",
+      "sha256": "5a8369aafc66bc1bbe545304298d87b5fb77f2cd971701770696a24500350199",
+      "source_index": 282
+    },
+    {
+      "frame_number": 95,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_285.fits",
+      "sha256": "0821ae1f95b4fd92269fbfb22475de121cfa0f0a03666324db29af8a79f5f1c8",
+      "source_index": 285
+    },
+    {
+      "frame_number": 96,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_288.fits",
+      "sha256": "5f013dff44ca2a256ee8585c8b80f862ea94a9ecf323c1f05fc67c686e383948",
+      "source_index": 288
+    },
+    {
+      "frame_number": 97,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_291.fits",
+      "sha256": "2b8b36596f2e8d09fcc3dc57c8001eaec333c2c981bc50393f7823406cec2a23",
+      "source_index": 291
+    },
+    {
+      "frame_number": 98,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_294.fits",
+      "sha256": "0631916724438662af05817b759be6953726e9377db18c5013ee2528282aab43",
+      "source_index": 294
+    },
+    {
+      "frame_number": 99,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_297.fits",
+      "sha256": "f595a3639c12041ed19637fb9c02c76ccf9288a809b8ef387fb7404449b932d2",
+      "source_index": 297
+    },
+    {
+      "frame_number": 100,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_300.fits",
+      "sha256": "f1c7d2689cb6dcc6354238567ebcd9a74008ea8d2c35c40eda670063fd43fb92",
+      "source_index": 300
+    },
+    {
+      "frame_number": 101,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_303.fits",
+      "sha256": "c25bffa7f2e42d82f35d4ef59fe08eed2723f8d5b140e5ca7131132fcace8a7b",
+      "source_index": 303
+    },
+    {
+      "frame_number": 102,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_306.fits",
+      "sha256": "ea5bf1dd8a6042f364d5c9beb228cf3275ba8e91244158249703339075911e45",
+      "source_index": 306
+    },
+    {
+      "frame_number": 103,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_309.fits",
+      "sha256": "47392baa2e3d729553acf6dd50a49da71a62effc022c0283b697c8551b4ffba4",
+      "source_index": 309
+    },
+    {
+      "frame_number": 104,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_312.fits",
+      "sha256": "5a9cfc28ab5a0556c5ca685560139bdc5a20c38e7a75d79d6effa0c68bb7ea21",
+      "source_index": 312
+    },
+    {
+      "frame_number": 105,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_315.fits",
+      "sha256": "ca9332514159105d67f25425fa99927ad584348071cea8f461fc548363d200ee",
+      "source_index": 315
+    },
+    {
+      "frame_number": 106,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_318.fits",
+      "sha256": "6901d39af8141c6cd180072104789a7fec6af782dadcfcd2c45b39237f9fc412",
+      "source_index": 318
+    },
+    {
+      "frame_number": 107,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_321.fits",
+      "sha256": "5d77abd5e610c9835011bfab2fa40b6c38f8a07dc04c63e7d5e66194f94ff549",
+      "source_index": 321
+    },
+    {
+      "frame_number": 108,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_324.fits",
+      "sha256": "f823832eecb63fc9450b3b697bd9ffc2beb39966720dd14392db52b40f6f15f3",
+      "source_index": 324
+    },
+    {
+      "frame_number": 109,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_327.fits",
+      "sha256": "cd3a2f8950bbcd380aff1cd41e82be7cd6bc0ec85a6a7e7be787737b1e22d13e",
+      "source_index": 327
+    },
+    {
+      "frame_number": 110,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_330.fits",
+      "sha256": "937fdd97aad06764814e42d61ce7d1fe21bd470bff20bc00345a7a7de0b75ddd",
+      "source_index": 330
+    },
+    {
+      "frame_number": 111,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_333.fits",
+      "sha256": "ddee0b68635e3dda7528e61f16ddbe0b4ec885480879f1006890681a4c91a653",
+      "source_index": 333
+    },
+    {
+      "frame_number": 112,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_336.fits",
+      "sha256": "08566d8dc4406014aa6b6436f3b58d5e54d877574d4c7009db7fd29439fbdc9a",
+      "source_index": 336
+    },
+    {
+      "frame_number": 113,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_339.fits",
+      "sha256": "f4ec102130370c1261fc0403274de311a252122ef8fd80c18a184d873ed74494",
+      "source_index": 339
+    },
+    {
+      "frame_number": 114,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_342.fits",
+      "sha256": "661aa11239838a1f07c4081827fecdb32ee1e9ebe238c78984991a00c250573a",
+      "source_index": 342
+    },
+    {
+      "frame_number": 115,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_345.fits",
+      "sha256": "a5f869de4d706b03143d1d58272df68f4025cec0e12577a0f2d9c74597e2ffc6",
+      "source_index": 345
+    },
+    {
+      "frame_number": 116,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_348.fits",
+      "sha256": "a8655ed4ce5e263b882c060540b58b4db73480c7d97f3b27f63535501dab78f6",
+      "source_index": 348
+    },
+    {
+      "frame_number": 117,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_351.fits",
+      "sha256": "1750bd68c7189ebd8db2218d771f943652dc75da5125ff2615025dd347831ca1",
+      "source_index": 351
+    },
+    {
+      "frame_number": 118,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_354.fits",
+      "sha256": "7fd19f1871a8dd6cd0fb0d422d62a0829b0897a253678c4cf93da49861ef031e",
+      "source_index": 354
+    },
+    {
+      "frame_number": 119,
+      "path": "synthetic/level0/fits/cubesat/bright_fast/no jitter/config_default_OBS_2023-02-14T17:00:00.000_357.fits",
+      "sha256": "f1db217b8998c04c339de021a2fbaa672887d458bd58258ad5d8bf76187e1a0f",
+      "source_index": 357
+    }
+  ],
+  "metadata": {
+    "declared_directory_stage": "synthetic/level0",
+    "expected_frame_count": 120,
+    "fits_declared_level": "0.5",
+    "instrument_effects": {
+      "jitter": false
+    },
+    "selected_span_seconds": 3570.0,
+    "source_cadence_seconds": 10.0,
+    "source_index_step": 3,
+    "source_run_duration_seconds": 3600.0,
+    "source_terminal_index": 360,
+    "timing_basis": "The simulator provider confirmed a one-hour run. Underlying MHD metadata and simulator configuration establish a 10-second source cadence. The 120 retained frames occupy every third source index from 0 through 357, so their verified cadence is 30 seconds and their sample times span 0 through 3570 seconds; the omitted source index 360 is at 3600 seconds.",
+    "truth_linkage_status": "unverified"
+  },
+  "notes": "Curated ordered bright-fast/no-jitter historical simulator sequence. Relative timing is verified at 30 s from the confirmed one-hour source run, 10 s native model cadence, and every-third retained source indices. Samples run from 0 through 3570 s; omitted source index 360 is the 3600 s endpoint. DATE-OBS remains frozen, so absolute UTC is unavailable. Seventeen later headers have inconsistent RSUN-derived geometry; development runs must explicitly authorize use of the first-frame geometry.",
+  "path_base": "suncet_data",
+  "review": {
+    "reviewed_at_utc": "2026-08-26T19:00:13Z",
+    "reviewed_by": "SunCET development curation with simulator timing confirmation",
+    "status": "reviewed"
+  },
+  "scenario_id": "bright-fast-no-jitter-historical",
+  "schema_version": 1,
+  "source_kind": "synthetic_bypass",
+  "time_axis": {
+    "absolute_time_valid": false,
+    "cadence_seconds": 30.0,
+    "cadence_status": "verified",
+    "kind": "fixed_cadence"
+  },
+  "upstream_processing": {
+    "level2_psf_deconvolution": "not_applied",
+    "level3_geometric_correction": "not_applied"
+  }
+}
