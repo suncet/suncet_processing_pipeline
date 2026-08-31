@@ -1,0 +1,10 @@
+# Reviewed public reference inputs copied from Dropbox to the SOC.
+# Rules are first-match; temporary and hidden files are always excluded.
+- **/*.partial
+- **/*.partial.*
+- **/*.tmp
+- **/.*/**
++ /metadata/**
++ /synthetic/**
++ /test_data/**
+- /**

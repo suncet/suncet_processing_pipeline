@@ -12,18 +12,24 @@ import configparser
 import hashlib
 import json
 import os
+import stat
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Sequence
 
-from suncet_processing_pipeline.data_paths import data_path, get_data_root
+from suncet_processing_pipeline.data_paths import (
+    SuncetDataPathError,
+    data_path,
+    get_ctdb_root,
+    get_data_root,
+)
 from suncet_processing_pipeline.run_provenance import sha256_file
 
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "suncet" / "aws_ingest.ini"
-TRANSFER_LOG_DIRECTORY = Path("transfer_logs/aws_ingest")
+DEFAULT_STATE_DIRECTORY = Path.home() / ".local" / "state" / "suncet" / "aws_ingest"
 
 
 class S3IngestError(RuntimeError):
@@ -163,9 +169,46 @@ def _object_name(key: str) -> str:
     return name
 
 
-def _write_receipt(data_root: Path, payload: dict[str, object]) -> Path:
-    log_directory = data_root / TRANSFER_LOG_DIRECTORY
-    log_directory.mkdir(parents=True, exist_ok=True)
+def _prepare_private_state_directory(state_directory: Path, data_root: Path) -> Path:
+    """Validate and create a dedicated private state directory."""
+
+    resolved = state_directory.expanduser().resolve(strict=False)
+    try:
+        ctdb_root = get_ctdb_root(must_exist=False)
+    except SuncetDataPathError:
+        ctdb_root = None
+    for protected_root, name in (
+        (data_root, "suncet_data"),
+        (ctdb_root, "suncet_ctdb"),
+    ):
+        if protected_root is None:
+            continue
+        protected = protected_root.resolve(strict=False)
+        if (
+            resolved == protected
+            or resolved.is_relative_to(protected)
+            or protected.is_relative_to(resolved)
+        ):
+            raise S3IngestError(
+                f"AWS ingest private state must not overlap {name}: {resolved}"
+            )
+    resolved.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if not resolved.is_dir():
+        raise S3IngestError(f"AWS ingest private state is not a directory: {resolved}")
+    if os.name == "posix" and stat.S_IMODE(resolved.stat().st_mode) & 0o077:
+        raise S3IngestError(
+            "AWS ingest private state must not be accessible by group/other: "
+            f"{resolved}"
+        )
+    return resolved
+
+
+def _write_receipt(state_directory: Path, payload: dict[str, object]) -> Path:
+    log_directory = state_directory.expanduser().resolve(strict=False)
+    if not log_directory.is_dir():
+        raise S3IngestError(
+            f"AWS ingest private state is not a directory: {log_directory}"
+        )
     identity = "\0".join(
         str(payload.get(name, ""))
         for name in ("source", "bucket", "key", "version_id", "sha256")
@@ -175,12 +218,14 @@ def _write_receipt(data_root: Path, payload: dict[str, object]) -> Path:
     destination = log_directory / f"{timestamp}_{payload['source']}_{identity_hash}.json"
     temporary = destination.with_suffix(destination.suffix + ".partial")
     try:
-        with temporary.open("x", encoding="utf-8") as stream:
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             json.dump(payload, stream, indent=2, sort_keys=True)
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, destination)
+        destination.chmod(0o600)
     finally:
         temporary.unlink(missing_ok=True)
     return destination
@@ -192,6 +237,7 @@ def ingest_object(
     key: str,
     *,
     version_id: str | None = None,
+    state_directory: Path | None = None,
 ) -> tuple[Path, Path, str]:
     """Download, hash, atomically finalize, and receipt one delivery object."""
 
@@ -200,6 +246,10 @@ def ingest_object(
             f"Key {key!r} is outside configured prefix {source.prefix!r}"
         )
     data_root = get_data_root()
+    private_state = _prepare_private_state_directory(
+        state_directory or DEFAULT_STATE_DIRECTORY,
+        data_root,
+    )
     destination_directory = data_path(*source.destination.parts)
     destination_directory.mkdir(parents=True, exist_ok=True)
     destination = destination_directory / _object_name(key)
@@ -232,14 +282,20 @@ def ingest_object(
             )
         digest = sha256_file(temporary)
         status = "downloaded"
-        if destination.exists():
-            if not destination.is_file() or sha256_file(destination) != digest:
+        try:
+            os.link(temporary, destination)
+        except FileExistsError:
+            if (
+                destination.is_symlink()
+                or not destination.is_file()
+                or sha256_file(destination) != digest
+            ):
                 raise S3IngestConflictError(
                     f"Refusing to overwrite different local content: {destination}"
                 )
             status = "already_present"
         else:
-            os.replace(temporary, destination)
+            temporary.unlink()
 
         receipt_payload: dict[str, object] = {
             "schema_version": 1,
@@ -267,7 +323,7 @@ def ingest_object(
                 if name in metadata
             },
         }
-        receipt = _write_receipt(data_root, receipt_payload)
+        receipt = _write_receipt(private_state, receipt_payload)
         return destination, receipt, status
     finally:
         temporary.unlink(missing_ok=True)
@@ -285,6 +341,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--aws-cli",
         default="aws",
         help="AWS CLI executable (default: aws on PATH)",
+    )
+    parser.add_argument(
+        "--state-directory",
+        type=Path,
+        default=DEFAULT_STATE_DIRECTORY,
+        help="Private receipt directory outside suncet_data",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -326,7 +388,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     destination, receipt, status = ingest_object(
-        client, source, args.key, version_id=args.version_id
+        client,
+        source,
+        args.key,
+        version_id=args.version_id,
+        state_directory=args.state_directory,
     )
     print(f"{status.upper()} {destination}")
     print(f"Receipt: {receipt}")

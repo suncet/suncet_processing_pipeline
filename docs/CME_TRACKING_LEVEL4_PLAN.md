@@ -1,6 +1,6 @@
 # SunCET Level 4 Automated CME Tracking Plan
 
-Last updated: 2026-08-28
+Last updated: 2026-08-31
 
 Status: first known-window vertical slice, full-circle automatic angular-sector
 discovery, and stock-power-mode Jetson characterization implemented. The
@@ -360,11 +360,11 @@ As of 2026-08-27:
 - The standard sequences use suffixes from 000 through 357 in steps of three
   and normally contain about 120 images. The dimmest sequence is missing one
   suffix, and the historical original-Fano set contains duplicate/debug files.
-- There are only one synthetic Level 0.5 FITS file, three Level 1 FITS files,
-  92 Level 2 FITS files, including one explicitly provisional Level 3 interface
+- There is one synthetic Level 0.5 FITS file, three Level 1 FITS files, 92
+  Level 2 FITS files, including one explicitly provisional Level 3 interface
   handoff fixture, and no synthetic Level 3 collection.
-- `make_level3.py` and `make_level4.py` are currently scaffolds rather than
-  operational processing stages.
+- `make_level3.py` remains a scaffold; `make_level4.py` is now a functional
+  thin dispatcher for provisional CME tracking.
 
 ### Time and provenance problem
 
@@ -1020,7 +1020,7 @@ thread. The clean profile is archived as
 
 ## Current implementation checkpoint
 
-As of 2026-08-27, the repository contains a functional known-window vertical
+As of 2026-08-31, the repository contains a functional known-window vertical
 slice rather than only scaffolding:
 
 - reviewed JSON manifests with a manifest SHA-256, per-frame SHA-256 values,
@@ -1055,8 +1055,8 @@ eight-degree-padded sector for detailed sparse-path recovery. This recovers the
 known event without the reviewed 220--330-degree prior; it remains known-window
 sector discovery, not continuous autonomous event discovery.
 
-All 306 repository tests pass after the automatic coherent-sector path,
-particle/FOV regressions, temporal outlier screen, temporal-median A/B,
+The complete repository test suite passes after the automatic coherent-sector
+path, particle/FOV regressions, temporal outlier screen, temporal-median A/B,
 benchmark instrumentation, and first CPU fast path were added.
 The focused suite passes under Python 3.12, and the complete
 120-frame workflow also runs under Python 3.14.7 with numerically identical

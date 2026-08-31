@@ -31,6 +31,18 @@ class FakeAwsCli:
         }
 
 
+class RacingFakeAwsCli(FakeAwsCli):
+    def __init__(self, content: bytes, destination: Path, competing_content: bytes):
+        super().__init__(content)
+        self.destination = destination
+        self.competing_content = competing_content
+
+    def run_json(self, arguments):
+        metadata = super().run_json(arguments)
+        self.destination.write_bytes(self.competing_content)
+        return metadata
+
+
 def source_config() -> SourceConfig:
     return SourceConfig(
         name="xband",
@@ -72,12 +84,19 @@ def test_load_source_config_rejects_destination_escape(tmp_path):
 def test_ingest_is_atomic_hashed_receipted_and_idempotent(tmp_path, monkeypatch):
     monkeypatch.setenv("suncet_data", str(tmp_path))
     client = FakeAwsCli(b"SunCET pass data")
+    state_directory = tmp_path.parent / f"{tmp_path.name}-private-state"
 
     destination, receipt, status = ingest_object(
-        client, source_config(), "passes/pass-001.tm"
+        client,
+        source_config(),
+        "passes/pass-001.tm",
+        state_directory=state_directory,
     )
     second_destination, second_receipt, second_status = ingest_object(
-        client, source_config(), "passes/pass-001.tm"
+        client,
+        source_config(),
+        "passes/pass-001.tm",
+        state_directory=state_directory,
     )
 
     assert destination.read_bytes() == b"SunCET pass data"
@@ -92,6 +111,39 @@ def test_ingest_is_atomic_hashed_receipted_and_idempotent(tmp_path, monkeypatch)
     assert len(payload["sha256"]) == 64
     assert payload["local_path"] == "telemetry/incoming/xband/pass-001.tm"
     assert not list(tmp_path.rglob("*.partial"))
+    assert receipt.is_relative_to(state_directory)
+    assert receipt.stat().st_mode & 0o077 == 0
+
+
+def test_ingest_refuses_private_receipts_below_public_data(tmp_path, monkeypatch):
+    monkeypatch.setenv("suncet_data", str(tmp_path))
+    with pytest.raises(S3IngestError, match="overlap suncet_data"):
+        ingest_object(
+            FakeAwsCli(b"data"),
+            source_config(),
+            "passes/pass-001.tm",
+            state_directory=tmp_path / "transfer_logs",
+        )
+
+
+def test_ingest_refuses_state_directory_that_contains_public_data(
+    tmp_path, monkeypatch
+):
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    monkeypatch.setenv("suncet_data", str(data_root))
+    tmp_path.chmod(0o755)
+    original_mode = tmp_path.stat().st_mode & 0o777
+
+    with pytest.raises(S3IngestError, match="must not overlap suncet_data"):
+        ingest_object(
+            FakeAwsCli(b"data"),
+            source_config(),
+            "passes/pass-001.tm",
+            state_directory=tmp_path,
+        )
+
+    assert tmp_path.stat().st_mode & 0o777 == original_mode
 
 
 def test_ingest_refuses_same_name_with_different_content(tmp_path, monkeypatch):
@@ -105,6 +157,27 @@ def test_ingest_refuses_same_name_with_different_content(tmp_path, monkeypatch):
 
     assert destination.read_bytes() == b"older different data"
     assert not list(tmp_path.rglob("*.partial"))
+
+
+def test_ingest_concurrent_destination_creation_never_overwrites(
+    tmp_path, monkeypatch
+):
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    monkeypatch.setenv("suncet_data", str(data_root))
+    destination = data_root / "telemetry/incoming/xband/pass-001.tm"
+    client = RacingFakeAwsCli(b"downloaded data", destination, b"competing data")
+
+    with pytest.raises(S3IngestConflictError, match="Refusing to overwrite"):
+        ingest_object(
+            client,
+            source_config(),
+            "passes/pass-001.tm",
+            state_directory=tmp_path / "private-state",
+        )
+
+    assert destination.read_bytes() == b"competing data"
+    assert not list(data_root.rglob("*.partial"))
 
 
 def test_ingest_rejects_key_outside_configured_prefix(tmp_path, monkeypatch):

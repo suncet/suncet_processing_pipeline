@@ -49,7 +49,7 @@ $suncet_data/                  public or synchronized
 ├── synthetic/
 ├── test_data/
 ├── telemetry/incoming/{uhf,xband}/
-├── transfer_logs/
+├── transfer_logs/lasp_publication/
 └── trends/
 
 $suncet_ctdb/                  private and host-managed
@@ -215,8 +215,9 @@ science output.
 The SOC uses a read-only, host-local AWS profile to pull exact X-band or UHF
 delivery objects. Resource names and credentials are not stored in this
 repository. The command downloads through a partial file, calculates SHA-256,
-atomically finalizes the object below `telemetry/incoming/`, and records an
-ingest receipt below `transfer_logs/aws_ingest/`. It never changes or deletes
+atomically finalizes the object below `telemetry/incoming/`, and records a
+private mode-`0600` receipt below
+`$HOME/.local/state/suncet/aws_ingest/` by default. It never changes or deletes
 the source object.
 
 ```sh

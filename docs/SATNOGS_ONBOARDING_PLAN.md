@@ -1,6 +1,6 @@
 # SunCET SatNOGS Onboarding and Operations Plan
 
-Last updated: 2026-08-26
+Last updated: 2026-08-31
 
 ## Purpose
 
@@ -342,6 +342,16 @@ beacon without consulting raw bytes.
 - Review SatNOGS observations around every relevant pass during commissioning.
 - Preserve the observation ID and decoder/public-specification revision for any
   SatNOGS data used operationally or scientifically.
+- Define and implement a checksum-verified, idempotent archival transfer for
+  every SunCET SatNOGS observation package retrieved by the SOC. Confirm the
+  source API and artifact boundary rather than assuming SatNOGS DB is the
+  binary-data endpoint: DB primarily contains satellite/transmitter metadata,
+  while Network contains observations. Record which raw frames, decoded APID 1
+  telemetry, station/observation metadata, and available RF products are
+  retained, then upload the reviewed package under the shared raw archive's
+  dedicated `satnogs/` namespace. Preserve observation IDs and decoder/public
+  specification revisions, verify content checksums, and never delete or alter
+  the SatNOGS source.
 - Update the public specification, decoder, DB record, and dashboard together
   when the beacon format or transmitter behavior changes.
 - Maintain backward-compatible decoding where historic packets remain useful.

@@ -1,7 +1,7 @@
 # CME tracking benchmarks
 
-This directory contains portable benchmark manifests and, later, measured
-accuracy/performance results. Large FITS inputs remain below `suncet_data` and
+This directory contains portable benchmark manifests and documented science,
+performance, and power results. Large FITS inputs remain below `suncet_data` and
 are referenced by relative path and SHA-256 rather than committed to Git.
 
 The historical scenario is development data, not a final quantitative

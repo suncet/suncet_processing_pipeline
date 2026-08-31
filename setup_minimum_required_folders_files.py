@@ -53,7 +53,6 @@ DATA_DIRECTORIES = (
     "telemetry/incoming/xband",
     "test_data",
     "trends",
-    "transfer_logs/aws_ingest",
     "transfer_logs/lasp_publication",
     "transfer_staging/lasp_publication",
 )

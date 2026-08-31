@@ -84,10 +84,65 @@ For every execution, the command:
 6. treats identical existing content as idempotent and refuses to overwrite
    different content with the same filename;
 7. records source, key, version, ETag, S3 checksums, size, local path, and
-   SHA-256 below `$suncet_data/transfer_logs/aws_ingest/`.
+   SHA-256 in a private mode-`0600` receipt below
+   `$HOME/.local/state/suncet/aws_ingest/` by default.
 
 The command never deletes the source object. S3 lifecycle remains the only
 delivery-deletion authority.
+
+Keep receipts outside `suncet_data`: they contain exact private bucket and key
+identifiers that do not belong in the public data tree. An alternate private
+location can be selected with `--state-directory`; the command refuses a state
+directory at or below `suncet_data`.
+
+Before relying on lifecycle cleanup, inspect every current and noncurrent
+source version in the full lifecycle risk window:
+
+```sh
+python -m suncet_processing_pipeline.aws_replication_monitor \
+  xband uhf --pending-hours 24 --retention-days 37
+```
+
+This deliberately has no recent-object count limit. A failed status, stale
+pending/unknown status, or truncated version listing fails closed. Source-side
+status monitoring is still not a substitute for an independent destination
+inventory and restore drill.
+
+## Archive custody status and future evolution
+
+The source-neutral raw archive cutover was completed on 2026-08-31. Because S3
+bucket names cannot be renamed, a replacement bucket was created with
+versioning, default server-side encryption, blocked public access,
+bucket-owner-enforced object ownership, and a lifecycle transition to
+`DEEP_ARCHIVE`. Both delivery-bucket replication rules were switched to the
+replacement and independently validated with live objects: each source reached
+`COMPLETED`, and each destination object reported `REPLICA` in
+`DEEP_ARCHIVE`. The replication roles and the LASP software principal no longer
+have access to the legacy archive.
+
+A post-cutover read-only audit confirmed these controls. Verification of the
+first 30-day source expirations and an independent archive inventory/restore
+drill remain pending.
+
+The small historical inventory remains in the legacy bucket under read-only
+retention. Restoring and copying already archived objects would add delay and
+cost without improving custody, so the legacy bucket must not be deleted unless
+a later reviewed migration proves a complete inventory and checksum-equivalent
+replacement. Exact resource names remain in the private AWS inventory.
+
+The remaining archive evolution task is:
+
+- Add an idempotent SatNOGS archival path after operational retrieval is
+  designed. Resolve the real source boundary first: SatNOGS DB primarily holds
+  satellite/transmitter metadata, while observation artifacts are associated
+  with SatNOGS Network. Store selected raw frames, decoded public APID 1 data,
+  observation/station metadata, and any retained RF products under a dedicated
+  `satnogs/` namespace with source IDs, decoder/public-specification revisions,
+  checksums, and transfer receipts. This archival copy must never modify or
+  delete the upstream SatNOGS record.
+
+Exact AWS resource names remain in the private host/account inventory and must
+not be added to this public repository.
 
 ## Operational checklist
 

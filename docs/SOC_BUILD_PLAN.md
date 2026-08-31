@@ -1,6 +1,6 @@
 # SunCET SOC Jetson Build and Operations Plan
 
-Last updated: 2026-08-26
+Last updated: 2026-08-31
 
 ## Purpose
 
@@ -26,6 +26,21 @@ hotspot and the APL VPN. `ssh james@suncet-soc` succeeded, and routing to the
 Jetson used a VPN `utun` interface. A static IP is therefore not required at
 present. The Jetson must remain powered, connected to Staff Wi-Fi, and reachable
 under its hostname.
+
+## Cross-plan status snapshot
+
+| Workstream | Status on 2026-08-31 | Next completion gate |
+|---|---|---|
+| Jetson platform, SSH, NVMe, and portable environment | Operational for controlled manual work | Record the deployed Git commit/power mode after the next repository checkpoint |
+| AWS X-band/UHF custody | Live and tested; version-aware monitor implemented locally | Deploy/run the monitor and confirm the first lifecycle expirations |
+| Manual ingest and public-data synchronization | Safe ingest/preflight/rclone tooling implemented locally | Install the host-private configuration and validate representative one-way copies |
+| Level 0.5 decoding | Mac/Jetson parity validated; CTDB snapshot/runbook implemented locally | Deploy and execute the quiescent exact-verification CTDB procedure |
+| Level 1 calibration | Prototype only | Finish the end-to-end writer and approve/version the calibration set |
+| Level 2 PSF deconvolution | Development interface fixture complete; science calibration pending | Validate regularized/provisional deconvolution choices against approved PSFs after Level 1 is operational |
+| Level 4 CME tracking | Strong known-window engineering prototype | Test the frozen raw/temporal-median variants on Meng Jin's additional scenarios, then add held-out evaluation and broader event association |
+| LASP publication | SFTP transport validated; policy pending | Approve product mapping, naming/versioning, and release authority |
+| SatNOGS | Offline specification and decoder prototype substantially complete | Resolve APID 1 length, obtain a flight-equivalent RF package, and complete public release review |
+| Unattended operations | Deliberately deferred | Close monitoring, recovery, locking, and release-policy gates first |
 
 ## Decisions
 
@@ -123,7 +138,8 @@ development tools, containers, and LCMS/BigFix status. Important findings:
 - The NVIDIA driver reports CUDA 13.2 compatibility, but the complete CUDA
   toolkit and `nvcc` are not installed.
 - Docker, containerd, and NVIDIA Container Toolkit are installed.
-- Miniforge/Mamba is not installed.
+- At the original baseline capture, Miniforge/Mamba was not installed; Step 2
+  records its subsequent installation.
 - eMMC has adequate short-term capacity but is not the intended production data
   volume.
 - Time synchronization is active through `systemd-timesyncd`.
@@ -188,7 +204,7 @@ Completed on the Jetson and refreshed on 2026-08-26:
   left `suncet_data` undefined until permanent storage was ready. After the
   verified NVMe migration in Step 7, the redundant eMMC CTDB tree was removed.
 - Miniforge, both environments, and the shared package cache use about 4.7 GB;
-  approximately 40 GB remains free on eMMC.
+  approximately 37 GB remains free on eMMC at the latest observation.
 
 The representative Level 0.5 comparison is recorded in Roadmap Step 6.
 
@@ -213,11 +229,12 @@ Ethernet/APLNIS or expanding the node's data and service exposure.
 
 ### 4.1 Configure LASP AWS raw-data custody — replication, retention, and SOC read active
 
-This work is independent of the Jetson NVMe installation and can proceed first.
+This work is independent of the Jetson NVMe installation.
 
-- S3 Versioning was enabled on the LASP-owned X-band and UHF delivery buckets
-  and the shared raw archive bucket on 2026-08-21. Exact AWS resource names are
-  kept out of this public repository.
+- S3 Versioning is enabled on the LASP-owned X-band and UHF delivery buckets
+  and the active source-neutral raw archive. Delivery custody began on
+  2026-08-21; the archive was cut over to its neutral replacement on
+  2026-08-31. Exact AWS resource names are kept out of this public repository.
 - Same-account live replication is enabled for new objects from both delivery
   buckets to the raw archive bucket, preserving the object key and selecting
   `DEEP_ARCHIVE` as the replica storage class. Source delete markers are not
@@ -235,6 +252,11 @@ This work is independent of the Jetson NVMe installation and can proceed first.
 - Monitor replication failures and inventory `PENDING`, `COMPLETED`, and
   `FAILED` states. Lifecycle must remain the deletion authority; neither the
   LASP downloader nor the Jetson may delete delivery objects.
+- The repository now includes a read-only, version-aware replication monitor
+  that scans every source version inside the complete 37-day
+  current-plus-noncurrent lifecycle risk window. Failed, stale pending/unknown,
+  or truncated coverage fails closed; destination inventory and restore tests
+  remain an independent archive-custody requirement.
 - Restrict the Jetson AWS identity to the minimum list/read permissions needed
   for ingest. Record object key, version, size, and a content checksum in the SOC
   ingest ledger or processing manifest.
@@ -254,8 +276,8 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   delivery bucket on 2026-08-21. Upload, deletion, and multipart-write actions
   are denied so the legacy script will fail visibly until its archive-copy and
   source-deletion responsibilities are removed. Its historical direct-write
-  permissions on the archive remain separate cleanup debt; remove them after
-  confirming that no retained LASP workflow needs them.
+  permissions on the legacy archive were removed during the neutral-archive
+  cutover on 2026-08-31.
 - Simplify the LASP local-ingest script so it only downloads and verifies new
   delivery files. AWS replication and lifecycle are now the archive and source
   cleanup authorities.
@@ -264,8 +286,31 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   `REPLICA` in `DEEP_ARCHIVE`. Lifecycle activation was verified through the S3
   API; confirm the first time-based expirations after the 30-day retention
   windows elapse.
+- **Neutral archive cutover complete:** S3 buckets cannot be renamed, so on
+  2026-08-31 a source-neutral replacement archive was created with versioning,
+  default server-side encryption, blocked public access,
+  bucket-owner-enforced object ownership, and a lifecycle transition to
+  `DEEP_ARCHIVE`. Replication from both delivery buckets was cut over and
+  independently validated with live objects that reached source status
+  `COMPLETED` and destination status `REPLICA` in `DEEP_ARCHIVE`. Both
+  replication roles were then restricted to the replacement, and the LASP
+  software principal's obsolete legacy-archive access was removed. The small
+  historical inventory remains in the legacy bucket under read-only retention;
+  restoring and copying existing Deep Archive objects would add cost without
+  improving custody. Do not delete that bucket without a separately reviewed,
+  inventory- and checksum-proven migration. Exact resource names remain in the
+  private AWS inventory, not this public repository.
+- **Deferred SatNOGS custody path:** when the SOC begins retrieving SunCET
+  observations from SatNOGS, preserve an independently checksummed copy in the
+  same neutrally named raw archive under a collision-free `satnogs/` key
+  namespace. First determine which SatNOGS service/API supplies each artifact:
+  SatNOGS DB primarily stores satellite/transmitter metadata, while SatNOGS
+  Network stores observations. Define whether the archival unit includes raw
+  frames, decoded APID 1 telemetry, observation/station metadata, and available
+  RF products; record observation IDs and decoder/specification revisions. The
+  transfer must be idempotent and must not delete or alter the SatNOGS source.
 
-### 5. Establish the short-term data layout and manual ingest — in progress
+### 5. Establish the permanent data layout and manual ingest — in progress
 
 - The permanent NVMe-backed data root is active at `/srv/suncet/data`, exported
   as `suncet_data`, and initialized with the portable directory structure.
@@ -273,18 +318,24 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   command. Resource names and credentials remain in mode-`0600` host-local
   files. Each executed pull stages on NVMe, verifies reported size, computes
   SHA-256, atomically finalizes content, refuses conflicts, and writes a JSON
-  receipt below `transfer_logs/aws_ingest`. It never changes the source object.
+  receipt below the private host state directory rather than publicly copied
+  `suncet_data`. It never changes the source object.
 - A 29-byte real X-band delivery object was pulled successfully on 2026-08-26.
   A second execution reported `ALREADY_PRESENT`, left no partial file, and wrote
   a second idempotency receipt. Both delivery sources can be listed from the
   Jetson with the least-privilege identity.
-- The remaining work in this step is public-data synchronization, the LASP
-  public-server download path, and operational disk/retention thresholds.
-- Install the ARM64 build of `rclone` and configure a Dropbox remote using a
-  dedicated identity that can access only SunCET public data, if that account
-  arrangement is available. Avoid placing a token for the owner's full personal
-  Dropbox account on the Jetson. Store the rclone configuration with permissions
-  restricted to `james`.
+- Dry-run-first public-copy and operational storage-preflight tooling is now
+  implemented locally. The remaining work is Jetson deployment and host-private
+  configuration, representative pull/push validation, the LASP public-server
+  download path, and measurement-driven refinement of the commissioning
+  thresholds.
+- A checksum-verified native ARM64 `rclone` 1.75.0 binary is installed at
+  `/home/james/.local/bin/rclone`. Configure a Dropbox remote using a dedicated
+  identity that can access only SunCET public data, if that account arrangement
+  is available. Avoid placing a token for the owner's full personal Dropbox
+  account on the Jetson. Store the rclone configuration with permissions
+  restricted to `james`. OAuth configuration and representative copies remain
+  pending.
 - Use explicit one-way `rclone copy` commands rather than `sync` or `bisync`:
   copy reference inputs from Dropbox to the Jetson, and copy finalized products
   and processing manifests from the Jetson to Dropbox. Because `copy` does not
@@ -296,6 +347,10 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   must never be an rclone source or destination.
 - Write products outside the exported Dropbox subtree while they are incomplete,
   then move completed products atomically into their publication location.
+- Before each push, freeze and review a private exact publication manifest. The
+  wrapper supplies only those manifest paths to rclone and verifies every size
+  and SHA-256 before and after transfer. Filters, credentials, manifests, and
+  operational receipts remain outside public `suncet_data`.
 - Begin with manual `--dry-run` and logged copy operations. Verify representative
   transfers in both directions before considering a systemd timer. Any later
   move to `sync` or `bisync` requires a separate review of ownership, conflicts,
@@ -303,7 +358,10 @@ This work is independent of the Jetson NVMe installation and can proceed first.
 - Document a manual, resumable pull from
   <https://lasp.colorado.edu/data/store/suncet/>.
 - Verify downloaded files with server metadata or checksums where available.
-- Define retention thresholds so the eMMC cannot be filled by an ingest.
+- The manual preflight now enforces mount identity, filesystem type/UUID,
+  read/write state, a write probe, byte and inode thresholds, and a measured
+  workload-expansion reserve. Revisit its commissioning thresholds after
+  representative passes establish observed peak growth.
 - LASP public-server write-back is authorized and manually validated as
   described below.
 
@@ -342,11 +400,27 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   resolved every value difference. Formal CTDB snapshot versioning and a
   repeatable refresh/verification procedure are therefore operational
   requirements, not optional housekeeping.
-- Processing through later science levels remains dependent on approved
-  calibration files.
+- On 2026-08-28 a representative Level 2 handoff bundle was generated from the
+  corrected-timestamp middle frame of the 241-frame synthetic sequence. It
+  contains a checksum-valid 750 by 1000 floating-point FITS image, a successful
+  processing manifest with SHA-256 hashes for the source and four provisional
+  deconvolution inputs, an external checksum list, and the
+  [Level 2 handoff contract](LEVEL2_HANDOFF_CONTRACT.md). Astropy FITS/WCS and
+  SunPy independently load the product. The header explicitly records
+  `SYNTHET = T`, `L1BYPASS = T`, and `PROCSTAT = 'PROVISIONAL'`; it is suitable
+  for Level 3 interface development, not radiometry or quantitative science.
+- Production processing through later science levels remains dependent on an
+  operational Level 1 writer and approved calibration files. Level 2 now
+  defaults to a strict `LEVEL=1` boundary; the direct synthetic Level 0.5 rate
+  path must be selected explicitly and cannot silently invoke the obsolete
+  fixed-exposure development calibrator.
 - Measure elapsed time, peak memory, disk growth, and failure behavior.
-- Write a concise operator runbook covering input discovery, processing,
-  product review, retry, and recovery.
+- A manual operator runbook now covers input discovery, private receipts,
+  version-aware replication checks, quiescent CTDB integrity and exact refresh
+  verification,
+  storage backpressure, processing review, publication, retry, and recovery.
+  Deploy it with the checkpointed code and execute representative acceptance
+  runs before treating it as an operationally proven procedure.
 
 ### 7. Add NVMe storage and establish the permanent storage split — complete
 
@@ -366,8 +440,10 @@ This work is independent of the Jetson NVMe installation and can proceed first.
   `/home/james/suncet_ctdb` source was deleted on 2026-08-25; the Jetson now has
   one CTDB tree at `/srv/suncet/ctdb`.
 - Initialized the canonical `suncet_data` directory tree and downloaded the
-  validated `v1.0.2dev` FITS and NetCDF/Zarr metadata exports. Mission-approved
-  calibration FITS assets are not present yet.
+  validated `v1.0.2dev` FITS and NetCDF/Zarr metadata exports. The corrected
+  2026-08-31 UTC/CALPSF/DATAMIN/DATAMAX exports supersede those initial copies
+  and must be copied and checksum-verified during the release deployment.
+  Mission-approved calibration FITS assets are not present yet.
 - Verified the mount identity and fstab syntax, shell and Conda path behavior,
   pipeline path resolution, directory ownership, and available 1.8 TiB data
   capacity. A controlled reboot on 2026-08-25 automatically restored the
@@ -404,6 +480,41 @@ This work is independent of the Jetson NVMe installation and can proceed first.
 - Inventory the mission-approved dark, flat, vignette, PSF, bad-pixel, and
   stray-light calibration products; define versioning and validity intervals
   before Level 1/2 production use.
+
+### 8.2 Develop and characterize Level 4 CME tracking — in progress
+
+The first known-window height/speed/acceleration vertical slice, reviewed
+synthetic manifest, inspectable products, and test suite are implemented. The
+current historical run is an engineering smoke test. Its 30-second cadence is
+verified, and project-lead visual review accepts its tracked leading edge and
+angular/time association as the compute/power baseline. No authoritative truth
+file exists, so quantitative front accuracy and acceleration remain
+scientifically unvalidated. The stock 30 W CPU compute baseline is now
+complete: 18.435 s median per 120-frame event, 150.236 J gross and 26.410 J
+above idle on the covered onboard rails, with comfortable average-rate margin
+at both 15 s and 10 s image cadence. A frozen-reference-equivalent CPU fast
+path was retained after reducing median runtime by 0.93% and incremental energy
+by 3.62%. The full 15 W/30 W/50 W/MAXN matrix is complete. Use 30 W as the
+normal ground-SOC mode; 15 W currently minimizes projected fixed-horizon
+covered-rail energy for an always-on architecture, while MAXN minimizes gross
+compute energy. The intended flight concept is instead power-cycled batch
+processing, so the next flight-oriented measurement must integrate the entire
+spacecraft-bus cycle from power-on through boot, I/O, Level 2/3/4 processing,
+product persistence, and shutdown. In that architecture MAXN is the
+provisional compute-stage energy leader, subject to peak-power and thermal
+constraints.
+The corrected-timestamp 241-frame particle-snow sequence is now recovered by
+automatic coherent-sector discovery without a supplied position-angle prior.
+An opt-in centered three-frame temporal median passed its predeclared
+engineering gates on that event: it removed 86.7% of temporally isolated
+candidates, shifted the median headline height by 0.030 solar radii before raw
+FOV contact, and changed the provisional median speed from 757.9 to 748.0 km/s.
+It also erases a deliberately thin feature moving five pixels per frame, so it
+remains disabled by default until the additional simulations are available.
+Deeper CPU/GPU optimization, production end-to-end scope, whole-kit DC-input
+measurement, and future labeled-data validation are tracked in the dedicated
+[Level 4 CME tracking plan](CME_TRACKING_LEVEL4_PLAN.md). Do not connect this
+prototype to unattended post-pass processing or public publication yet.
 
 ### 9. Automate post-pass operations — future
 
@@ -445,12 +556,18 @@ the pipeline and public decoder artifacts.
 
 ## Immediate next action
 
-Add AWS replication-failure monitoring, define CTDB snapshot/refresh checks, and
-complete the manual public-data synchronization and LASP download procedures in
-Roadmap Step 5. Then measure resource use for the representative processing run
-and write the operator runbook in Step 6. Define and review the LASP product
-mapping before using the verified Step 5.1 publisher on mission products. No
-unattended ingest or publication should begin before those gates pass.
+First review and checkpoint the current coherent Level 4 and Level 2 work, run
+public CI, and deploy one named commit to the Jetson. Share the explicitly
+provisional Level 2 bundle with the Level 3 developer together with its contract
+and checksum list. When Meng Jin's additional simulations arrive, generate
+reviewed manifests, freeze development/validation cases, and run the same raw
+and temporal-median configurations before changing thresholds or adding GPU
+work. In parallel, deploy and exercise the newly implemented version-aware AWS
+replication checks, formal CTDB refresh verification, manifest-gated one-way
+public-data copies, disk/backpressure policy, and Step 6 operator runbook.
+SatNOGS can resume when the APID 1 length and flight-equivalent RF package
+arrive. No unattended ingest or publication should begin before those gates
+pass.
 
 ## Definition of an initial operational SOC
 

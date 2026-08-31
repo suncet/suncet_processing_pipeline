@@ -19,6 +19,8 @@ def test_initialize_data_tree_is_idempotent(monkeypatch, tmp_path):
     assert setup_data.initialize_data_tree() == data_root
     for relative_directory in setup_data.DATA_DIRECTORIES:
         assert (data_root / relative_directory).is_dir()
+    assert "transfer_logs/aws_ingest" not in setup_data.DATA_DIRECTORIES
+    assert not (data_root / "transfer_logs/aws_ingest").exists()
 
 
 def test_download_live_metadata_validates_before_replacing(monkeypatch, tmp_path):

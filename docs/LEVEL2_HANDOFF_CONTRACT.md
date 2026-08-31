@@ -95,13 +95,13 @@ fixture. Consequently, the file is suitable for testing Level 3 I/O, WCS,
 metadata preservation, floating-point handling, and geometric corrections,
 but not for radiometry or quantitative science validation.
 
-The versioned development CSV was corrected on 2026-08-31 so `TIMESYS` and all
-DATE descriptions specify UTC, `DATAMIN` and `DATAMAX` accept floating-point
-values, and `CALPSF` is defined as the content-addressed calibration-set
-manifest rather than one PSF file. The same edits remain to be mirrored into
-the live development sheet before its next CSV export. The provisional
-extension cards still require a coordinated metadata-sheet revision before the
-production schema is frozen.
+The versioned development CSV and live development sheet were corrected on
+2026-08-31 so `TIMESYS` and all DATE descriptions specify UTC, `DATAMIN` and
+`DATAMAX` accept floating-point values, and `CALPSF` is defined as the
+content-addressed calibration-set manifest rather than one PSF file. Future CSV
+exports must preserve these corrections. The provisional extension cards still
+require a coordinated metadata-sheet revision before the production schema is
+frozen.
 
 For the synthetic bypass, the writer replaces known misleading placeholders
 with `DOI = 'NOT_ASSIGNED'`, `OBSTYPE = 'SYNTHETIC DEVELOPMENT FIXTURE'`, and

@@ -1,0 +1,13 @@
+# Reviewed finalized products copied from the SOC to Dropbox.
+# Raw ingest, processing inputs, CTDBs, transfer logs, and scratch are omitted.
+- **/*.partial
+- **/*.partial.*
+- **/*.tmp
+- **/.*/**
++ /level1/**
++ /level2/**
++ /level3/**
++ /level4/**
++ /processing_manifests/**
++ /trends/**
+- /**
