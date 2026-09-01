@@ -2,8 +2,8 @@
 
 Status: **Pre-publication draft — not yet authoritative**
 
-Revision: draft-0.6
-Last updated: 2026-08-26
+Revision: draft-0.7
+Last updated: 2026-09-01
 
 Canonical URL:
 <https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md>
@@ -19,8 +19,10 @@ the globally broadcast SunCET UHF beacon. It covers only the CCSDS APID 1 beacon
 It does not document commanding, private ground-system interfaces, stored-data
 playback, science-image transport, or any other spacecraft APID.
 
-Values marked **TBC** must be confirmed against the configured flight radio or
-flight software before this document is used as a SatNOGS citation.
+Values marked **TBC** remain receiver/decoder validation work. They do not
+invalidate the confirmed fields or prevent a reviewed revision from serving as
+the citation for an inactive/unconfirmed SatNOGS transmitter record. Each
+citation must rely only on fields identified as confirmed.
 
 ## Mission
 
@@ -58,7 +60,7 @@ Proposed short SatNOGS description:
 | Authorized frequency range | 401.1904-401.2096 MHz |
 | Frequency tolerance | 0.0001% (1 ppm, or approximately +/-401.2 Hz at the assigned center frequency) |
 | Emission designator | `19K2F1D` |
-| Modulation | GFSK; confirm the exact compatible SatNOGS mode label from an RF recording |
+| Modulation | GFSK; use the current SatNOGS `GFSK` mode and retain `Unconfirmed` until RF validation |
 | Symbol/baud rate | 9600 baud nominal; 19200 baud contingency mode if UHF science playback is required |
 | Frequency deviation | **TBC** |
 | Authorized/declared occupied bandwidth | 19.2 kHz (`19K2`) |
@@ -76,11 +78,19 @@ Proposed short SatNOGS description:
 The values must describe the programmed flight configuration, not merely the
 capabilities or defaults of the SpaceQuest TRX-U radio.
 
+The proposed initial SatNOGS DB transmitter suggestion records the published
+center frequency, a placeholder initial drift frequency equal to that center,
+mode, nominal baud rate, service selection, status, and citation. Frequency
+deviation, pulse shaping, whitening, FEC, interleaving, detailed framing,
+packet length, and an RF recording are not part of the project submission gate
+for entering it as inactive and unconfirmed.
+
 The FCC filing describes the spacecraft UHF link at 19200 bit/s, while current
 mission planning calls for 9600 baud as the normal beacon rate with 19200 baud
 available as a contingency. Both supported configurations must be validated
-from flight-equivalent RF recordings; the filing's maximum/configured value
-does not override the current operational default.
+from flight-equivalent RF recordings before receiver validation or activation;
+the filing's maximum/configured value does not override the current operational
+default or prevent an unconfirmed nominal record.
 
 The current no-earlier-than launch date and eight-month prime mission extend
 past the authorization's 2027-10-01 expiration. The mission therefore needs a
@@ -280,11 +290,13 @@ scaling. The in-flight GOES conversion coefficients still require calibration,
 so the value is an estimate rather than an independently calibrated radiometer
 measurement.
 
-## Required validation artifacts
+## Receiver and decoder validation artifacts
 
-Before promoting this draft to an authoritative revision, retain the following
-non-sensitive flight-equivalent artifacts with this specification or in the
-SatNOGS decoder test data:
+Before treating the receive path and telemetry decoder as operationally
+validated, retain the following non-sensitive flight-equivalent artifacts with
+this specification or in the SatNOGS decoder test data. These artifacts are not
+prerequisites for the initial satellite or inactive/unconfirmed transmitter DB
+suggestions:
 
 1. A raw AX.25 frame captured from the flight-equivalent RF path.
 2. The extracted APID 1 bytes.

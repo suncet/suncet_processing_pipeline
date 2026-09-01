@@ -1,14 +1,14 @@
 # SunCET SatNOGS DB Submission Draft
 
-Last updated: 2026-08-26
+Last updated: 2026-09-01
 
 ## Purpose
 
 This is the offline copy deck for the SunCET spacecraft and nominal UHF
 transmitter suggestions. It is not evidence that either suggestion has been
-submitted or accepted. Recheck the live SatNOGS form vocabulary before entry,
-and do not submit until the cited public beacon specification is a reviewed
-revision rather than a pre-publication draft.
+submitted or accepted. Recheck the live SatNOGS form vocabulary before entry.
+The satellite suggestion may cite existing public mission pages; it does not
+depend on completion of the receiver or telemetry-decoder specification.
 
 ## Spacecraft suggestion
 
@@ -28,7 +28,7 @@ revision rather than a pre-publication draft.
 | Deploy date | Leave blank until deployment timing is manifested |
 | Re-entry date | Leave blank |
 | Image | Upload [`assets/suncet_spacecraft.jpg`](assets/suncet_spacecraft.jpg), the resized metadata-free public copy |
-| Citation | Public mission pages plus the reviewed revision of the [SunCET public beacon specification](SUNCET_PUBLIC_BEACON_SPEC.md) |
+| Citation | Public APL, LASP, and NASA mission pages; the beacon specification may be added but is not required for the spacecraft identity record |
 | Email when reviewed | Yes |
 
 Stable image URL after this file is merged to `main`:
@@ -45,7 +45,7 @@ Create this suggestion only after the spacecraft record is accepted.
 | Status | `Inactive` before verified on-orbit reception |
 | Downlink frequency | `401200000` Hz |
 | Downlink drift frequency | `401200000` Hz initially, representing zero observed correction; update from measured on-orbit drift rather than using licensed tolerance as drift |
-| Downlink mode | `GFSK`, subject to matching the live SatNOGS vocabulary and flight-equivalent RF validation |
+| Downlink mode | `GFSK`; this is present in the current SatNOGS vocabulary, while the record remains `Unconfirmed` pending RF validation |
 | Baud | `9600` |
 | Service | Prefer `Space Research`; confirm with SatNOGS reviewers because the FCC Experimental Radio Service authorization category is not itself a SatNOGS service choice |
 | IARU coordination | `N/A` because the link is outside the amateur bands |
@@ -69,17 +69,28 @@ record with the same center frequency and mark only the configuration actually
 being transmitted as active. This follows the SatNOGS model in which a change
 that requires a different receiver configuration is represented separately.
 
-## Submission gate
+## Submission gates
 
-Before copying these values into SatNOGS DB:
+Before submitting the satellite suggestion:
 
-1. Promote the beacon specification from draft to a reviewed revision.
-2. Incorporate the confirmed flight-software AX.25/FCS construction and resolve
-   or explicitly bound the waveform settings and packet-length discrepancy.
-3. Validate a flight-equivalent RF recording and complete AX.25 frame.
-4. Recheck the current SatNOGS form choices for owner/operator, status, mode,
-   and service.
-5. Confirm the launch/deployment dates and remove stale planning values.
+1. Recheck the current form choices for owner/operator and `Future` status.
+2. Confirm or omit the no-earlier-than launch date so it is not presented as a
+   firm commitment.
+3. Cite the existing public mission pages and use the approved public image.
+
+Before submitting the nominal transmitter suggestion after the satellite
+record is accepted:
+
+1. Approve a public DB-facing citation for 401.200 MHz, `GFSK`, and the nominal
+   9600-baud beacon configuration.
+2. Recheck the current form choices for mode and service.
+3. Submit it as `Inactive` and `Unconfirmed`, with the initial drift frequency
+   equal to the center frequency until an observed correction exists.
+
+Frequency deviation, pulse shaping, whitening, FEC, interleaving, a complete
+RF frame, the APID 1 packet-length discrepancy, and the ground-side decoder
+boundary are deferred receiver/decoder validation items. They do not block
+either initial DB suggestion.
 
 ## SatNOGS form references
 

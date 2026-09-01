@@ -1,6 +1,6 @@
 # SunCET SOC Jetson Build and Operations Plan
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
 ## Purpose
 
@@ -29,7 +29,7 @@ under its hostname.
 
 ## Cross-plan status snapshot
 
-| Workstream | Status on 2026-08-31 | Next completion gate |
+| Workstream | Status on 2026-09-01 | Next completion gate |
 |---|---|---|
 | Jetson platform, SSH, NVMe, and portable environment | Release `3da31c5` deployed in a locked Python 3.14 runtime; 358 Jetson tests pass in stock 30 W mode | Use the release runtime for the next representative manual run while retaining `4fbd7b9` as rollback |
 | AWS X-band/UHF custody | Live and tested; AWS CLI and version-aware monitor deployed and healthy | Confirm the first lifecycle expirations and complete an independent archive inventory/restore drill |
@@ -39,7 +39,7 @@ under its hostname.
 | Level 2 PSF deconvolution | Development interface fixture complete; science calibration pending | Validate regularized/provisional deconvolution choices against approved PSFs after Level 1 is operational |
 | Level 4 CME tracking | Strong known-window engineering prototype | Test the frozen raw/temporal-median variants on Meng Jin's additional scenarios, then add held-out evaluation and broader event association |
 | LASP publication | SFTP transport validated; policy pending | Approve product mapping, naming/versioning, and release authority |
-| SatNOGS | Offline specification and decoder prototype substantially complete | Resolve APID 1 length, obtain a flight-equivalent RF package, and complete public release review |
+| SatNOGS | Offline DB copy deck, public-specification draft, and decoder prototype substantially complete | Submit the cited pre-launch satellite record, then its inactive/unconfirmed nominal transmitter; continue APID 1 length and RF work for receiver/decoder validation |
 | Unattended operations | Deliberately deferred | Close monitoring, recovery, locking, and release-policy gates first |
 
 ## Decisions
@@ -635,7 +635,8 @@ decoding and 24 remain opaque. The first generated bare-CCSDS Kaitai decoder
 pass and a synthetic public test vector now compile and validate successfully.
 Flight software has confirmed the literal AX.25 header, CCSDS encapsulation,
 CRC-16/X-25 coverage, and FCS byte order. RF receiver-path integration and APID
-1 packet length remain the technical follow-ups before upstream submission.
+1 packet length remain the technical follow-ups before upstream decoder
+submission; they do not block the initial SatNOGS DB records.
 Fine time is empirically resolved as integer milliseconds and implemented in
 the pipeline and public decoder artifacts.
 
@@ -647,9 +648,11 @@ with its contract and checksum list. Confirm the first 30-day source lifecycle
 expirations and perform an independent archive inventory/restore drill. When
 Meng Jin's additional simulations arrive, generate reviewed manifests, freeze
 development/validation cases, and run the same raw and temporal-median
-configurations before changing thresholds or adding GPU work. SatNOGS can
-resume when the APID 1 length and flight-equivalent RF package arrive. No
-unattended ingest or publication should begin before those gates pass.
+configurations before changing thresholds or adding GPU work. SatNOGS DB work
+can resume now by submitting the cited pre-launch satellite record and, after
+acceptance, its inactive/unconfirmed nominal transmitter. APID 1 length and the
+flight-equivalent RF package remain receiver/decoder gates. No unattended
+ingest or publication should begin before its separate operational gates pass.
 
 ## Definition of an initial operational SOC
 
