@@ -10,6 +10,7 @@ run the module with -h for options.
 """
 
 import argparse
+import importlib
 from pathlib import Path
 
 import astropy.units as u
@@ -25,6 +26,41 @@ _DIFFRACTION_REBIN_SHAPE = (1000, 1000)
 _DIFFRACTION_CROP_ROWS = slice(125, -125)
 _SCATTER_REBIN_SHAPE = (750, 1000)
 _SCATTER_CORE_INDEX = (375, 500)
+_DEFAULT_BACKEND = "numpy"
+_SUPPORTED_BACKENDS = (_DEFAULT_BACKEND, "cupy")
+
+
+def _normalize_backend(backend):
+    """Return a canonical deconvolution backend name."""
+    if not isinstance(backend, str):
+        raise ValueError(
+            f"backend must be one of {_SUPPORTED_BACKENDS}, got {backend!r}"
+        )
+    normalized = backend.strip().lower()
+    if normalized not in _SUPPORTED_BACKENDS:
+        raise ValueError(
+            f"backend must be one of {_SUPPORTED_BACKENDS}, got {backend!r}"
+        )
+    return normalized
+
+
+def _array_module_for_backend(backend):
+    """Load and return the requested array module.
+
+    CuPy is deliberately imported only after the GPU backend has been selected,
+    so importing and running the normal CPU pipeline has no CuPy dependency.
+    """
+    backend = _normalize_backend(backend)
+    if backend == _DEFAULT_BACKEND:
+        return np
+    try:
+        return importlib.import_module("cupy")
+    except ImportError as exc:
+        raise RuntimeError(
+            "The CuPy deconvolution backend was requested, but CuPy could not be "
+            "imported. Install the pinned requirements-gpu-jetson.txt overlay in "
+            "the isolated Jetson GPU environment."
+        ) from exc
 
 
 def _calibration_signature(
@@ -57,15 +93,33 @@ class PreparedDeconvolver:
     cropping conventions for each image.
     """
 
-    def __init__(self, diffraction_fpsf, scatter_fpsf, image_shape):
+    def __init__(
+        self,
+        diffraction_fpsf,
+        scatter_fpsf,
+        image_shape,
+        *,
+        backend=_DEFAULT_BACKEND,
+    ):
+        self.backend = _normalize_backend(backend)
+        self._array_module = _array_module_for_backend(self.backend)
         self.image_shape = tuple(image_shape)
         if len(self.image_shape) != 2 or any(size <= 0 for size in self.image_shape):
             raise ValueError(
                 f"image_shape must contain two positive dimensions, got {image_shape!r}"
             )
 
-        self._diffraction_fpsf = np.asarray(diffraction_fpsf)
-        self._scatter_fpsf = np.asarray(scatter_fpsf)
+        transfer_dtype = (
+            self._array_module.complex128 if self.backend == "cupy" else None
+        )
+        self._diffraction_fpsf = self._array_module.asarray(
+            diffraction_fpsf,
+            dtype=transfer_dtype,
+        )
+        self._scatter_fpsf = self._array_module.asarray(
+            scatter_fpsf,
+            dtype=transfer_dtype,
+        )
         expected_diffraction_shape = tuple(size * 2 for size in self.image_shape)
         if self._diffraction_fpsf.shape != expected_diffraction_shape:
             raise ValueError(
@@ -81,38 +135,56 @@ class PreparedDeconvolver:
             ("diffraction", self._diffraction_fpsf),
             ("scatter", self._scatter_fpsf),
         ):
-            if not np.all(np.isfinite(fpsf)):
+            if not bool(
+                self._array_module.all(
+                    self._array_module.isfinite(fpsf)
+                ).item()
+            ):
                 raise ValueError(f"{label.capitalize()} transfer function is non-finite")
-            if np.any(fpsf == 0):
+            if bool(self._array_module.any(fpsf == 0).item()):
                 raise ValueError(f"{label.capitalize()} transfer function contains zeros")
 
     def apply(self, image):
         """Apply the prepared diffraction and scatter inverse filters."""
-        image = np.asarray(image)
-        if image.shape != self.image_shape:
+        host_image = np.asarray(image)
+        if host_image.shape != self.image_shape:
             raise ValueError(
                 f"Prepared deconvolver requires image shape {self.image_shape}, "
-                f"got {image.shape}"
+                f"got {host_image.shape}"
             )
-        if not np.all(np.isfinite(image)):
+        if not np.all(np.isfinite(host_image)):
             raise ValueError("Image contains non-finite values")
+
+        image = (
+            self._array_module.asarray(host_image, dtype=self._array_module.float64)
+            if self.backend == "cupy"
+            else host_image
+        )
 
         decon_diff = _deconvolve_scatter_prepared(
             image,
             self._diffraction_fpsf,
             self.image_shape,
+            array_module=self._array_module,
         )
         decon_scatt = _deconvolve_scatter_nopad_prepared(
             decon_diff,
             self._scatter_fpsf,
             self.image_shape,
+            array_module=self._array_module,
         )
+
+        # Level 2's established interface returns a NumPy host array. Keep all
+        # intermediate arrays on the device and perform exactly one full-array
+        # device-to-host transfer at this boundary.
+        if self.backend == "cupy":
+            decon_scatt = self._array_module.asnumpy(decon_scatt)
 
         # Check some results to confirm the resulting image is well behaved. If the
         # ratio isn't nearly one, something is wrong with the normalization of the PSF.
         print(
             "Ratio of deconvolved to raw L1 image:",
-            np.sum(decon_scatt) / np.sum(image),
+            np.sum(decon_scatt) / np.sum(host_image),
         )
         print(
             "Value of a random group of pixels that should be pretty dark in "
@@ -121,10 +193,15 @@ class PreparedDeconvolver:
         )
         print(
             "Value of a same pixels in L1 data:",
-            np.mean(image[80:100, 80:100]),
+            np.mean(host_image[80:100, 80:100]),
         )
 
         return decon_scatt
+
+    def synchronize(self):
+        """Wait for pending backend work; useful at benchmark boundaries."""
+        if self.backend == "cupy":
+            self._array_module.cuda.get_current_stream().synchronize()
 
 
 class DeconvolutionPlan:
@@ -142,6 +219,8 @@ class DeconvolutionPlan:
         resp_file,
         spec_file,
         correction_factor=0.4,
+        *,
+        backend=_DEFAULT_BACKEND,
     ):
         self._calibration_arguments = (
             diffraction_psf_file,
@@ -156,6 +235,7 @@ class DeconvolutionPlan:
             *self._calibration_arguments,
             self._correction_factor,
         )
+        self.backend = _normalize_backend(backend)
         self._prepared = None
 
     def validate_calibration(
@@ -183,8 +263,14 @@ class DeconvolutionPlan:
             self._prepared = prepare_deconv(
                 *self._calibration_arguments,
                 correction_factor=self._correction_factor,
+                backend=self.backend,
             )
         return self._prepared.apply(image)
+
+    def synchronize(self):
+        """Wait for pending work if calibration preparation has occurred."""
+        if self._prepared is not None:
+            self._prepared.synchronize()
 
 
 def _main():
@@ -209,6 +295,7 @@ def _main():
         args.resp_file,
         args.spec_file,
         correction_factor=args.correction_factor,
+        backend=args.backend,
     )
 
     # Make a plot showing before/after side by side
@@ -335,29 +422,49 @@ def _deconvolve_scatter(image, psf):
     return _deconvolve_scatter_prepared(image, fPSF, psf_shape)
 
 
-def _padded_psf_fft(psf):
+def _padded_psf_fft(psf, *, backend=_DEFAULT_BACKEND):
+    backend = _normalize_backend(backend)
+    array_module = _array_module_for_backend(backend)
     psf_shape = psf.shape
-    psf_padded = np.zeros((psf_shape[0] * 2, psf_shape[1] * 2))
+    psf_dtype = array_module.float64 if backend == "cupy" else None
+    psf = array_module.asarray(psf, dtype=psf_dtype)
+    psf_padded = array_module.zeros(
+        (psf_shape[0] * 2, psf_shape[1] * 2),
+        dtype=array_module.float64,
+    )
     psf_padded[
         psf_shape[0] // 2 : psf_shape[0] // 2 + psf_shape[0],
         psf_shape[1] // 2 : psf_shape[1] // 2 + psf_shape[1],
     ] = psf
-    return np.fft.fft2(psf_padded)
+    return array_module.fft.fft2(psf_padded)
 
 
-def _deconvolve_scatter_prepared(image, fPSF, psf_shape):
+def _deconvolve_scatter_prepared(
+    image,
+    fPSF,
+    psf_shape,
+    *,
+    array_module=np,
+):
     """Apply the historical padded inverse using a prepared PSF FFT."""
 
     image_shape = image.shape
-    image_padded = np.zeros((image_shape[0] * 2, image_shape[1] * 2))
+    image_padded = array_module.zeros(
+        (image_shape[0] * 2, image_shape[1] * 2),
+        dtype=array_module.float64,
+    )
     image_padded[
         image_shape[0] // 2 : image_shape[0] // 2 + image_shape[0],
         image_shape[1] // 2 : image_shape[1] // 2 + image_shape[1],
     ] = image
-    fImage = np.fft.fft2(image_padded)
+    fImage = array_module.fft.fft2(image_padded)
 
-    decon = np.real(np.fft.ifft2(fImage / fPSF))
-    decon_shift = np.roll(decon, shift=(psf_shape[0], psf_shape[1]), axis=(0, 1))
+    decon = array_module.real(array_module.fft.ifft2(fImage / fPSF))
+    decon_shift = array_module.roll(
+        decon,
+        shift=(psf_shape[0], psf_shape[1]),
+        axis=(0, 1),
+    )
     decon_cropped = decon_shift[
         psf_shape[0] // 2 : psf_shape[0] // 2 + psf_shape[0],
         psf_shape[1] // 2 : psf_shape[1] // 2 + psf_shape[1],
@@ -375,12 +482,18 @@ def _deconvolve_scatter_nopad(image, psf, alpha=1, epsilon=0.01):
     return _deconvolve_scatter_nopad_prepared(image, fPSF, psf_shape)
 
 
-def _deconvolve_scatter_nopad_prepared(image, fPSF, psf_shape):
+def _deconvolve_scatter_nopad_prepared(
+    image,
+    fPSF,
+    psf_shape,
+    *,
+    array_module=np,
+):
     """Apply the historical circular inverse using a prepared PSF FFT."""
-    fImage = np.fft.fft2(image)
+    fImage = array_module.fft.fft2(image)
 
-    decon = np.real(np.fft.ifft2(fImage / fPSF))
-    decon_shift = np.roll(
+    decon = array_module.real(array_module.fft.ifft2(fImage / fPSF))
+    decon_shift = array_module.roll(
         decon, shift=(psf_shape[0] // 2, psf_shape[1] // 2), axis=(0, 1)
     )
 
@@ -393,11 +506,23 @@ def prepare_deconv(
     resp_file,
     spec_file,
     correction_factor=0.4,
+    *,
+    backend=_DEFAULT_BACKEND,
 ):
-    """Load calibration inputs and prepare reusable PSF FFT denominators."""
+    """Load calibration inputs and prepare reusable PSF FFT denominators.
+
+    Calibration reads, spectral weighting, and interpolation remain on the CPU.
+    Selecting ``backend="cupy"`` explicitly moves the final FP64 PSFs to the
+    GPU and prepares their complex128 Fourier denominators there.
+    """
     correction_factor = float(correction_factor)
     if not np.isfinite(correction_factor):
         raise ValueError("correction_factor must be finite")
+    # Resolve the optional backend before opening the large calibration assets,
+    # so a missing CuPy installation fails immediately rather than after the
+    # 1.3 GB diffraction cube has been read and merged.
+    backend = _normalize_backend(backend)
+    array_module = _array_module_for_backend(backend)
 
     with fits.open(diffraction_psf_file) as diffraction_psf, fits.open(
         scatter_psf_file
@@ -514,12 +639,20 @@ def prepare_deconv(
             "Prepared diffraction and scatter PSFs must have the same shape, got "
             f"{diff_psf_rebinned_cropped.shape} and {scatter_psf_rebinned.shape}"
         )
-    diffraction_fpsf = _padded_psf_fft(diff_psf_rebinned_cropped)
-    scatter_fpsf = np.fft.fft2(scatter_psf_rebinned)
+    diffraction_fpsf = _padded_psf_fft(
+        diff_psf_rebinned_cropped,
+        backend=backend,
+    )
+    scatter_array = array_module.asarray(
+        scatter_psf_rebinned,
+        dtype=array_module.float64 if backend == "cupy" else None,
+    )
+    scatter_fpsf = array_module.fft.fft2(scatter_array)
     return PreparedDeconvolver(
         diffraction_fpsf,
         scatter_fpsf,
         diff_psf_rebinned_cropped.shape,
+        backend=backend,
     )
 
 
@@ -532,6 +665,7 @@ def apply_deconv(
     correction_factor=0.4,
     *,
     deconvolver=None,
+    backend=None,
 ):
     """Apply SunCET deconvolution algorithm and return image
 
@@ -543,25 +677,39 @@ def apply_deconv(
       spec_file: Path to spectrally dependent diffraction PSF file
       correction_factor: scalar paramter used in deconvolution process
       deconvolver: optional prepared or run-local deconvolver to reuse
+      backend: optional explicit ``"numpy"`` or ``"cupy"`` backend selector.
+        With a supplied deconvolver, omission uses that object's backend.
     Returns
       decon_scatt: Deconvolved image using provided arguments
     """
     if deconvolver is None:
+        backend = _DEFAULT_BACKEND if backend is None else _normalize_backend(backend)
         deconvolver = prepare_deconv(
             diffraction_psf_file,
             scatter_psf_file,
             resp_file,
             spec_file,
             correction_factor=correction_factor,
+            backend=backend,
         )
-    elif isinstance(deconvolver, DeconvolutionPlan):
-        deconvolver.validate_calibration(
-            diffraction_psf_file,
-            scatter_psf_file,
-            resp_file,
-            spec_file,
-            correction_factor,
-        )
+    else:
+        if isinstance(deconvolver, DeconvolutionPlan):
+            deconvolver.validate_calibration(
+                diffraction_psf_file,
+                scatter_psf_file,
+                resp_file,
+                spec_file,
+                correction_factor,
+            )
+        if backend is not None:
+            requested_backend = _normalize_backend(backend)
+            prepared_backend = getattr(deconvolver, "backend", None)
+            if prepared_backend != requested_backend:
+                raise ValueError(
+                    "Requested deconvolution backend does not match the supplied "
+                    f"deconvolver: {requested_backend!r} versus "
+                    f"{prepared_backend!r}"
+                )
     return deconvolver.apply(l1_data)
 
 
@@ -578,6 +726,12 @@ def _get_parser():
     parser.add_argument("--resp-file", required=True)
     parser.add_argument("--data-file", required=True)
     parser.add_argument("--correction-factor", type=float, default=0.4)
+    parser.add_argument(
+        "--backend",
+        choices=_SUPPORTED_BACKENDS,
+        default=_DEFAULT_BACKEND,
+        help="FFT backend; CuPy is an explicit optional GPU path",
+    )
     parser.add_argument(
         "--savefig",
         action="store_true",

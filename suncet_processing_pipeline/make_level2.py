@@ -38,6 +38,7 @@ class Level2:
 
     EXPECTED_IMAGE_SHAPE = (750, 1000)
     DEFAULT_FLUX_RATIO_TOLERANCE = 0.05
+    DECONVOLUTION_BACKENDS = ("numpy", "cupy")
 
     INPUT_KIND_LEVEL1 = "level1"
     INPUT_KIND_SYNTHETIC_LEVEL0_5_BYPASS = "synthetic_level0_5_bypass"
@@ -54,6 +55,7 @@ class Level2:
         spec_file=None,
         resp_file=None,
         correction_factor=0.4,
+        deconvolution_backend="numpy",
         input_kind=INPUT_KIND_LEVEL1,
         product_status="PROVISIONAL",
         metadata_definition_file=None,
@@ -79,6 +81,12 @@ class Level2:
         self.spec_file = spec_file
         self.resp_file = resp_file
         self.correction_factor = correction_factor
+        self.deconvolution_backend = str(deconvolution_backend).strip().lower()
+        if self.deconvolution_backend not in self.DECONVOLUTION_BACKENDS:
+            raise ValueError(
+                "deconvolution_backend must be one of "
+                f"{self.DECONVOLUTION_BACKENDS}, got {deconvolution_backend!r}"
+            )
         if input_kind not in self.INPUT_KINDS:
             raise ValueError(
                 f"input_kind must be one of {self.INPUT_KINDS}, got {input_kind!r}"
@@ -147,6 +155,7 @@ class Level2:
             self.resp_file,
             self.spec_file,
             correction_factor=self.correction_factor,
+            backend=self.deconvolution_backend,
         )
 
         cprint(f"Processing {len(fits_files)} FITS file(s) from {input_path}", "green")
@@ -335,6 +344,7 @@ class Level2:
                 self.spec_file,
                 correction_factor=self.correction_factor,
                 deconvolver=deconvolver,
+                backend=self.deconvolution_backend,
             )
             flux_ratio = self._validate_deconvolution(l1_data, decon_data)
             self._save_fits(
@@ -622,6 +632,9 @@ class Level2:
 
         self._update_image_statistics(header, data)
         header.add_history("Applied diffraction and scatter PSF deconvolution")
+        header.add_history(
+            f"Deconvolution array backend: {self.deconvolution_backend} (FP64)"
+        )
         if synthetic_bypass:
             header.add_history(
                 "DEVELOPMENT FIXTURE: synthetic Level 0.5 rate data used directly; "
@@ -700,6 +713,15 @@ def _get_parser():
     parser.add_argument("--resp-file", required=True)
     parser.add_argument("--correction-factor", type=float, default=0.4)
     parser.add_argument(
+        "--deconvolution-backend",
+        choices=Level2.DECONVOLUTION_BACKENDS,
+        default="numpy",
+        help=(
+            "Array/FFT backend (default: numpy). The cupy option requires the "
+            "separate Jetson GPU environment."
+        ),
+    )
+    parser.add_argument(
         "--input-kind",
         choices=Level2.INPUT_KINDS,
         default=Level2.INPUT_KIND_LEVEL1,
@@ -739,6 +761,7 @@ def main(argv=None):
         spec_file=args.spec_file,
         resp_file=args.resp_file,
         correction_factor=args.correction_factor,
+        deconvolution_backend=args.deconvolution_backend,
         input_kind=args.input_kind,
         product_status=args.product_status,
         metadata_definition_file=args.metadata_definition_file,

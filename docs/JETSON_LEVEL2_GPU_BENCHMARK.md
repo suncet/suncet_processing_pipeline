@@ -171,6 +171,15 @@ nonzero throughout, and inverse filtering has global support. The safe first
 optimization is to prepare the fixed calibration data once and cache the two
 PSF Fourier denominators for the run.
 
+The production-facing default remains NumPy. Select the optional FP64 GPU path
+explicitly with `Level2(..., deconvolution_backend="cupy")` or the
+`make_level2.py --deconvolution-backend cupy` command-line option. CuPy is
+loaded only when that path is requested, and the returned product array remains
+a NumPy `float64` array. Use the reproducible commands and numerical comparator
+in [`benchmarks/level2/README.md`](../benchmarks/level2/README.md) for the
+controlled acceptance run; a raw cuFFT smoke test is not a substitute for this
+full two-stage inverse-filter comparison.
+
 ## 5. Timing and power scopes
 
 Report these scopes separately so I/O and one-time work are not mistaken for

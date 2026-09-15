@@ -323,6 +323,47 @@ def test_level2_prepares_deconvolution_once_per_directory_run(
     assert len(application_calls) == 2
 
 
+def test_level2_forwards_explicit_cupy_backend(tmp_path, monkeypatch):
+    input_path = tmp_path / "input.fits"
+    _write_input(input_path, level=1)
+    processor = _level2(tmp_path, deconvolution_backend="CuPy")
+    preparation_calls = []
+
+    class FakePreparedDeconvolver:
+        backend = "cupy"
+
+        @staticmethod
+        def apply(data):
+            return data
+
+        @staticmethod
+        def synchronize():
+            return None
+
+    def fake_prepare(*args, **kwargs):
+        preparation_calls.append((args, kwargs))
+        return FakePreparedDeconvolver()
+
+    monkeypatch.setattr(
+        make_level2.suncet_deconv,
+        "prepare_deconv",
+        fake_prepare,
+    )
+
+    output_path = processor.run(input_path, tmp_path / "output")[0]
+
+    assert processor.deconvolution_backend == "cupy"
+    assert preparation_calls[0][1]["backend"] == "cupy"
+    with fits.open(output_path) as hdul:
+        history = [str(item) for item in hdul[0].header["HISTORY"]]
+    assert "Deconvolution array backend: cupy (FP64)" in history
+
+
+def test_level2_rejects_unknown_deconvolution_backend(tmp_path):
+    with pytest.raises(ValueError, match="deconvolution_backend must be one of"):
+        _level2(tmp_path, deconvolution_backend="auto")
+
+
 def test_level2_rejects_non_utc_input_time_system(tmp_path, monkeypatch):
     input_path = tmp_path / "input.fits"
     _write_input(input_path, level=1)
