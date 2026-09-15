@@ -18,6 +18,9 @@ engineering inputs. Passing this protocol demonstrates implementation parity
 and measures compute performance; it does not approve the calibration set or
 the resulting image as a mission science product.
 
+The first controlled CPU/GPU run and its acceptance outcome are recorded in
+the [2026-09-15 Level 2 GPU results](JETSON_LEVEL2_GPU_RESULTS_20260915.md).
+
 ## 1. Verify the platform and proposed packages
 
 Do not substitute packages from another CUDA or L4T repository. Confirm the
