@@ -37,6 +37,37 @@ Both reverse-order trials produced the same numerical comparison: all
 `7.711638740e-16`. This passes the engineering limits of `1e-8` absolute and
 `1e-12` relative error. Each backend was deterministic across its two trials.
 
+## End-to-end command power
+
+A second comparison measured fresh `make_level2` child processes rather than
+only the prepared deconvolution core. This scope includes interpreter/import
+startup, input and calibration reads and hashes, calibration preparation,
+deconvolution, provenance, FITS construction, checksum and schema validation,
+and disk write. Values are medians of two reverse-order trials; gross energy
+has no idle subtraction.
+
+| Scope and backend | Command time | Gross command energy | Average covered-rail power | Sampled peak power | Peak `tj` | Time per product | Gross energy per product |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| One product, NumPy | 7.846999 s | 66.631626 J | 8.491305 W | 10.1665 W | 44.3435 °C | 7.846999 s | 66.631626 J |
+| One product, CuPy | 8.601874 s | 73.471368 J | 8.544994 W | 9.9660 W | 44.2965 °C | 8.601874 s | 73.471368 J |
+| 20 products, NumPy | 19.011558 s | 169.363299 J | 8.906345 W | 10.1670 W | 44.4840 °C | 0.950578 s | 8.468165 J |
+| 20 products, CuPy | 17.012089 s | 153.172411 J | 9.004665 W | 10.1665 W | 44.2340 °C | 0.850604 s | 7.658621 J |
+
+For one product, CuPy was `9.62%` slower and used `10.27%` more gross energy:
+its one-time setup cost outweighed the faster frame operation. For a 20-product
+single-process batch, CuPy was `10.52%` faster and used `9.56%` less gross
+energy. Every command interval had complete bracketing telemetry. The
+single-product intervals were shorter than the conservative 100-sample quality
+threshold and therefore retain a warning; both 20-product trials exceeded it
+without warnings.
+
+The batch fixture uses 20 hard links to the same frozen frame. This is valid
+for the data-independent FFT and FITS I/O timing question, but it is not a
+science sequence. All 84 generated products passed an independent FITS
+checksum, dimensions, finite-pixel, backend-history, clean-commit provenance,
+and within-trial determinism audit. CPU/CuPy pixel errors reproduced the core
+comparison exactly.
+
 ## Method and provenance
 
 - Hardware and system software: Jetson AGX Orin, L4T R39.2.1 / JetPack 7.2.1,
@@ -59,18 +90,20 @@ of `2.22e-15`, and relative L2 error of `3.97e-16`.
 ## Interpretation
 
 For a continuously running prepared pipeline, CuPy is the clear current
-choice: it doubles throughput while using materially less gross energy per
-frame. Process-local preparation was slower on the GPU. Using the warm-cache
-timing and provisional preparation-energy estimates (`10.605 J` for NumPy and
-`16.760 J` for CuPy), both time and energy break even at roughly five frames
-per process. Treat that batch-size result as preliminary until cold boot,
-page-cache, end-to-end Level 2/3/4 processing, output persistence, and shutdown
-are measured with external DC-input instrumentation.
+choice: it doubles core throughput while using materially less gross core
+energy per frame. A fresh process handling only one product should currently
+use NumPy. A two-point interpolation between the one- and 20-product command
+measurements puts the provisional end-to-end crossover at about seven products
+for both time and gross energy. At the nominal 10–15 second image cadence, that
+corresponds to buffering roughly 70–105 seconds of images. This is engineering
+guidance, not yet an onboard scheduling requirement: the threshold should be
+remeasured with distinct representative images and cold boot/page-cache state,
+then with complete Level 1-to-Level 4 processing and output persistence.
 
-These results characterize the deconvolution core, not a complete powered
-processing cycle or spacecraft-bus energy. The provisional calibration assets
-also remain engineering inputs and are not mission-approved science
-calibrations.
+These results characterize the deconvolution core and a provisional Level 2
+command, not a complete powered Level 1-to-Level 4 cycle or spacecraft-bus
+energy. The provisional calibration assets also remain engineering inputs and
+are not mission-approved science calibrations.
 
 ## End-to-end FITS acceptance
 
@@ -97,3 +130,7 @@ independent of the CuPy backend.
   `/srv/suncet/data/benchmarks/level2/cupy_fp64_smoke_20260915_v2/`
 - End-to-end CuPy FITS product and validation record:
   `/srv/suncet/data/benchmarks/level2/product_smoke_gpu_b18817e_20260915/`
+- Fresh-process single-product command-power trials:
+  `/srv/suncet/data/benchmarks/level2/end_to_end_30w_b18817e_20260915_v1/`
+- Fresh-process 20-product command-power trials:
+  `/srv/suncet/data/benchmarks/level2/end_to_end_batch20_30w_b18817e_20260915_v1/`

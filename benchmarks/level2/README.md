@@ -101,3 +101,54 @@ inverse-filter stages, and final D2H, but excludes Level 1 calibration, FITS
 product construction/writing, boot, and shutdown. A future powered-cycle test
 needs external spacecraft-bus instrumentation because `tegrastats` cannot
 measure energy while the Jetson is off or booting.
+
+## End-to-end command measurement
+
+`measure_command.py` measures an external command from immediately before
+child spawn through child exit. For `make_level2`, that includes interpreter
+and import startup, calibration reads and hashes, PSF preparation,
+deconvolution, provenance, FITS construction, checksum/schema validation, and
+disk write. It excludes telemetry priming, the optional pre-run settle, result
+JSON writing, system boot, and shutdown.
+
+Run it from the repository root with an explicit `--` separator and a fresh
+output directory. For example:
+
+```sh
+export suncet_data=/srv/suncet/data
+export suncet_ctdb=/srv/suncet/ctdb
+backend=cupy
+metadata="$suncet_data/metadata/suncet_metadata_definition_v1.0.2dev-FITS.csv"
+trial="$benchmark_root/end_to_end_${backend}_$(date -u +%Y%m%dT%H%M%SZ)"
+
+"$python" benchmarks/level2/measure_command.py \
+  --output-json "$trial/measurement.json" \
+  --command-cwd "$PWD" \
+  --pre-run-idle-seconds 20 \
+  --telemetry required \
+  --telemetry-interval-ms 100 \
+  -- \
+  "$python" -m suncet_processing_pipeline.make_level2 \
+    --input-path "$input" \
+    --output-path "$trial/product" \
+    --diffraction-psf-file "$diffraction" \
+    --scatter-psf-file "$scatter" \
+    --spec-file "$spectrum" \
+    --resp-file "$response" \
+    --metadata-definition-file "$metadata" \
+    --input-kind synthetic_level0_5_bypass \
+    --product-status PROVISIONAL \
+    --deconvolution-backend "$backend"
+```
+
+The provisional fixture above deliberately uses the `v1.0.2dev` contract.
+Switch it to the current production candidate only after the input writer
+provides every newly required keyword, including `SOLAR_R` in `v1.0.3dev`.
+
+The wrapper uses an argument vector rather than a shell, captures the child's
+standard streams, preserves its exit status, writes JSON atomically without
+overwriting by default, and reports gross energy only when telemetry fully
+brackets the command. Repeat in reverse backend order with fresh output paths.
+Point `--input-path` at a directory to characterize a buffered multi-product
+run in one process; record whether the inputs are distinct science frames or a
+timing-only repeated fixture.
