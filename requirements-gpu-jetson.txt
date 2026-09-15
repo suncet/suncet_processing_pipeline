@@ -1,0 +1,5 @@
+# Jetson-only overlay for the CUDA 13.x runtime supplied by JetPack/L4T.
+# Install this into an isolated GPU-development environment; do not add it to
+# the architecture-neutral production environment or install the [ctk] extra.
+cupy-cuda13x==14.2.0
+cuda-pathfinder==1.8.1

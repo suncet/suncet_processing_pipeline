@@ -289,6 +289,40 @@ def test_level1_data_is_used_without_crude_recalibration(tmp_path, monkeypatch):
         assert hdul[0].header["L1BYPASS"] is False
 
 
+def test_level2_prepares_deconvolution_once_per_directory_run(
+    tmp_path,
+    monkeypatch,
+):
+    input_path = tmp_path / "input"
+    input_path.mkdir()
+    _write_input(input_path / "first.fits", level=1)
+    _write_input(input_path / "second.fits", level=1)
+    processor = _level2(tmp_path)
+    preparation_calls = []
+    application_calls = []
+
+    class FakePreparedDeconvolver:
+        def apply(self, data):
+            application_calls.append(data)
+            return data
+
+    def fake_prepare(*args, **kwargs):
+        preparation_calls.append((args, kwargs))
+        return FakePreparedDeconvolver()
+
+    monkeypatch.setattr(
+        make_level2.suncet_deconv,
+        "prepare_deconv",
+        fake_prepare,
+    )
+
+    outputs = processor.run(input_path, tmp_path / "output")
+
+    assert len(outputs) == 2
+    assert len(preparation_calls) == 1
+    assert len(application_calls) == 2
+
+
 def test_level2_rejects_non_utc_input_time_system(tmp_path, monkeypatch):
     input_path = tmp_path / "input.fits"
     _write_input(input_path, level=1)

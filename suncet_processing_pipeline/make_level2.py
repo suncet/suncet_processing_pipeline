@@ -141,6 +141,13 @@ class Level2:
         calibration_manifest, manifest_created = self._write_calibration_manifest(
             output_path
         )
+        deconvolver = suncet_deconv.DeconvolutionPlan(
+            self.diffraction_psf_file,
+            self.scatter_psf_file,
+            self.resp_file,
+            self.spec_file,
+            correction_factor=self.correction_factor,
+        )
 
         cprint(f"Processing {len(fits_files)} FITS file(s) from {input_path}", "green")
         cprint(f"Output directory: {output_path}", "green")
@@ -154,6 +161,7 @@ class Level2:
                         fits_file,
                         output_path,
                         calibration_manifest.name,
+                        deconvolver,
                     )
                 )
         except Exception:
@@ -308,6 +316,7 @@ class Level2:
         input_file,
         output_dir,
         calibration_manifest_name,
+        deconvolver=None,
     ):
         input_file = Path(input_file)
         print(f"Processing: {input_file.name}")
@@ -325,6 +334,7 @@ class Level2:
                 self.resp_file,
                 self.spec_file,
                 correction_factor=self.correction_factor,
+                deconvolver=deconvolver,
             )
             flux_ratio = self._validate_deconvolution(l1_data, decon_data)
             self._save_fits(
