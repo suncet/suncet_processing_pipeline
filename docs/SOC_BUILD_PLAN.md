@@ -29,17 +29,17 @@ under its hostname.
 
 ## Cross-plan status snapshot
 
-| Workstream | Status on 2026-09-01 | Next completion gate |
+| Workstream | Status on 2026-09-15 | Next completion gate |
 |---|---|---|
 | Jetson platform, SSH, NVMe, and portable environment | Release `3da31c5` deployed in a locked Python 3.14 runtime; 358 Jetson tests pass in stock 30 W mode | Use the release runtime for the next representative manual run while retaining `4fbd7b9` as rollback |
 | AWS X-band/UHF custody | Live and tested; AWS CLI and version-aware monitor deployed and healthy | Confirm the first lifecycle expirations and complete an independent archive inventory/restore drill |
 | Manual ingest and public-data synchronization | Safe ingest/preflight and the metadata-only Dropbox copy/check are operationally validated | Validate a separately approved, manifest-gated product push |
 | Level 0.5 decoding | Mac/Jetson parity validated; the single Jetson CTDB tree passes exact off-host manifest verification | Require the CTDB gate before every representative decode |
 | Level 1 calibration | Prototype only | Finish the end-to-end writer and approve/version the calibration set |
-| Level 2 PSF deconvolution | Development interface fixture complete; science calibration pending | Validate regularized/provisional deconvolution choices against approved PSFs after Level 1 is operational |
+| Level 2 PSF deconvolution | Exact FP64 NumPy/CuPy paths and provisional end-to-end FITS acceptance complete; controlled 30 W core benchmark favors CuPy | Wire Level 1 and `v1.0.3dev` `SOLAR_R`, approve the calibration set, then measure the full powered processing cycle |
 | Level 4 CME tracking | Strong known-window engineering prototype | Test the frozen raw/temporal-median variants on Meng Jin's additional scenarios, then add held-out evaluation and broader event association |
 | LASP publication | SFTP transport validated; policy pending | Approve product mapping, naming/versioning, and release authority |
-| SatNOGS | Offline DB copy deck, public-specification draft, and decoder prototype substantially complete | Submit the cited pre-launch satellite record, then its inactive/unconfirmed nominal transmitter; continue APID 1 length and RF work for receiver/decoder validation |
+| SatNOGS | Spacecraft suggestion submitted; public-specification draft and decoder prototype substantially complete | Monitor spacecraft review, then submit its inactive/unconfirmed nominal transmitter; track the revised APID 1 definition and finish RF receiver/decoder validation |
 | Unattended operations | Deliberately deferred | Close monitoring, recovery, locking, and release-policy gates first |
 
 ## Decisions
@@ -529,6 +529,15 @@ This work is independent of the Jetson NVMe installation.
   and were atomically installed and checksum-verified on the Jetson during the
   release deployment. Mission-approved calibration FITS assets are not present
   yet.
+- On 2026-09-09, the existing live metadata workbook advanced in place to
+  `v1.0.3dev`; no duplicate Google Sheet was created. The revision corrects
+  `solr_radius_app` to `solar_radius_app` and adds the Level 1 FITS keyword
+  `SOLAR_R`, the apparent solar radius in pixels derived from
+  `RSUN_OBS / abs(CDELT1)`. Separate immutable FITS and NetCDF/Zarr
+  `v1.0.3dev` CSV exports were published alongside the retained `v1.0.2dev`
+  files. Before activation, teach the product writer to populate and validate
+  `SOLAR_R`, update the code/configuration metadata pin, pull the new CSVs to
+  the Jetson, and run the metadata and Level 2 regression checks.
 - Verified the mount identity and fstab syntax, shell and Conda path behavior,
   pipeline path resolution, directory ownership, and available 1.8 TiB data
   capacity. A controlled reboot on 2026-08-25 automatically restored the
@@ -543,16 +552,86 @@ This work is independent of the Jetson NVMe installation.
 - Define backup, retention, filesystem monitoring, and recovery procedures.
 - Keep code and environment reconstruction possible from Git and lock files.
 
-### 8. Install and validate GPU compute support — pending operational need
+### 8. Install and validate GPU compute support — initial characterization complete
 
-- Inventory NVIDIA packages before making changes.
-- Select the JetPack/CUDA packages compatible with L4T R39.2.1.
-- Install only the required system components and validate with a small CUDA
-  workload.
-- Benchmark CPU and GPU implementations of PSF deconvolution when the
-  GPU-enabled implementation is ready.
-- Record Jetson power mode, clocks, temperature, throughput, memory, and energy
-  per product for future flight-hardware suitability studies.
+On 2026-09-15, the exact provisional Level 2 calibration inputs, one frozen
+synthetic input frame, and the `v1.0.3dev` reference handoff were deliberately
+staged on the Jetson NVMe. This was a targeted benchmark transfer, not an
+expansion of the routine Dropbox pull to synthetic or calibration data. All six
+source-input SHA-256 digests and every handoff-package checksum match the Mac
+copies. A Jetson CPU reproduction at pipeline commit `accb8c3` passed all
+schema, FITS checksum, WCS, SunPy, and finite-pixel checks in 18 seconds wall
+time. Its maximum pixel difference from the frozen Mac output is
+`5.82e-11` DN/s (relative L2 error `5.78e-16`), consistent with harmless
+cross-platform FFT rounding. This is a functional reference run, not yet a
+controlled compute/power benchmark: its scope includes I/O, validation, and
+repeated hashing of the 1.312 GB diffraction asset.
+
+The simulator's compact-support optimization was also audited before GPU work.
+It accelerates construction of individual Gaussian diffraction orders whose
+omitted values are already exactly zero in binary64; it does not localize the
+scene convolution. The Level 2 diffraction and scatter PSFs are fully nonzero
+over their final `750 x 1000` arrays, and inverse filtering has global spatial
+support. Tested PSF crops measurably changed the frozen output without reducing
+the required full-frame FFT size. Do not crop these PSFs as an optimization.
+The exact first optimization is instead to prepare the fixed calibration data
+and cache both complex PSF FFT denominators once per Level 2 run while
+preserving the existing diffraction padding and circular scatter boundary
+models.
+
+The exact cache refactor was pushed as `1aef9b7`. It remains lazy until the
+first valid input image, is bound to the selected calibration paths and
+correction factor, and retains `F_image / F_PSF` rather than replacing the
+division with a differently rounded reciprocal multiplication. The frozen Mac
+frame is bit-for-bit identical before and after the refactor, and a two-frame
+test proves that calibration preparation occurs once.
+
+The opt-in CuPy FP64 backend was pushed as `b18817e`; NumPy remains the default.
+The Jetson now has the L4T-matched CUDA 13.2 runtime/JIT headers and a separate
+CuPy 14.2 development environment on NVMe. A representative FP64 cuFFT smoke
+test and two reverse-order controlled NumPy/CuPy trial pairs passed. In dynamic
+clock `MODE_30W`, warm prepared CuPy deconvolution was `2.0133x` faster and used
+`45.85%` less gross covered-rail energy per frame than NumPy (`0.154353 s` and
+`1.551054 J` versus `0.310753 s` and `2.864537 J`). CuPy drew about `9.01%`
+more average power during compute, but its shorter runtime more than offset that
+increase. All pixel comparisons passed the FP64 engineering gate, with maximum
+absolute error `7.275957614e-11` and relative L2 error
+`7.711638740e-16`.
+
+The real `make_level2` CuPy CLI path also produced a checksum-valid,
+schema-valid provisional Level 2 FITS file with complete calibration
+provenance. That artifact reproduces the same CPU-reference numerical errors.
+This accepts the backend implementation, not the still-provisional calibration
+inputs or the synthetic Level 0.5 bypass as a science product. See the
+[controlled results](JETSON_LEVEL2_GPU_RESULTS_20260915.md) for exact scope,
+power-rail definitions, artifacts, and limitations.
+
+Fresh-process command-power trials then measured the complete provisional
+`make_level2` path. For one product, NumPy was preferable (`7.847 s`,
+`66.632 J`) to CuPy (`8.602 s`, `73.471 J`) because GPU setup dominated. For a
+20-product single-process batch, CuPy became preferable (`17.012 s`,
+`153.172 J`) to NumPy (`19.012 s`, `169.363 J`). A provisional two-point fit
+puts both the time and energy crossover near seven products, or about 70–105
+seconds of accumulated images at the 10–15 second cadence. The batch used a
+documented repeated-frame timing fixture, warm/uncontrolled page cache, and no
+boot/shutdown interval; repeat with distinct representative products and
+external DC-input instrumentation before turning this into a flight scheduler
+requirement.
+
+Follow the [Jetson Level 2 GPU setup and benchmark
+protocol](JETSON_LEVEL2_GPU_BENCHMARK.md). The Jetson-only Python overlay is
+pinned separately in `requirements-gpu-jetson.txt`; CUDA and CuPy remain out of
+the portable production environment and lock file.
+
+- Retain FP64 and the existing boundary models as the science reference. Treat
+  real FFTs, FP32, or algorithmic regularization changes as separate,
+  tolerance-gated experiments.
+- Repeat cold-start and full Level 1-to-Level 4 measurements after those stages
+  and approved calibration products exist.
+- Measure the complete power-on/boot/process/persist/shutdown cycle at the
+  external DC input before drawing spacecraft energy conclusions. The current
+  `tegrastats` result covers on-module rails only and cannot measure off/boot
+  energy or carrier-board conversion losses.
 
 ### 8.1 Resolve retained metadata documentation debt — pending
 
@@ -634,9 +713,10 @@ The APID 1 public-field review is complete: 112 fields are approved for public
 decoding and 24 remain opaque. The first generated bare-CCSDS Kaitai decoder
 pass and a synthetic public test vector now compile and validate successfully.
 Flight software has confirmed the literal AX.25 header, CCSDS encapsulation,
-CRC-16/X-25 coverage, and FCS byte order. RF receiver-path integration and APID
-1 packet length remain the technical follow-ups before upstream decoder
-submission; they do not block the initial SatNOGS DB records.
+CRC-16/X-25 coverage, FCS byte order, and the compiler-alignment byte that makes
+the current APID 1 packet 252 bytes. The planned revised beacon definition and
+RF receiver-path integration remain technical follow-ups before upstream
+decoder submission; they do not block the initial SatNOGS DB records.
 Fine time is empirically resolved as integer milliseconds and implemented in
 the pipeline and public decoder artifacts.
 
@@ -648,11 +728,12 @@ with its contract and checksum list. Confirm the first 30-day source lifecycle
 expirations and perform an independent archive inventory/restore drill. When
 Meng Jin's additional simulations arrive, generate reviewed manifests, freeze
 development/validation cases, and run the same raw and temporal-median
-configurations before changing thresholds or adding GPU work. SatNOGS DB work
-can resume now by submitting the cited pre-launch satellite record and, after
-acceptance, its inactive/unconfirmed nominal transmitter. APID 1 length and the
-flight-equivalent RF package remain receiver/decoder gates. No unattended
-ingest or publication should begin before its separate operational gates pass.
+configurations before changing thresholds or adding GPU work. SunCET spacecraft
+suggestion 11880 is now awaiting SatNOGS review; monitor it and, after
+acceptance, submit the inactive/unconfirmed nominal transmitter. The revised
+APID 1 definition and flight-equivalent RF package remain receiver/decoder
+gates. No unattended ingest or publication should begin before its separate
+operational gates pass.
 
 ## Definition of an initial operational SOC
 
