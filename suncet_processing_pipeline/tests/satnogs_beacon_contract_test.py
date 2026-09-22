@@ -40,7 +40,7 @@ def test_fletcher32_known_word_order_vector():
 
 
 @pytest.mark.parametrize("packet_length", [251, 252])
-def test_parses_both_current_candidate_lengths(packet_length):
+def test_parses_ctdb_and_current_compiler_aligned_layouts(packet_length):
     packet = parse_beacon_packet(_beacon_packet(packet_length))
 
     assert packet.packet_length == packet_length

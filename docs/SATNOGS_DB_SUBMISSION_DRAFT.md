@@ -5,30 +5,37 @@ Last updated: 2026-09-01
 ## Purpose
 
 This is the offline copy deck for the SunCET spacecraft and nominal UHF
-transmitter suggestions. It is not evidence that either suggestion has been
-submitted or accepted. Recheck the live SatNOGS form vocabulary before entry.
-The satellite suggestion may cite existing public mission pages; it does not
-depend on completion of the receiver or telemetry-decoder specification.
+transmitter suggestions. It records the submitted spacecraft values and the
+planned transmitter values, but SatNOGS DB remains authoritative for review
+status. Recheck the live SatNOGS form vocabulary before any later entry. The
+satellite suggestion may cite existing public mission pages; it does not depend
+on completion of the receiver or telemetry-decoder specification.
 
-## Spacecraft suggestion
+## Spacecraft suggestion — submitted, awaiting review
 
-| SatNOGS field | Proposed entry |
+Submitted by `jmason86` on 2026-09-01 as
+[suggestion 11880](https://db.satnogs.org/satellite-suggestions/11880), with
+provisional SatNOGS identifier
+[`MNRC-9829-4319-5529-8975`](https://db.satnogs.org/satellite/MNRC-9829-4319-5529-8975).
+The record has not yet been accepted into SatNOGS DB.
+
+| SatNOGS field | Submitted entry |
 | --- | --- |
-| NORAD ID | Leave blank before identification |
-| Followed NORAD ID | Leave blank until there is a justified launch-object candidate |
+| NORAD ID | Blank before identification |
+| Followed NORAD ID | Blank until there is a justified launch-object candidate |
 | Name | `SunCET` |
 | Other names | `Sun Coronal Ejection Tracker` |
-| Description | SunCET is a 6U NASA Heliophysics CubeSat jointly developed by the Johns Hopkins Applied Physics Laboratory and the University of Colorado Boulder's Laboratory for Atmospheric and Space Physics. Its extreme-ultraviolet imager is designed to observe how coronal mass ejections accelerate from the low solar corona into the extended corona. |
-| Owner/operator | Select JHU/APL and LASP/CU Boulder only if exact matching choices exist; otherwise leave this experimental field blank and retain the institutions in the description |
+| Description | SunCET is a 6U NASA Heliophysics CubeSat jointly developed by the Johns Hopkins Applied Physics Laboratory and the University of Colorado Boulder's Laboratory for Atmospheric and Space Physics. Its extreme-ultraviolet imager is designed to observe how coronal mass ejections accelerate from the low solar corona through the middle corona. It also contains a soft X-ray quad-diode photometer for characterizing solar flares. |
+| Owner/operator | Blank because the live vocabulary had no matching JHU/APL or LASP/CU Boulder choice; both institutions remain in the description |
 | Status | `Future` |
-| Countries of origin | `United States` |
+| Countries of origin | `United States of America` |
 | Website | <https://suncet.jhuapl.edu/> |
-| Dashboard URL | Leave blank until the SunCET SatNOGS dashboard exists |
-| Launch date | `2027-02-15 00:00 UTC` as a no-earlier-than planning date; update or omit if the form cannot represent NET dates clearly |
-| Deploy date | Leave blank until deployment timing is manifested |
-| Re-entry date | Leave blank |
-| Image | Upload [`assets/suncet_spacecraft.jpg`](assets/suncet_spacecraft.jpg), the resized metadata-free public copy |
-| Citation | Public APL, LASP, and NASA mission pages; the beacon specification may be added but is not required for the spacecraft identity record |
+| Dashboard URL | Blank until the SunCET SatNOGS dashboard exists |
+| Launch date | `2027-03-15 00:00` as submitted; revise if mission planning changes |
+| Deploy date | Blank until deployment timing is manifested |
+| Re-entry date | Blank |
+| Image | [`assets/suncet_spacecraft.jpg`](assets/suncet_spacecraft.jpg), the resized metadata-free public copy |
+| Citation | <https://www.jhuapl.edu/destinations/missions/suncet> |
 | Email when reviewed | Yes |
 
 Stable image URL after this file is merged to `main`:
@@ -71,12 +78,13 @@ that requires a different receiver configuration is represented separately.
 
 ## Submission gates
 
-Before submitting the satellite suggestion:
+The satellite suggestion has passed its submission gate. While it is under
+review:
 
-1. Recheck the current form choices for owner/operator and `Future` status.
-2. Confirm or omit the no-earlier-than launch date so it is not presented as a
-   firm commitment.
-3. Cite the existing public mission pages and use the approved public image.
+1. Monitor suggestion 11880 and respond to moderator questions.
+2. Keep the submitted launch date synchronized with mission planning.
+3. Do not create the transmitter suggestion until the spacecraft record is
+   accepted.
 
 Before submitting the nominal transmitter suggestion after the satellite
 record is accepted:
@@ -88,7 +96,7 @@ record is accepted:
    equal to the center frequency until an observed correction exists.
 
 Frequency deviation, pulse shaping, whitening, FEC, interleaving, a complete
-RF frame, the APID 1 packet-length discrepancy, and the ground-side decoder
+RF frame, the planned APID 1 beacon revision, and the ground-side decoder
 boundary are deferred receiver/decoder validation items. They do not block
 either initial DB suggestion.
 

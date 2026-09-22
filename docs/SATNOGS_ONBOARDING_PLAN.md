@@ -79,9 +79,9 @@ receiver detail is required before creating the initial DB records.
   frequency until observations establish a measured correction.
 
 Frequency deviation, occupied bandwidth, pulse shaping, whitening, FEC,
-interleaving, detailed AX.25 framing, the APID 1 packet-length discrepancy, and
-an RF recording are not fields in the initial transmitter suggestion. They do
-not block either initial DB record.
+interleaving, detailed AX.25 framing, the planned APID 1 beacon revision, and an
+RF recording are not fields in the initial transmitter suggestion. They do not
+block either initial DB record.
 
 ### Receiver and decoder validation
 
@@ -152,7 +152,11 @@ DB suggestions.
   stable CCSDS envelope and known Fletcher-32 algorithm, combines coarse
   seconds with the validated 0-999 millisecond fine field, rejects non-beacon
   APIDs, and temporarily accepts both the 251- and 252-byte candidate lengths.
-  It will be used as an independent oracle for Kaitai and RF test vectors.
+  FSW confirmed that the current 252-byte compiled form contains an opaque
+  compiler-alignment byte omitted from the 251-byte CTDB 2.0.1 export. Both
+  forms remain supported until the planned beacon revision has an authoritative
+  export and flight-equivalent test packet. The contract will be used as an
+  independent oracle for Kaitai and RF test vectors.
 - A local field-review exporter creates an offset-preserving APID 1 worksheet
   from the private CTDB. Every ordinary field begins as `REVIEW`, likely
   command/uplink-related fields begin as `OMIT`, and no field is automatically
@@ -186,12 +190,17 @@ DB suggestions.
 - Publish reviewed revisions at the canonical GitHub URL suitable for SatNOGS
   citations.
 
-Current receiver/decoder findings to resolve after the DB-facing review; these
-do not block the initial SatNOGS DB suggestions:
+Current receiver/decoder findings to track after the DB-facing review; these do
+not block the initial SatNOGS DB suggestions:
 
 - CTDB 2.0.1 declares a 251-byte APID 1 packet, while current flight-model UHF
-  data contains checksum-valid 252-byte packets with an apparent additional byte
-  before the checksum.
+  data contains checksum-valid 252-byte packets. FSW confirmed that the current
+  C++ compiler inserts the additional byte at absolute packet offset 247 to
+  align the structure to a multiple of four bytes; Fletcher-32 follows at
+  offsets 248 through 251. The byte is absent from CTDB 2.0.1 because it has not
+  been explicitly defined in the export. Because FSW expects unrelated beacon
+  changes, obtain the revised definition and a matching test packet before
+  freezing the public decoder.
 - The FCC authorization and technical submission resolve the center frequency,
   19.2 kHz emission bandwidth, GFSK modulation, RHCP polarization, no-FEC filing
   configuration, 2 W transmitter output, 1.53 W authorized ERP, experimental
@@ -213,18 +222,19 @@ do not block the initial SatNOGS DB suggestions:
 - The FSW 2.0.4 prerelease user's guide confirms the mission time epoch,
   Fletcher-32 coverage, AX.25-plus-CCSDS layering, and the 256-byte threshold for
   segmentation. Separate flight-source confirmation resolves the literal AX.25
-  address octets and FCS, but not the APID 1 packet-length discrepancy. The
-  successfully validated pipeline Fletcher-32 implementation is now the working
-  authority for its word order, seed, and stored byte order; a sanitized test
-  vector remains a publication-quality regression artifact rather than an FSW
-  blocker.
+  address octets and FCS. Separate FSW confirmation resolves the current APID 1
+  length and compiler padding, while a forthcoming beacon revision prevents
+  treating that layout as the final launch contract. The successfully validated
+  pipeline Fletcher-32 implementation is now the working authority for its word
+  order, seed, and stored byte order; a sanitized test vector remains a
+  publication-quality regression artifact rather than an FSW blocker.
 
 **Gate:** The satellite suggestion may use the public mission pages directly.
 The transmitter suggestion requires a reviewed public citation for its
 DB-facing frequency, mode, nominal baud rate, status, and service description.
 Unresolved receiver and decoder parameters may remain explicitly `TBC`.
 
-### 2. Create the pre-launch SatNOGS DB record — pending
+### 2. Create the pre-launch SatNOGS DB record — submitted, awaiting review
 
 - An offline [SatNOGS DB submission draft](SATNOGS_DB_SUBMISSION_DRAFT.md) now
   contains proposed values for every spacecraft field and the nominal 9600-baud
@@ -233,16 +243,18 @@ Unresolved receiver and decoder parameters may remain explicitly `TBC`.
 - A resized, metadata-free public spacecraft image is stored at
   [`assets/suncet_spacecraft.jpg`](assets/suncet_spacecraft.jpg) so the accepted
   record does not depend on a private local file or leak phone/GPS metadata.
-- In SatNOGS DB, open **All Satellites → All Suggestions → Actions → Suggest New
-  Satellite**.
-- Leave the NORAD ID blank.
-- Set status to `Future`.
-- Enter the official name, aliases, mission description, owner/operator,
-  countries, website, expected launch/deployment information, image, and public
-  citations.
+- The spacecraft suggestion was submitted by `jmason86` on 2026-09-01 as
+  [suggestion 11880](https://db.satnogs.org/satellite-suggestions/11880).
+- SatNOGS assigned provisional identifier
+  [`MNRC-9829-4319-5529-8975`](https://db.satnogs.org/satellite/MNRC-9829-4319-5529-8975).
+- The submitted record leaves NORAD and owner/operator blank, uses `Future`
+  status, identifies the United States of America as the country of origin, and
+  includes the public image, mission website, APL citation, and the submitted
+  2027-03-15 launch-planning date.
 - Review the suggestion with SatNOGS maintainers and resolve any requested
   changes.
-- Record the permanent SatNOGS ID assigned to SunCET in this plan.
+- Confirm that the provisional identifier remains the permanent SatNOGS ID
+  after acceptance.
 
 **Gate:** The accepted DB record accurately represents SunCET and contains no
 private or speculative information.
@@ -287,8 +299,9 @@ the same reception path expected in the SatNOGS Network.
 - The skeleton deliberately parses a bare CCSDS packet until laboratory testing
   establishes whether the selected SatNOGS receive path retains the now-known
   AX.25 header or FCS. It supports both 251- and 252-byte packet candidates,
-  including the apparent extra pre-checksum byte in the latter. Fine time is
-  exposed and validated as integer milliseconds.
+  including the confirmed compiler-alignment byte in the current 252-byte form.
+  Fine time is exposed and validated as integer milliseconds. Dual-form support
+  remains provisional until the revised beacon definition is exported.
 - The KSY compiles with the same Libre Space Kaitai 0.10 image used by upstream
   SatNOGS. Its generated Python parser has decoded all 112 independently
   expected public values from the repository's synthetic 251-byte vector and
@@ -396,31 +409,34 @@ beacon without consulting raw bytes.
 
 ## Immediate next action
 
-Review the offline SatNOGS DB copy deck and submit the pre-launch satellite
-suggestion using the existing public mission sources. In parallel, review the
-DB-facing transmitter statements in the public beacon specification. After the
-satellite record is accepted, submit the nominal 9600-baud transmitter as
-inactive and unconfirmed. Continue obtaining the packet-length answer and RF
-sample for receiver and decoder validation without treating them as DB blockers.
+Monitor spacecraft suggestion 11880 and respond to SatNOGS moderator feedback.
+In parallel, review the DB-facing transmitter statements in the public beacon
+specification. After the satellite record is accepted, submit the nominal
+9600-baud transmitter as inactive and unconfirmed. Track the revised beacon
+definition and obtain an RF sample for receiver and decoder validation without
+treating them as DB blockers.
 
 ## Current mission answers pending
 
 No further mission-team answer currently blocks the initial satellite or
-transmitter DB suggestions. The following answers remain necessary for
-receiver and decoder validation:
+transmitter DB suggestions. The following input remains necessary for receiver
+and decoder validation:
 
-1. **APID 1 flight length:** whether the flight packet is 252 bytes and the
-   apparent extra byte before Fletcher-32 is intentional padding/spare data.
+1. **Revised beacon definition:** the authoritative CTDB/export and matching
+   flight-equivalent packet after FSW completes the planned unrelated beacon
+   changes. The current flight-model layout is already resolved as 252 bytes
+   with compiler alignment at byte 247.
 2. **Flight-equivalent RF sample:** a short recording and paired known raw APID
    1 frame. This can resolve or measure frequency deviation, pulse shaping,
    line coding, whitening/scrambling, interleaving, both supported baud modes,
    and the exact over-air AX.25 framing.
 
-No further answer is currently needed about the flight-software AX.25 buffer or
-FCS, modulation, polarization, filed FEC, licensed bandwidth/power, spectrum
-service, license identity, Fletcher-32 implementation, fine-time serialization,
-or the maintainer's personal SatNOGS station. Those are now resolved or
-deliberately outside scope. Public-field policy, ADCS units, Command Loss Timer
+No further answer is currently needed about the current APID 1 compiler
+padding, the flight-software AX.25 buffer or FCS, modulation, polarization,
+filed FEC, licensed bandwidth/power, spectrum service, license identity,
+Fletcher-32 implementation, fine-time serialization, or the maintainer's
+personal SatNOGS station. Those are now resolved or deliberately outside scope.
+Public-field policy, ADCS units, Command Loss Timer
 semantics, Dual-SPS flare definitions, and CSIE histogram definitions are also
 resolved. A backup maintainer and the eventual NORAD ID remain later
 governance/on-orbit items rather than current blockers.

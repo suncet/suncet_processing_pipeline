@@ -1,11 +1,11 @@
 """Strict, public-facing packet contract for the SunCET APID 1 beacon.
 
-This module intentionally stops at the boundaries that are still awaiting
-flight-software or RF confirmation. It validates the CCSDS packet and the
-mission Fletcher-32 checksum. The secondary time header is coarse seconds since
+This module intentionally stops at boundaries awaiting a revised beacon
+definition or RF confirmation. It validates the CCSDS packet and the mission
+Fletcher-32 checksum. The secondary time header is coarse seconds since
 2000-01-01T00:00:00Z plus an integer 0-999 milliseconds after the coarse
-second. It temporarily accepts both the CTDB-declared and flight-data-observed
-packet lengths.
+second. It temporarily accepts both the CTDB-declared form and the current
+compiler-aligned flight-model form.
 
 It contains no private CTDB definitions and can serve as an independent oracle
 for the future SatNOGS Kaitai decoder and RF validation fixtures.
@@ -27,8 +27,10 @@ CCSDS_PRIMARY_HEADER_BYTES = 6
 CCSDS_SECONDARY_TIME_BYTES = 6
 FLETCHER32_BYTES = 4
 
-# CTDB 2.0.1 declares 251 bytes; checksum-valid flight-model captures declare
-# 252. Collapse this to one value when FSW identifies the apparent spare byte.
+# CTDB 2.0.1 declares 251 bytes. FSW confirmed that the current 252-byte
+# flight-model form contains one compiler-inserted alignment byte immediately
+# before Fletcher-32. Retain both until the planned beacon revision has an
+# authoritative export and flight-equivalent test packet.
 CURRENT_BEACON_PACKET_LENGTHS = frozenset({251, 252})
 
 

@@ -2,7 +2,7 @@
 
 Status: **Pre-publication draft — not yet authoritative**
 
-Revision: draft-0.7
+Revision: draft-0.8
 Last updated: 2026-09-01
 
 Canonical URL:
@@ -82,8 +82,8 @@ The proposed initial SatNOGS DB transmitter suggestion records the published
 center frequency, a placeholder initial drift frequency equal to that center,
 mode, nominal baud rate, service selection, status, and citation. Frequency
 deviation, pulse shaping, whitening, FEC, interleaving, detailed framing,
-packet length, and an RF recording are not part of the project submission gate
-for entering it as inactive and unconfirmed.
+the final beacon revision, and an RF recording are not part of the project
+submission gate for entering it as inactive and unconfirmed.
 
 The FCC filing describes the spacecraft UHF link at 19200 bit/s, while current
 mission planning calls for 9600 baud as the normal beacon rate with 19200 baud
@@ -154,18 +154,25 @@ counters, command status, command arm states, other uplink-related values, or
 unrelated APID definitions. Bytes occupied by excluded fields will be consumed
 opaquely so later public fields retain their correct offsets.
 
-### Packet-length discrepancy to resolve
+### Current packet length and compiler padding
 
 - The SunCET Bus CTDB 2.0.1 summary declares 2008 bits, or 251 bytes total.
 - Current flight-model UHF test data contains consecutive, checksum-valid APID 1
   packets whose CCSDS length field declares 252 bytes total.
-- In the observed packet, an additional byte appears before the final four-byte
-  checksum relative to the generated CTDB decoder's offsets.
+- Flight software has confirmed that the current C++ compiler inserts one
+  alignment byte so the packet structure is a multiple of four bytes. In the
+  current compiled layout, the last CTDB-defined telemetry byte is at absolute
+  packet offset 246, the compiler padding is at offset 247, and Fletcher-32 is
+  stored at offsets 248 through 251.
+- The alignment byte is absent from CTDB 2.0.1 because it has not yet been
+  explicitly defined in the export.
 
-Flight software must confirm whether this byte is an intentional spare/padding
-field and whether 252 bytes is the flight format. The final field table and
-Kaitai decoder must follow observed flight framing and the corrected
-authoritative definition.
+The 252-byte form is therefore the confirmed current compiled layout, not an
+unexplained telemetry field. Flight software also expects the beacon to change
+for unrelated reasons. Until a revised authoritative definition and test
+packet are available, the provisional decoder retains both the CTDB-generated
+251-byte form and the observed 252-byte form and treats the alignment byte as
+opaque.
 
 ### Secondary time header
 
@@ -238,7 +245,7 @@ is a provisional Kaitai decoder for a bare CCSDS APID 1 packet. It exposes all
 112 approved fields, consumes the 24 excluded fields as anonymous gaps,
 validates fine time as 0-999 milliseconds, rejects a non-APID-1 CCSDS primary
 word, and accepts either the 251- or 252-byte packet form. It deliberately does
-does not yet wrap the packet in AX.25 because laboratory validation must first
+not yet wrap the packet in AX.25 because laboratory validation must first
 establish the actual SatNOGS decoder-input boundary.
 
 The repository also contains a fully synthetic, non-flight
