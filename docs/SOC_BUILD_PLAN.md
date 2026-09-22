@@ -56,6 +56,9 @@ under its hostname.
 - Store mission-length telemetry in DuckDB, with one table per APID so each
   packet stream retains its own sampling cadence. Images remain separate FITS
   products; use ASOF joins for ad hoc cross-APID trending.
+- Continue producing inspectable per-APID decoded CSVs during the iterative test
+  phase. Once those test workflows stabilize, write Level 0.5 telemetry directly
+  to DuckDB and remove routine decoded CSVs from the operational path.
 - Treat versioned CSV exports below `$suncet_data/metadata` as immutable,
   reviewed definition candidates. Code and configuration explicitly pin the
   active version, and each named processing run receives a checksum-guarded

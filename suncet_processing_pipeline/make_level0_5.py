@@ -26,9 +26,13 @@ import re
 import struct
 import sys
 import types
+from array import array
 from collections import Counter
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
+
+import numpy as np
 
 from suncet_processing_pipeline.config_parser import Config
 from suncet_processing_pipeline.run_provenance import (
@@ -99,11 +103,37 @@ CSIE_SECONDARY_HEADER_LEN = 6
 CSIE_ROW_CHECKSUM_LEN = 4
 CSIE_MAX_SENSOR_ROWS = 2000
 CSIE_MAX_SENSOR_COLS = 1504
+CSIE_METADATALESS_MIN_ROW_COVERAGE = 0.95
+CSIE_SEQUENCE_FLAG_END = 2
+CSIE_KEPT_FRAME_PACKET_ZONE_LEN = TRANSFER_FRAME_DATA_LEN - TRANSFER_FRAME_TRAILER_LEN
+CSIE_BOUNDARY_FILL_REPAIR_ACCEPTANCE_MODE = "csie_full_stream_boundary_0x55_repair"
 JPEG_LS_SOI = b"\xff\xd8"
 JPEG_LS_EOI = b"\xff\xd9"
+# Level 0.5 keeps the CTDB decoder names internally so image assembly remains
+# traceable to flight telemetry.  Product writers apply this small, explicit
+# crosswalk to the mission metadata vocabulary.  Add mappings only when the
+# source and product meanings are unambiguous.
+CSIE_LEVEL0_5_FIELD_RENAMES = {
+    "csie_meta_img_id": "image_counter",
+    "csie_meta_detBackside_temp": "detector_temp",
+    "csie_meta_detBoard_temp": "detector_temp_board",
+}
+ADC_THERMISTOR_SPARE_RENAMES = {
+    # These three CTDB fields retain stale spare names, but their definitions
+    # label them "ADC Thermistor" and apply a temperature EU conversion.
+    516: "hw_adc_thermistor_temp",
+    537: "csie_adc_thermistor_temp",
+    CSIE_META_APID: "csie_meta_adc_thermistor_temp",
+}
+CSIE_LEVEL0_5_FITS_NAMES = {
+    "image_counter": "IMGCTR",
+    "detector_temp": "DET_TEMP",
+    "detector_temp_board": "BRD_TEMP",
+    "csie_meta_adc_thermistor_temp": "ADC_TEMP",
+}
 # FIXME(FSW/CTDB): APID 35 is present in current hardline data and is named
 # APID_TLM_DSPS_DATA_PKT in generated CTDB constants/state maps, but it is missing
-# from suncet_v2-0-1 packet_definitions/ct_pkt.csv and ct_tlm.csv. Treat it as
+# from the current bus packet_definitions/ct_pkt.csv and ct_tlm.csv. Treat it as
 # dsps_data until the CTDB packet definitions carry the real row.
 TEMP_DSPS_DATA_APID = 35
 TEMP_DSPS_DATA_PACKET_NAME = "dsps_data"
@@ -115,6 +145,14 @@ FILLER_BYTES = frozenset((0x00, 0x55, 0xFF))
 FRAME_TRAILER_FILLERS = {
     b"\x55" * TRANSFER_FRAME_TRAILER_LEN: "filler_55",
 }
+FLETCHER32_MODULUS = 0xFFFF
+FLETCHER32_VECTOR_WORDS = 4096
+FLETCHER32_DESCENDING_WEIGHTS = np.arange(
+    FLETCHER32_VECTOR_WORDS,
+    0,
+    -1,
+    dtype=np.uint64,
+)
 MAX_REPAIR_EXTRA_BYTES = 64
 
 
@@ -136,7 +174,6 @@ class TransferFrameStripStats:
     xband_wrappers_removed: int = 0
     xband_header_bytes_removed: int = 0
     frame_footer_fletcher32_be: int = 0
-    frame_footer_fletcher32_le: int = 0
     frame_footer_filler_00: int = 0
     frame_footer_filler_55: int = 0
     frame_footer_filler_ff: int = 0
@@ -363,6 +400,7 @@ class CsieImageStats:
     checksum_valid_rows: int = 0
     checksum_failed_rows: int = 0
     checksum_missing_rows: int = 0
+    boundary_fill_repaired_rows: int = 0
     skipped_rows: int = 0
     duplicate_rows: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -1042,26 +1080,18 @@ def validate_transfer_frame_checksum_footer(
     primary header plus the two-byte padding word) together with the 2040-byte packet
     zone.  ``protected_prefix`` carries those eight bytes while ``data_field`` carries
     the packet zone plus footer.  Older captures may have no frame checksum at all, so
-    this returns ``None`` unless the final word matches a supported Fletcher32 view.
+    this returns ``None`` unless the final word matches the flight Fletcher32 format.
 
-    The current Bluefin convention uses big-endian 16-bit words and stores the result
-    big-endian.  The legacy little-endian-word calculation and both stored byte orders
-    remain accepted for compatibility with earlier test captures.
+    Bluefin uses big-endian 16-bit words and stores the result big-endian.
     """
     if len(data_field) < TRANSFER_FRAME_TRAILER_LEN:
         return None
     trailer = data_field[-TRANSFER_FRAME_TRAILER_LEN:]
     protected = protected_prefix + data_field[:-TRANSFER_FRAME_TRAILER_LEN]
     stored_be = int.from_bytes(trailer, "big")
-    stored_le = int.from_bytes(trailer, "little")
-    for calculated in (
-        fletcher32_words_be(protected),
-        fletcher32(protected),
-    ):
-        if calculated == stored_be:
-            return "fletcher32_be"
-        if calculated == stored_le:
-            return "fletcher32_le"
+    calculated = fletcher32_words_be(protected)
+    if calculated == stored_be:
+        return "fletcher32_be"
     return None
 
 
@@ -1089,8 +1119,6 @@ def classify_transfer_frame_trailer(
 def _count_trailer(stats: TransferFrameStripStats, trailer_kind: str | None) -> None:
     if trailer_kind == "fletcher32_be":
         stats.frame_footer_fletcher32_be += 1
-    elif trailer_kind == "fletcher32_le":
-        stats.frame_footer_fletcher32_le += 1
     elif trailer_kind == "filler_00":
         stats.frame_footer_filler_00 += 1
     elif trailer_kind == "filler_55":
@@ -1103,7 +1131,27 @@ def _count_trailer(stats: TransferFrameStripStats, trailer_kind: str | None) -> 
 
 def _is_idle_payload(payload: bytes) -> bool:
     """Return True for frames whose remaining payload is only the X-band idle pattern."""
-    return bool(payload) and all(byte == 0x55 for byte in payload)
+    return bool(payload) and payload.count(0x55) == len(payload)
+
+
+def _has_fixed_transfer_frame_checksum_footer_layout(data: bytes) -> bool:
+    """Identify a fixed-checksum-footer capture from two independent valid frames."""
+    valid_footers = 0
+    for offset in range(0, len(data), TRANSFER_FRAME_SIZE):
+        frame = data[offset : offset + TRANSFER_FRAME_SIZE]
+        if len(frame) != TRANSFER_FRAME_SIZE or not frame.startswith(SYNC_MARKER):
+            continue
+        if validate_transfer_frame_checksum_footer(
+            frame[TRANSFER_FRAME_DATA_START:],
+            protected_prefix=frame[
+                TRANSFER_FRAME_SYNC_LEN:TRANSFER_FRAME_DATA_START
+            ],
+        ) is None:
+            continue
+        valid_footers += 1
+        if valid_footers >= 2:
+            return True
+    return False
 
 
 def _strip_out_of_phase_xband_artifacts(
@@ -1200,24 +1248,7 @@ def strip_xband_frame_records(
     """
     stats = TransferFrameStripStats(mode="frame_records")
     out = bytearray()
-    fixed_checksum_footer_layout = (
-        sum(
-            validate_transfer_frame_checksum_footer(
-                frame[TRANSFER_FRAME_DATA_START:],
-                protected_prefix=frame[
-                    TRANSFER_FRAME_SYNC_LEN:TRANSFER_FRAME_DATA_START
-                ],
-            )
-            is not None
-            for offset in range(0, len(data), TRANSFER_FRAME_SIZE)
-            if (
-                len(frame := data[offset : offset + TRANSFER_FRAME_SIZE])
-                == TRANSFER_FRAME_SIZE
-                and frame.startswith(SYNC_MARKER)
-            )
-        )
-        >= 2
-    )
+    fixed_checksum_footer_layout = _has_fixed_transfer_frame_checksum_footer_layout(data)
     for offset in range(0, len(data), TRANSFER_FRAME_SIZE):
         frame = data[offset : offset + TRANSFER_FRAME_SIZE]
         stats.boundary_records_seen += 1
@@ -1383,40 +1414,50 @@ def ccsds_packet_at(
     return apid, packet_len
 
 
-def fletcher32(data: bytes) -> int:
-    """Fletcher-32 variant used by the existing Level 0.5 code for non-CSIE_DATA packets."""
+def _fletcher32_numpy(data: bytes, *, word_dtype: str) -> int:
+    """Calculate Fletcher-32 exactly while doing the repeated word sums in NumPy."""
     if len(data) % 2:
         data += b"\x00"
-    sum1 = 0xFFFF
-    sum2 = 0xFFFF
-    for i in range(0, len(data), 2):
-        word = data[i] | (data[i + 1] << 8)
-        sum1 = (sum1 + word) % 0xFFFF
-        sum2 = (sum2 + sum1) % 0xFFFF
+    if not data:
+        return 0xFFFFFFFF
+
+    words = np.frombuffer(data, dtype=word_dtype)
+    sum1 = FLETCHER32_MODULUS
+    sum2 = FLETCHER32_MODULUS
+    for start in range(0, len(words), FLETCHER32_VECTOR_WORDS):
+        chunk = words[start : start + FLETCHER32_VECTOR_WORDS]
+        count = len(chunk)
+        chunk_sum = int(chunk.sum(dtype=np.uint64))
+        weighted_sum = int(
+            np.dot(chunk, FLETCHER32_DESCENDING_WEIGHTS[-count:])
+        )
+        # Across one chunk, each input word contributes to every subsequent
+        # sum2: count times for the first word down to once for the last.
+        sum2 = (
+            sum2 + count * sum1 + weighted_sum
+        ) % FLETCHER32_MODULUS
+        sum1 = (sum1 + chunk_sum) % FLETCHER32_MODULUS
     return (sum2 << 16) | sum1
+
+
+def fletcher32(data: bytes) -> int:
+    """Fletcher-32 over little-endian words for non-CSIE_DATA packets."""
+    return _fletcher32_numpy(data, word_dtype="<u2")
 
 
 def fletcher32_words_be(data: bytes) -> int:
-    """Fletcher-32 with big-endian 16-bit words, kept as a diagnostic fallback."""
-    if len(data) % 2:
-        data += b"\x00"
-    sum1 = 0xFFFF
-    sum2 = 0xFFFF
-    for i in range(0, len(data), 2):
-        word = (data[i] << 8) | data[i + 1]
-        sum1 = (sum1 + word) % 0xFFFF
-        sum2 = (sum2 + sum1) % 0xFFFF
-    return (sum2 << 16) | sum1
+    """Fletcher-32 with big-endian 16-bit words."""
+    return _fletcher32_numpy(data, word_dtype=">u2")
 
 
 def csie_data_additive_checksum(row_payload: bytes) -> int:
     """APID 536 checksum: big-endian additive U32 sum over row payload words only."""
     if len(row_payload) % 4:
         row_payload += b"\x00" * (4 - (len(row_payload) % 4))
-    total = 0
-    for i in range(0, len(row_payload), 4):
-        total = (total + int.from_bytes(row_payload[i : i + 4], "big")) & 0xFFFFFFFF
-    return total
+    if not row_payload:
+        return 0
+    words = np.frombuffer(row_payload, dtype=">u4")
+    return int(words.sum(dtype=np.uint64)) & 0xFFFFFFFF
 
 
 def validate_packet_checksum(packet: bytes, apid: int) -> str | None:
@@ -1565,12 +1606,13 @@ def _record_incomplete_packet(stats: PacketizeStats, apid: int) -> None:
 
 def reverse_32bit_words(data: bytes) -> bytes:
     """Reverse byte order within each complete 32-bit VCDU word."""
-    out = bytearray()
     limit = len(data) - (len(data) % 4)
-    for i in range(0, limit, 4):
-        out.extend(data[i : i + 4][::-1])
-    out.extend(data[limit:])
-    return bytes(out)
+    words = array("I")
+    words.frombytes(data[:limit])
+    words.byteswap()
+    if limit == len(data):
+        return words.tobytes()
+    return words.tobytes() + data[limit:]
 
 
 def playback_wrapper_packet_at(data: bytes, offset: int) -> tuple[int, int] | None:
@@ -2059,7 +2101,6 @@ def print_fix_summary(stats: FixStats) -> None:
     print(f"  X-band header bytes removed:           {tf.xband_header_bytes_removed:,}")
     if tf.boundary_records_seen:
         print(f"  frame Fletcher32 BE trailers stripped: {tf.frame_footer_fletcher32_be:,}")
-        print(f"  frame Fletcher32 LE trailers stripped: {tf.frame_footer_fletcher32_le:,}")
         print(f"  frame 0x55555555 trailers stripped:    {tf.frame_footer_filler_55:,}")
         print(f"  frame checksum failures stripped:      {tf.frame_footer_checksum_failures:,}")
         print(f"  frame trailers kept as payload:        {tf.frame_footer_unknown_kept:,}")
@@ -2251,7 +2292,19 @@ def _restore_modules(saved: dict[str, object], missing_sentinel: object) -> None
 def import_bus_decoder_bundle(config: Config) -> DecoderBundle:
     """Import CTDB-generated bus and DSPS packet decoders without editing CTDB files."""
     decoder_path = Path(config.packet_definitions_path).expanduser()
-    dsps_dir = decoder_path / "dsps_decoders"
+    # Current CTDBs put DSPS codegen beside the bus CTDB, while older ones
+    # nested it inside the bus decoders directory. Use the generated packet
+    # class only when gen_pkts.py is present, and retain the old layout.
+    dsps_candidates = (
+        Path(config.ctdb_base).expanduser()
+        / f"suncet_dsps_v{config.version_bus.replace('.', '-')}"
+        / "decoders",
+        decoder_path / "dsps_decoders",
+    )
+    dsps_dir = next(
+        (path for path in dsps_candidates if (path / "gen_pkts.py").is_file()),
+        None,
+    )
     warnings: list[str] = []
     if not decoder_path.is_dir():
         raise FileNotFoundError(f"Bus decoder folder does not exist: {decoder_path}")
@@ -2263,13 +2316,18 @@ def import_bus_decoder_bundle(config: Config) -> DecoderBundle:
     }
     saved_path = list(sys.path)
     try:
-        # Load DSPS codegen first with its own gen_eus/gen_states bound in module globals.
+        # Load DSPS codegen first with its available helpers bound in module globals.
         dsps_decoders = None
-        if dsps_dir.is_dir():
+        if dsps_dir is not None:
             sys.path.insert(0, str(dsps_dir))
+            sys.path.insert(1, str(decoder_path))
             dsps_modules = []
             for module_name in ("gen_eus", "gen_states", "gen_pkts"):
                 path = dsps_dir / f"{module_name}.py"
+                if not path.is_file():
+                    # The split DSPS CTDB may contain gen_pkts.py alone. Its
+                    # generated class still imports these shared bus modules.
+                    path = decoder_path / f"{module_name}.py"
                 if path.is_file():
                     with contextlib.redirect_stdout(io.StringIO()):
                         dsps_modules.append(_load_module_from_path(module_name, path))
@@ -2279,7 +2337,10 @@ def import_bus_decoder_bundle(config: Config) -> DecoderBundle:
                     if not attr.startswith("_"):
                         setattr(dsps_decoders, attr, value)
         else:
-            warnings.append(f"DSPS decoder folder not found: {dsps_dir}")
+            warnings.append(
+                "DSPS generated decoder not found in either CTDB layout: "
+                + ", ".join(str(path) for path in dsps_candidates)
+            )
 
         # Then load bus codegen with bus gen_eus/gen_states bound in module globals.
         _restore_modules(saved_modules, missing_sentinel)
@@ -2418,8 +2479,8 @@ def _select_generated_decoder(
         if packet_class is not None:
             return packet_class, "generated_dsps"
         # FIXME(FSW/CTDB): APID 35 is temporarily named dsps_data here because
-        # that is the generated constant/state-map name, but v2.0.1 codegen
-        # currently exposes the packet class as DSPS_PASS.
+        # that is the generated constant/state-map name, but the separate DSPS
+        # codegen currently exposes the packet class as DSPS_PASS.
         if packet_name == TEMP_DSPS_DATA_PACKET_NAME:
             packet_class = getattr(bundle.dsps_decoders, "DSPS_PASS", None)
             if packet_class is not None:
@@ -2480,8 +2541,19 @@ def _csv_safe_value(value):
 
 
 def _decoder_object_fields(packet_object: object) -> dict[str, object]:
+    """Return generated decoder fields in their CTDB/codegen order.
+
+    Generated packet classes assign their decoded fields in wire/CTDB order, so
+    ``vars`` is both more faithful and substantially cheaper than alphabetizing
+    every object through ``dir``.  The fallback retains support for unusual
+    decoder objects without an instance dictionary.
+    """
     fields: dict[str, object] = {}
-    for attr_name in dir(packet_object):
+    try:
+        attribute_names = list(vars(packet_object))
+    except TypeError:
+        attribute_names = dir(packet_object)
+    for attr_name in attribute_names:
         if attr_name.startswith("_"):
             continue
         try:
@@ -2492,6 +2564,151 @@ def _decoder_object_fields(packet_object: object) -> dict[str, object]:
             continue
         fields[attr_name] = _csv_safe_value(value)
     return fields
+
+
+@lru_cache(maxsize=2048)
+def _level0_5_field_section(name: str) -> int:
+    """Return a stable presentation section without changing dictionary nesting."""
+    normalized = name.casefold()
+    tokens = set(filter(None, re.split(r"[^a-z0-9]+", normalized)))
+    if (
+        normalized in {
+            "apid",
+            "image_id",
+            "image_counter",
+            "csie_meta_capture_id",
+            "csie_meta_meta_src",
+            "packet_index",
+            "sequence_count",
+            "src_seq_ctr",
+        }
+        or "id" in tokens
+    ):
+        return 0
+    if any(part in normalized for part in ("time", "timestamp", "shcoarse", "shfine")):
+        return 1
+    if any(
+        part in normalized
+        for part in (
+            "integration",
+            "intg",
+            "exposure",
+            "stack",
+            "dfsu",
+            "row",
+            "col",
+            "pixel",
+            "_pix",
+            "bin_",
+        )
+    ):
+        return 2
+    if any(
+        part in normalized
+        for part in (
+            "proc",
+            "encoding",
+            "threshold",
+            "test_mode",
+            "dark_negate",
+            "stim_lamp",
+        )
+    ):
+        return 3
+    if (
+        "volt" in normalized
+        or "curr" in normalized
+        or re.search(r"(?:^|_)\d[vi]\d(?:_|$)", normalized)
+    ):
+        return 4
+    if "temp" in normalized or "therm" in normalized:
+        return 5
+    if "checksum" in normalized or "fletcher" in normalized:
+        return 7
+    return 6
+
+
+@lru_cache(maxsize=256)
+def _level0_5_packet_field_plan(
+    source_names: tuple[str, ...],
+    apid: int | None,
+) -> tuple[tuple[str, str], ...]:
+    """Cache the stable projection shared by every packet of one schema."""
+    presented: list[tuple[int, str, str]] = []
+    for source_index, source_name in enumerate(source_names):
+        if source_name.startswith("_"):
+            continue
+        output_name = source_name
+        if "reusable_spare" in source_name.casefold():
+            if (
+                source_name == "REUSABLE_SPARE_32"
+                and apid in ADC_THERMISTOR_SPARE_RENAMES
+            ):
+                output_name = ADC_THERMISTOR_SPARE_RENAMES[apid]
+            else:
+                continue
+        presented.append((source_index, source_name, output_name))
+    presented.sort(
+        key=lambda item: (_level0_5_field_section(item[2]), item[0])
+    )
+    return tuple(
+        (source_name, output_name)
+        for _source_index, source_name, output_name in presented
+    )
+
+
+def _level0_5_output_fields(
+    fields: dict[str, object],
+    *,
+    apid: int | None = None,
+    canonicalize_csie_product: bool = False,
+    engineering_units_applied: bool = False,
+) -> dict[str, object]:
+    """Filter, rename, and logically order decoded Level 0.5 output fields.
+
+    This is deliberately a presentation step: internal image processing keeps
+    the original CTDB names.  The stable sort groups identifiers, time, image
+    geometry, processing configuration, power, and temperatures while retaining
+    source order within each group.
+    """
+    if not canonicalize_csie_product:
+        plan = _level0_5_packet_field_plan(tuple(fields), apid)
+        return {
+            output_name: fields[source_name]
+            for source_name, output_name in plan
+        }
+
+    presented: list[tuple[int, str, object]] = []
+    for source_index, (source_name, value) in enumerate(fields.items()):
+        if source_name.startswith("_"):
+            continue
+        output_name = source_name
+        if "reusable_spare" in source_name.casefold():
+            if (
+                source_name == "REUSABLE_SPARE_32"
+                and apid in ADC_THERMISTOR_SPARE_RENAMES
+            ):
+                output_name = ADC_THERMISTOR_SPARE_RENAMES[apid]
+            else:
+                continue
+        elif canonicalize_csie_product and apid == CSIE_META_APID:
+            canonical_name = CSIE_LEVEL0_5_FIELD_RENAMES.get(source_name)
+            if canonical_name == "image_counter":
+                output_name = canonical_name
+            elif (
+                canonical_name is not None
+                and engineering_units_applied
+                and isinstance(value, float)
+            ):
+                # Generic CTDB fallback values are raw DN.  Never relabel those
+                # values with product names whose spreadsheet units are Celsius.
+                output_name = canonical_name
+        presented.append((source_index, output_name, value))
+
+    presented.sort(
+        key=lambda item: (_level0_5_field_section(item[1]), item[0])
+    )
+    return {name: value for _source_index, name, value in presented}
 
 
 def _safe_csv_stem(name: str) -> str:
@@ -2602,6 +2819,19 @@ def decode_packet_records_to_csv(
         packet_class, decoder_kind = _select_generated_decoder(packet_name, bundle)
         if packet_class is not None:
             try:
+                provisional_dsps_data = (
+                    decoder_kind == "generated_dsps_temp_dsps_data_alias"
+                )
+                if provisional_dsps_data and not (
+                    record.apid == TEMP_DSPS_DATA_APID
+                    and len(record.packet) == TEMP_DSPS_DATA_PACKET_BYTES
+                    and header_meta["ccsds_total_length_from_header"]
+                    == TEMP_DSPS_DATA_PACKET_BYTES
+                ):
+                    raise ValueError(
+                        "Temporary DSPS_PASS prefix decoder requires a structurally "
+                        "complete 124-byte APID 35 packet"
+                    )
                 decoder_output = io.StringIO()
                 with contextlib.redirect_stdout(decoder_output):
                     packet_object = packet_class(
@@ -2610,7 +2840,44 @@ def decode_packet_records_to_csv(
                         "packets_valid.bin",
                     )
                 decoder_stdout = decoder_output.getvalue().strip().replace("\n", " | ")
-                row.update(_decoder_object_fields(packet_object))
+                row.update(
+                    _level0_5_output_fields(
+                        _decoder_object_fields(packet_object),
+                        apid=record.apid,
+                    )
+                )
+                if provisional_dsps_data:
+                    # Current APID 35 packets are 124 bytes, but the available
+                    # DSPS_PASS class describes only 122 bytes. Its fields
+                    # through body[110:112] are read from the packet prefix; its
+                    # "checksum" would consume the first two unknown tail
+                    # bytes and half of the real four-byte trailer. Preserve
+                    # both tail fields raw and never report that false value.
+                    row.pop("dsps_pass_checksum", None)
+                    unknown_tail = record.packet[-6:-4]
+                    unknown_tail_nonzero = unknown_tail != b"\x00\x00"
+                    row["dsps_data_schema_status"] = (
+                        "provisional_dsps_pass_prefix_112_bytes_"
+                        + (
+                            "unknown_tail_nonzero"
+                            if unknown_tail_nonzero
+                            else "unknown_tail_zero"
+                        )
+                    )
+                    row["dsps_data_unknown_tail_2bytes_hex"] = unknown_tail.hex()
+                    row["dsps_data_unknown_tail_nonzero"] = unknown_tail_nonzero
+                    row["dsps_data_trailer_4bytes_hex"] = record.packet[-4:].hex()
+                    row["dsps_data_trailer_validated"] = False
+                    generated_eus = packet_class.__init__.__globals__.get("gen_eus")
+                    row["dsps_data_eu_conversion_status"] = (
+                        "generated_dsps_conversions_available"
+                        if generated_eus is not None
+                        and any(
+                            name.startswith("CONVERT_dsps_")
+                            for name in vars(generated_eus)
+                        )
+                        else "raw_values_no_generated_dsps_conversions"
+                    )
                 stats.generated_decoder_packets += 1
                 stats.generated_per_apid[record.apid] += 1
             except Exception as exc:
@@ -2620,7 +2887,12 @@ def decode_packet_records_to_csv(
             field_rows = field_definitions.get(record.apid)
             if field_rows:
                 try:
-                    row.update(generic_ctdb_decode_packet(record.packet, field_rows))
+                    row.update(
+                        _level0_5_output_fields(
+                            generic_ctdb_decode_packet(record.packet, field_rows),
+                            apid=record.apid,
+                        )
+                    )
                     decoder_kind = "generic_ctdb_csv"
                     stats.generic_ctdb_packets += 1
                     stats.generic_per_apid[record.apid] += 1
@@ -2830,7 +3102,19 @@ def parse_csie_icm_proc_config(config_value: int) -> tuple[bool, int | None, int
 def decode_csie_meta_packet(
     packet: bytes,
     field_definitions: dict[int, list[dict[str, str]]],
+    generated_decoder: object | None = None,
 ) -> dict[str, object]:
+    """Decode APID 538 with generated EU conversions, or raw CTDB rows as fallback."""
+    if generated_decoder is not None:
+        decoder_output = io.StringIO()
+        with contextlib.redirect_stdout(decoder_output):
+            packet_object = generated_decoder(
+                packet[6:],
+                bytearray(packet[:6]),
+                "csie_image_products",
+            )
+        return _decoder_object_fields(packet_object)
+
     rows = field_definitions.get(CSIE_META_APID)
     if not rows:
         raise RuntimeError("No CTDB field rows available for APID 538 csie_meta")
@@ -3073,7 +3357,15 @@ def csie_meta_processing_mode(meta: dict[str, object]) -> tuple[bool, int | None
         )
         return compression_enabled, bit_depth, warnings
 
-    encoding = _first_int(meta, "icm_proc_cfg_encoding_meta")
+    encoding_value = meta.get("icm_proc_cfg_encoding_meta")
+    encoding = _to_int_or_none(encoding_value)
+    if encoding is None and isinstance(encoding_value, str):
+        encoding = {
+            "SIXTEEN_BIT": 0,
+            "EIGHT_BIT": 1,
+            "TWELVE_BIT": 2,
+            "JPEG_LS": 3,
+        }.get(encoding_value.strip().upper())
     if encoding is None:
         warnings.append(
             "metadata is missing ICM encoding fields; assuming uncompressed 16-bit rows"
@@ -3108,6 +3400,8 @@ def parse_csie_data_row_packet(record: PacketRecord) -> tuple[dict[str, object],
     row: dict[str, object] = {
         "packet_index": record.packet_index,
         "source_offset": record.source_offset,
+        "acceptance_mode": record.acceptance_mode,
+        "sequence_flags": header["sequence_flags"],
         "sequence_count": header["sequence_count"],
         "packet_len": len(packet),
         "ccsds_total_length_from_header": total_len,
@@ -3280,6 +3574,7 @@ def _write_csie_fits(
     image_id: int,
     meta: dict[str, object],
     inventory_row: dict[str, object],
+    engineering_units_applied: bool = False,
 ) -> None:
     from astropy.io import fits
     import numpy as np
@@ -3304,6 +3599,9 @@ def _write_csie_fits(
     header["CHKZERO"] = int(
         inventory_row.get("zero_filled_checksum_failed_rows", 0) or 0
     )
+    header["FILLRPR"] = int(
+        inventory_row.get("boundary_fill_repaired_rows", 0) or 0
+    )
     header["OUTRANGE"] = int(inventory_row.get("out_of_range_rows", 0) or 0)
 
     derived_fits_names = {
@@ -3327,19 +3625,28 @@ def _write_csie_fits(
             header[fits_name] = meta[internal_name]
 
     used_keys = set(header)
-    for attr_name, value in sorted(meta.items()):
-        if attr_name.startswith("_") or callable(value):
+    output_meta = _level0_5_output_fields(
+        meta,
+        apid=CSIE_META_APID,
+        canonicalize_csie_product=True,
+        engineering_units_applied=engineering_units_applied,
+    )
+    for attr_name, value in output_meta.items():
+        if callable(value):
             continue
         if attr_name in derived_fits_names:
             continue
         if not isinstance(value, (str, int, float, bool)):
             continue
+        explicit_fits_name = CSIE_LEVEL0_5_FITS_NAMES.get(attr_name)
         name = attr_name
         if name.startswith("csie_"):
             name = name[5:]
         if name.startswith("meta_"):
             name = name[5:]
-        base_key = re.sub(r"[^A-Za-z0-9]", "", name).upper()[:8] or "CSIE"
+        base_key = explicit_fits_name or (
+            re.sub(r"[^A-Za-z0-9]", "", name).upper()[:8] or "CSIE"
+        )
         fits_key = base_key
         if fits_key in used_keys:
             for suffix in range(1, 10):
@@ -3358,19 +3665,27 @@ def _write_csie_fits(
     hdu.writeto(path, overwrite=True)
 
 
-def _write_csie_jpeg2000(path: Path, image) -> None:
+def _write_csie_jpeg2000(path: Path, image, *, preview_rgb=None) -> None:
     from PIL import Image
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    rgb = _csie_preview_rgb_uint8(image)
+    rgb = (
+        _csie_preview_rgb_uint8(image)
+        if preview_rgb is None
+        else preview_rgb
+    )
     Image.fromarray(rgb, mode="RGB").save(path, format="JPEG2000")
 
 
-def _write_csie_png(path: Path, image) -> None:
+def _write_csie_png(path: Path, image, *, preview_rgb=None) -> None:
     from PIL import Image
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    rgb = _csie_preview_rgb_uint8(image)
+    rgb = (
+        _csie_preview_rgb_uint8(image)
+        if preview_rgb is None
+        else preview_rgb
+    )
     Image.fromarray(rgb, mode="RGB").save(path, format="PNG")
 
 
@@ -3379,26 +3694,26 @@ def _write_csie_meta_json(
     image_id: int,
     meta: dict[str, object],
     metadata_packets: list[dict[str, object]],
+    *,
+    engineering_units_applied: bool = False,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    product_meta = _level0_5_output_fields(
+        meta,
+        apid=CSIE_META_APID,
+        canonicalize_csie_product=True,
+        engineering_units_applied=engineering_units_applied,
+    )
     payload = {
         "image_id": image_id,
-        **{
-            key: _csv_safe_value(value)
-            for key, value in meta.items()
-            if not key.startswith("_")
-        },
+        **product_meta,
         "metadata_packets": [
-            {
-                key: _csv_safe_value(value)
-                for key, value in packet.items()
-                if not key.startswith("_")
-            }
+            _level0_5_output_fields(packet, apid=CSIE_META_APID)
             for packet in metadata_packets
         ],
     }
     with path.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, sort_keys=True, default=str)
+        json.dump(payload, f, indent=2, default=str)
         f.write("\n")
 
 
@@ -3485,13 +3800,18 @@ def _scan_csie_meta_records_in_stream(
 def _metadata_expectations_from_records(
     records: list[PacketRecord],
     field_definitions: dict[int, list[dict[str, str]]],
+    generated_meta_decoder: object | None = None,
 ) -> tuple[set[int], dict[int, int], list[str]]:
     image_ids: set[int] = set()
     expected_cols_by_image: dict[int, int] = {}
     warnings: list[str] = []
     for record in records:
         try:
-            meta = decode_csie_meta_packet(record.packet, field_definitions)
+            meta = decode_csie_meta_packet(
+                record.packet,
+                field_definitions,
+                generated_meta_decoder,
+            )
         except Exception as exc:
             warnings.append(
                 f"APID 538 source_offset={record.source_offset} could not be decoded "
@@ -3523,6 +3843,7 @@ def _metadata_expectations_from_records(
 def _filter_plausible_csie_meta_records(
     records: list[PacketRecord],
     field_definitions: dict[int, list[dict[str, str]]],
+    generated_meta_decoder: object | None = None,
 ) -> tuple[list[PacketRecord], list[str]]:
     """Reject APID-shaped payload coincidences with impossible detector dimensions."""
     accepted: list[PacketRecord] = []
@@ -3531,7 +3852,11 @@ def _filter_plausible_csie_meta_records(
     rejected_decode = 0
     for record in records:
         try:
-            meta = decode_csie_meta_packet(record.packet, field_definitions)
+            meta = decode_csie_meta_packet(
+                record.packet,
+                field_definitions,
+                generated_meta_decoder,
+            )
         except Exception:
             rejected_decode += 1
             continue
@@ -3561,6 +3886,152 @@ def _filter_plausible_csie_meta_records(
     return accepted, warnings
 
 
+def _repair_failed_csie_boundary_fill_candidate(
+    stream: bytes,
+    *,
+    offset: int,
+    packet_len: int,
+) -> tuple[bytes, int, int] | None:
+    """Repair one checksum-failed standard CSIE row split by boundary fill.
+
+    The physical interval through the next checksum-valid row of the same image and
+    consecutive sequence must be longer than the declared packet by a positive,
+    word-aligned amount no greater than one kept X-band packet zone.  Exactly that
+    many contiguous ``0x55`` bytes may be deleted, and only when the deletion touches
+    a kept-zone boundary.  A repair is returned only when exactly one such deletion
+    reconstructs the original standard CCSDS header/declared length and validates the
+    APID 536 additive checksum.
+    """
+    raw_packet = stream[offset : offset + packet_len]
+    if len(raw_packet) != packet_len:
+        return None
+
+    header = _packet_header_metadata(raw_packet)
+    if (
+        header["ccsds_version"] != 0
+        or header["ccsds_type"] != 0
+        or header["ccsds_secondary_header_flag"] != 1
+        or header["apid"] != CSIE_DATA_APID
+        or header["ccsds_total_length_from_header"] != packet_len
+        or validate_packet_checksum(raw_packet, CSIE_DATA_APID) is not None
+    ):
+        return None
+
+    image_id = int.from_bytes(raw_packet[6:10], "big")
+    row_index = int(header["sequence_count"])
+    if row_index >= 0x3FFF:
+        return None
+
+    # Anchor the physical interval to the first later standard header claiming to be
+    # the consecutive row for this image. Requiring that anchor to have the same
+    # declared length and its own valid checksum avoids using packet-like pixel bytes.
+    next_offset = stream.find(b"\x0a\x18", offset + packet_len)
+    while next_offset >= 0:
+        if next_offset + 12 > len(stream):
+            return None
+        next_header = _packet_header_metadata(stream[next_offset : next_offset + 6])
+        next_image_id = int.from_bytes(stream[next_offset + 6 : next_offset + 10], "big")
+        if (
+            next_header["ccsds_version"] == 0
+            and next_header["ccsds_type"] == 0
+            and next_header["ccsds_secondary_header_flag"] == 1
+            and next_header["apid"] == CSIE_DATA_APID
+            and next_image_id == image_id
+            and next_header["sequence_count"] == row_index + 1
+        ):
+            next_packet_len = int(next_header["ccsds_total_length_from_header"])
+            if next_packet_len != packet_len or next_offset + next_packet_len > len(stream):
+                return None
+            next_packet = stream[next_offset : next_offset + next_packet_len]
+            if validate_packet_checksum(next_packet, CSIE_DATA_APID) is None:
+                return None
+            break
+        next_offset = stream.find(b"\x0a\x18", next_offset + 1)
+    if next_offset < 0:
+        return None
+
+    physical_interval = stream[offset:next_offset]
+    extra_len = len(physical_interval) - packet_len
+    if (
+        extra_len <= 0
+        or extra_len > CSIE_KEPT_FRAME_PACKET_ZONE_LEN
+        or extra_len % 4
+    ):
+        return None
+
+    candidate_starts: set[int] = set()
+    boundary = (
+        (offset + CSIE_KEPT_FRAME_PACKET_ZONE_LEN - 1)
+        // CSIE_KEPT_FRAME_PACKET_ZONE_LEN
+        * CSIE_KEPT_FRAME_PACKET_ZONE_LEN
+    )
+    while boundary <= next_offset:
+        candidate_starts.add(boundary - extra_len)
+        candidate_starts.add(boundary)
+        boundary += CSIE_KEPT_FRAME_PACKET_ZONE_LEN
+
+    valid_repairs: list[tuple[bytes, int]] = []
+    filler = b"\x55" * extra_len
+    for fill_start in sorted(candidate_starts):
+        fill_end = fill_start + extra_len
+        if fill_start < offset + 6 + CSIE_SECONDARY_HEADER_LEN or fill_end > next_offset:
+            continue
+        if stream[fill_start:fill_end] != filler:
+            continue
+        relative_start = fill_start - offset
+        repaired_packet = (
+            physical_interval[:relative_start]
+            + physical_interval[relative_start + extra_len :]
+        )
+        if len(repaired_packet) != packet_len or repaired_packet[:6] != raw_packet[:6]:
+            continue
+        if ccsds_packet_at(repaired_packet, 0, {CSIE_DATA_APID}) != (
+            CSIE_DATA_APID,
+            packet_len,
+        ):
+            continue
+        repaired_header = _packet_header_metadata(repaired_packet)
+        if (
+            repaired_header["sequence_count"] != row_index
+            or int.from_bytes(repaired_packet[6:10], "big") != image_id
+            or validate_packet_checksum(repaired_packet, CSIE_DATA_APID) is None
+        ):
+            continue
+        valid_repairs.append((repaired_packet, fill_start))
+
+    if len(valid_repairs) != 1:
+        return None
+    repaired_packet, fill_start = valid_repairs[0]
+    return repaired_packet, extra_len, fill_start
+
+
+def _apply_csie_boundary_fill_repair(
+    stream: bytes,
+    record: PacketRecord,
+) -> str | None:
+    """Apply a uniquely validated boundary-fill repair and return its warning."""
+    repaired = _repair_failed_csie_boundary_fill_candidate(
+        stream,
+        offset=record.source_offset,
+        packet_len=record.packet_len,
+    )
+    if repaired is None:
+        return None
+    repaired_packet, removed_bytes, fill_start = repaired
+    header = _packet_header_metadata(repaired_packet)
+    image_id = int.from_bytes(repaired_packet[6:10], "big")
+    record.packet = repaired_packet
+    record.packet_len = len(repaired_packet)
+    record.acceptance_mode = CSIE_BOUNDARY_FILL_REPAIR_ACCEPTANCE_MODE
+    record.checksum_validated = True
+    return (
+        "Repaired APID 536 full-stream packet after transfer-frame boundary fill: "
+        f"image_id={image_id} row_index={header['sequence_count']} "
+        f"removed_bytes={removed_bytes} fill_stream_offsets="
+        f"{fill_start}:{fill_start + removed_bytes}."
+    )
+
+
 def _scan_csie_data_records_in_stream(
     stream: bytes,
     *,
@@ -3571,8 +4042,7 @@ def _scan_csie_data_records_in_stream(
     records: list[PacketRecord] = []
     warnings: list[str] = []
     nonstandard_primary_flags = Counter()
-    if not known_image_ids:
-        return records, warnings
+    unknown_candidates: list[tuple[PacketRecord, int, int, int, bool]] = []
 
     for first_word in (0x0A18, 0x1218):
         pattern = first_word.to_bytes(2, "big")
@@ -3586,39 +4056,117 @@ def _scan_csie_data_records_in_stream(
                 packet_end = offset + packet_len
                 image_id = int.from_bytes(stream[offset + 6 : offset + 10], "big")
                 row_payload_len = packet_len - 6 - CSIE_SECONDARY_HEADER_LEN - CSIE_ROW_CHECKSUM_LEN
-                expected_cols = expected_cols_by_image.get(image_id)
                 header = _packet_header_metadata(stream[offset : offset + 6])
-                if (
+                structurally_plausible = (
                     packet_end <= len(stream)
                     and header["ccsds_version"] == 0
                     and header["apid"] == CSIE_DATA_APID
                     and packet_len >= 6 + CSIE_SECONDARY_HEADER_LEN + CSIE_ROW_CHECKSUM_LEN
-                    and image_id in known_image_ids
                     and row_payload_len > 0
                     and row_payload_len % 2 == 0
-                    and (expected_cols is None or row_payload_len == expected_cols * 2)
-                ):
-                    if (
-                        header["ccsds_type"] != 0
-                        or header["ccsds_secondary_header_flag"] != 1
-                    ):
-                        nonstandard_primary_flags[
-                            (
-                                header["ccsds_type"],
-                                header["ccsds_secondary_header_flag"],
-                                first_word,
-                            )
-                        ] += 1
-                    records.append(
-                        _make_csie_stream_record(
-                            packet_index=len(records),
-                            source_offset=offset,
-                            apid=CSIE_DATA_APID,
-                            packet=stream[offset:packet_end],
-                            source=source,
-                        )
+                )
+                if structurally_plausible:
+                    packet = stream[offset:packet_end]
+                    record = _make_csie_stream_record(
+                        packet_index=len(records),
+                        source_offset=offset,
+                        apid=CSIE_DATA_APID,
+                        packet=packet,
+                        source=source,
                     )
+                    expected_cols = expected_cols_by_image.get(image_id)
+                    known_image = image_id in known_image_ids
+                    known_length_matches = (
+                        expected_cols is None or row_payload_len == expected_cols * 2
+                    )
+                    row_index = int(header["sequence_count"])
+                    unknown_length_plausible = (
+                        row_payload_len <= CSIE_MAX_SENSOR_COLS * 2
+                    )
+                    if known_image and known_length_matches:
+                        # Do not repair from image ID alone when metadata decoding did
+                        # not establish the row geometry.
+                        if expected_cols is not None:
+                            repair_warning = _apply_csie_boundary_fill_repair(stream, record)
+                            if repair_warning is not None:
+                                warnings.append(repair_warning)
+                        records.append(record)
+                        if (
+                            header["ccsds_type"] != 0
+                            or header["ccsds_secondary_header_flag"] != 1
+                        ):
+                            nonstandard_primary_flags[
+                                (
+                                    header["ccsds_type"],
+                                    header["ccsds_secondary_header_flag"],
+                                    first_word,
+                                )
+                            ] += 1
+                    elif not known_image and unknown_length_plausible:
+                        checksum_valid = (
+                            validate_packet_checksum(packet, CSIE_DATA_APID) is not None
+                        )
+                        unknown_candidates.append(
+                            (
+                                record,
+                                image_id,
+                                row_payload_len,
+                                row_index,
+                                checksum_valid,
+                            )
+                        )
+                    else:
+                        offset += 1
+                        continue
             offset += 1
+
+    # Metadata can precede a recorded downlink. Discover such row streams only
+    # when at least two distinct row indices independently pass the APID 536
+    # additive checksum with the same image ID and row length. This checksum-gated
+    # evidence prevents incidental packet-like pixel bytes from creating products.
+    valid_unknown_rows: dict[tuple[int, int], set[int]] = {}
+    for _record, image_id, row_payload_len, row_index, checksum_valid in unknown_candidates:
+        if checksum_valid and 1 <= row_index <= CSIE_MAX_SENSOR_ROWS:
+            valid_unknown_rows.setdefault((image_id, row_payload_len), set()).add(row_index)
+    accepted_unknown_keys = {
+        key for key, row_indices in valid_unknown_rows.items() if len(row_indices) >= 2
+    }
+    discovered_ids = {image_id for image_id, _row_payload_len in accepted_unknown_keys}
+    for record, image_id, row_payload_len, row_index, checksum_valid in unknown_candidates:
+        belongs_to_discovered_stream = (image_id, row_payload_len) in accepted_unknown_keys
+        valid_out_of_range_evidence = (
+            image_id in discovered_ids
+            and checksum_valid
+            and not 1 <= row_index <= CSIE_MAX_SENSOR_ROWS
+        )
+        if not belongs_to_discovered_stream and not valid_out_of_range_evidence:
+            continue
+        # A repair must not supply one of the two independently checksum-valid rows
+        # used to discover a metadata-less stream. It is attempted only after the
+        # unchanged discovery gate above has accepted this image/row-width key.
+        if belongs_to_discovered_stream and not checksum_valid:
+            repair_warning = _apply_csie_boundary_fill_repair(stream, record)
+            if repair_warning is not None:
+                warnings.append(repair_warning)
+        records.append(record)
+        header = _packet_header_metadata(record.packet[:6])
+        if (
+            header["ccsds_type"] != 0
+            or header["ccsds_secondary_header_flag"] != 1
+        ):
+            nonstandard_primary_flags[
+                (
+                    header["ccsds_type"],
+                    header["ccsds_secondary_header_flag"],
+                    int.from_bytes(record.packet[:2], "big"),
+                )
+            ] += 1
+    if discovered_ids:
+        warnings.append(
+            "Recovered metadata-less APID 536 row stream(s) using repeated, "
+            "checksum-valid structural evidence for image ID(s): "
+            + ", ".join(str(image_id) for image_id in sorted(discovered_ids))
+        )
 
     if nonstandard_primary_flags:
         detail = ", ".join(
@@ -3635,10 +4183,78 @@ def _scan_csie_data_records_in_stream(
     return records, warnings
 
 
+def _csie_first_chunk_has_jpegls_header(
+    chunks: list[dict[str, object]],
+) -> bool:
+    """Return whether sequence one begins with a recognizable JPEG-LS header."""
+    jpegls_header = JPEG_LS_SOI + b"\xff\xf7"
+    for chunk in chunks:
+        if _to_int_or_none(chunk.get("sequence_count")) != 1:
+            continue
+        payload = chunk.get("payload")
+        if not isinstance(payload, bytes):
+            continue
+        for candidate in (
+            payload,
+            _reverse_16bit_words(payload),
+            reverse_32bit_words(payload),
+        ):
+            if candidate.startswith(jpegls_header):
+                return True
+    return False
+
+
+def infer_csie_uncompressed_dimensions_from_rows(
+    rows: dict[int, object],
+    row_lengths: Counter,
+    selected_quality: dict[int, object],
+    selected_sequence_flags: dict[int, int | None],
+    chunks: list[dict[str, object]],
+) -> tuple[int, int, int] | None:
+    """Infer only a near-complete, metadata-less, unbinned full-frame image.
+
+    APID 536 does not encode whether its payload is an image row or a JPEG-LS
+    chunk, and a smaller ROI can look exactly like a binned full-frame image.
+    Consequently this fallback deliberately refuses to infer binning or an ROI.
+    It also requires checksum-valid coverage, a valid terminal row/end flag, no
+    valid sequence outside the detector, and no JPEG-LS header in chunk one.
+    """
+    if not rows or set(int(length) for length in row_lengths) != {CSIE_MAX_SENSOR_COLS}:
+        return None
+
+    row_indices = {int(row_index) for row_index in rows}
+    valid_row_indices = {
+        row_index
+        for row_index in row_indices
+        if selected_quality.get(row_index) in ("valid_be", "valid_le")
+    }
+    if any(
+        row_index < 1 or row_index > CSIE_MAX_SENSOR_ROWS
+        for row_index in valid_row_indices
+    ):
+        return None
+    if (
+        len(valid_row_indices) / CSIE_MAX_SENSOR_ROWS
+        < CSIE_METADATALESS_MIN_ROW_COVERAGE
+    ):
+        return None
+    if CSIE_MAX_SENSOR_ROWS not in valid_row_indices:
+        return None
+    if (
+        selected_sequence_flags.get(CSIE_MAX_SENSOR_ROWS)
+        != CSIE_SEQUENCE_FLAG_END
+    ):
+        return None
+    if _csie_first_chunk_has_jpegls_header(chunks):
+        return None
+    return CSIE_MAX_SENSOR_ROWS, CSIE_MAX_SENSOR_COLS, 1
+
+
 def scan_csie_records_from_fixed_stream(
     fixed_payload_stream: bytes,
     field_definitions: dict[int, list[dict[str, str]]],
     expected_packet_bytes: dict[int, int],
+    generated_meta_decoder: object | None = None,
 ) -> tuple[list[PacketRecord], str, list[str]]:
     """
     Recover CSIE metadata/row packets from the full fixed payload stream.
@@ -3662,10 +4278,15 @@ def scan_csie_records_from_fixed_stream(
         meta_records, meta_filter_warnings = _filter_plausible_csie_meta_records(
             meta_records,
             field_definitions,
+            generated_meta_decoder,
         )
         warnings.extend(meta_filter_warnings)
         known_image_ids, expected_cols_by_image, expectation_warnings = (
-            _metadata_expectations_from_records(meta_records, field_definitions)
+            _metadata_expectations_from_records(
+                meta_records,
+                field_definitions,
+                generated_meta_decoder,
+            )
         )
         warnings.extend(expectation_warnings)
         data_records, data_warnings = _scan_csie_data_records_in_stream(
@@ -3736,6 +4357,18 @@ def write_csie_image_products(
     stats = CsieImageStats(output_dir=output_dir, inventory_path=inventory_path)
     field_definitions = read_ctdb_field_definitions_from_config(config)
     expected_packet_bytes = read_expected_packet_bytes_from_config(config)
+    decoder_bundle = import_bus_decoder_bundle(config)
+    generated_meta_decoder = (
+        getattr(decoder_bundle.csie_pkts, "CSIE_META", None)
+        if decoder_bundle.csie_pkts is not None
+        else None
+    )
+    if generated_meta_decoder is None:
+        stats.warnings.append(
+            "Configured generated CSIE_META decoder is unavailable; image metadata "
+            "will use raw CTDB CSV field decoding without engineering-unit conversions."
+        )
+    metadata_engineering_units_applied = generated_meta_decoder is not None
     if write_meta_json is None:
         write_meta_json = bool(getattr(config, "also_save_csie_meta_json", False))
 
@@ -3749,6 +4382,7 @@ def write_csie_image_products(
             fixed_payload_stream,
             field_definitions,
             expected_packet_bytes,
+            generated_meta_decoder,
         )
         stats.warnings.extend(stream_warnings)
 
@@ -3767,6 +4401,7 @@ def write_csie_image_products(
     metadata_counts: Counter = Counter()
     rows_by_image: dict[int, dict[int, object]] = {}
     row_quality_by_image: dict[int, dict[int, object]] = {}
+    row_sequence_flags_by_image: dict[int, dict[int, int | None]] = {}
     row_summaries_by_image: dict[int, list[dict[str, object]]] = {}
     row_lengths_by_image: dict[int, Counter] = {}
     compressed_chunks_by_image: dict[int, list[dict[str, object]]] = {}
@@ -3775,7 +4410,11 @@ def write_csie_image_products(
         if record.apid == CSIE_META_APID:
             stats.meta_packets += 1
             try:
-                meta = decode_csie_meta_packet(record.packet, field_definitions)
+                meta = decode_csie_meta_packet(
+                    record.packet,
+                    field_definitions,
+                    generated_meta_decoder,
+                )
             except Exception as exc:
                 stats.warnings.append(
                     f"APID 538 packet_index={record.packet_index} could not be decoded: "
@@ -3799,6 +4438,8 @@ def write_csie_image_products(
             continue
 
         stats.data_packets += 1
+        if record.acceptance_mode == CSIE_BOUNDARY_FILL_REPAIR_ACCEPTANCE_MODE:
+            stats.boundary_fill_repaired_rows += 1
         row_summary, pixels = parse_csie_data_row_packet(record)
         image_id = _to_int_or_none(row_summary.get("image_id"))
         if image_id is None:
@@ -3837,6 +4478,7 @@ def write_csie_image_products(
             continue
         image_rows = rows_by_image.setdefault(image_id, {})
         image_row_quality = row_quality_by_image.setdefault(image_id, {})
+        image_row_sequence_flags = row_sequence_flags_by_image.setdefault(image_id, {})
         if row_index in image_rows:
             stats.duplicate_rows += 1
             old_rank = _csie_row_quality_rank(image_row_quality.get(row_index))
@@ -3845,6 +4487,9 @@ def write_csie_image_products(
                 continue
         image_rows[row_index] = pixels
         image_row_quality[row_index] = row_summary.get("checksum_status")
+        image_row_sequence_flags[row_index] = _to_int_or_none(
+            row_summary.get("sequence_flags")
+        )
         row_lengths_by_image.setdefault(image_id, Counter())[int(len(pixels))] += 1
 
     all_image_ids = sorted(set(metadata_by_image) | set(rows_by_image) | set(row_summaries_by_image))
@@ -3862,15 +4507,65 @@ def write_csie_image_products(
         row_summaries = row_summaries_by_image.get(image_id, [])
         row_lengths = row_lengths_by_image.get(image_id, Counter())
         selected_quality = row_quality_by_image.get(image_id, {})
+        selected_sequence_flags = row_sequence_flags_by_image.get(image_id, {})
         compressed_chunks = compressed_chunks_by_image.get(image_id, [])
         warnings: list[str] = list(metadata_warnings)
+        boundary_fill_repaired_rows = sum(
+            1
+            for row in row_summaries
+            if row.get("acceptance_mode")
+            == CSIE_BOUNDARY_FILL_REPAIR_ACCEPTANCE_MODE
+        )
+        if boundary_fill_repaired_rows:
+            warnings.append(
+                f"{boundary_fill_repaired_rows} row packet(s) repaired by unique, "
+                "checksum-validated removal of transfer-frame boundary 0x55 fill"
+            )
+
+        row_length_min = min(row_lengths) if row_lengths else None
+        row_length_max = max(row_lengths) if row_lengths else None
+        row_length_mode = row_lengths.most_common(1)[0][0] if row_lengths else None
 
         expected_rows: int | None = None
         expected_cols: int | None = None
         compression_enabled = False
         bit_depth: int | None = None
         if meta is None:
-            warnings.append("metadata_missing; image dimensions unknown; products not written")
+            inferred_dimensions = infer_csie_uncompressed_dimensions_from_rows(
+                rows,
+                row_lengths,
+                selected_quality,
+                selected_sequence_flags,
+                compressed_chunks,
+            )
+            if inferred_dimensions is None:
+                warnings.append(
+                    "metadata_missing; image dimensions could not be inferred "
+                    "conservatively; products not written"
+                )
+            else:
+                expected_rows, expected_cols, inferred_binning = inferred_dimensions
+                bit_depth = 16
+                meta = {
+                    "csie_meta_img_id": image_id,
+                    "csie_metadata_packet_count": 0,
+                    "csie_capture_metadata_count": 0,
+                    "csie_process_metadata_count": 0,
+                    "metadata_inferred_from_rows": True,
+                    "inferred_expected_rows": expected_rows,
+                    "inferred_expected_cols": expected_cols,
+                    "inferred_binning_factor": inferred_binning,
+                    "compression_mode_inference": (
+                        "assumed_uncompressed_from_near_complete_row_sequence"
+                    ),
+                }
+                warnings.append(
+                    "metadata_missing; assuming uncompressed 16-bit dimensions "
+                    f"{expected_rows}x{expected_cols} from a checksum-gated, "
+                    f"near-complete row sequence reaching row {expected_rows}; "
+                    "APID 536 payloads alone cannot prove compression mode, and "
+                    "metadata-dependent timing and instrument settings are unavailable"
+                )
         else:
             compression_enabled, bit_depth, processing_warnings = csie_meta_processing_mode(meta)
             warnings.extend(processing_warnings)
@@ -3879,6 +4574,12 @@ def write_csie_image_products(
                 warnings.extend(dimension_warnings)
             except Exception as exc:
                 warnings.append(f"metadata_dimension_decode_failed: {type(exc).__name__}: {exc}")
+
+        if meta is not None and boundary_fill_repaired_rows:
+            meta = {
+                **meta,
+                "csie_boundary_fill_repaired_rows": boundary_fill_repaired_rows,
+            }
 
         unique_rows = len(rows)
         valid_row_indices = [
@@ -3892,9 +4593,6 @@ def write_csie_image_products(
         if out_of_range_rows:
             warnings.append(f"{out_of_range_rows} row index/indices outside metadata range")
 
-        row_length_min = min(row_lengths) if row_lengths else None
-        row_length_max = max(row_lengths) if row_lengths else None
-        row_length_mode = row_lengths.most_common(1)[0][0] if row_lengths else None
         bad_length_rows = 0
         if expected_cols is not None and not compression_enabled:
             bad_length_rows = sum(
@@ -4146,6 +4844,7 @@ def write_csie_image_products(
                     image,
                     image_id=image_id,
                     meta=meta,
+                    engineering_units_applied=metadata_engineering_units_applied,
                     inventory_row={
                         "unique_rows": len(selected_chunks),
                         "missing_rows": 0,
@@ -4159,25 +4858,41 @@ def write_csie_image_products(
                         "zero_filled_missing_rows": 0,
                         "zero_filled_checksum_failed_rows": 0,
                         "zero_filled_total_rows": 0,
+                        "boundary_fill_repaired_rows": boundary_fill_repaired_rows,
                         "out_of_range_rows": 0,
                     },
                 )
                 fits_path = str(fits_file)
                 stats.fits_written += 1
                 stats.output_paths.append(fits_file)
+                preview_rgb = (
+                    _csie_preview_rgb_uint8(image)
+                    if write_png or write_jpeg2000
+                    else None
+                )
                 if write_png:
-                    _write_csie_png(png_file, image)
+                    _write_csie_png(png_file, image, preview_rgb=preview_rgb)
                     png_path = str(png_file)
                     stats.png_written += 1
                     stats.output_paths.append(png_file)
                 if write_jpeg2000:
-                    _write_csie_jpeg2000(jp2_file, image)
+                    _write_csie_jpeg2000(
+                        jp2_file,
+                        image,
+                        preview_rgb=preview_rgb,
+                    )
                     jp2_path = str(jp2_file)
                     stats.jp2_written += 1
                     stats.output_paths.append(jp2_file)
             if write_meta_json:
                 meta_json_file = output_dir / f"image_{image_id}{suffix}_meta.json"
-                _write_csie_meta_json(meta_json_file, image_id, meta, meta_packets)
+                _write_csie_meta_json(
+                    meta_json_file,
+                    image_id,
+                    meta,
+                    meta_packets,
+                    engineering_units_applied=metadata_engineering_units_applied,
+                )
                 meta_json_path = str(meta_json_file)
                 stats.output_paths.append(meta_json_file)
 
@@ -4198,6 +4913,7 @@ def write_csie_image_products(
                 image,
                 image_id=image_id,
                 meta=meta,
+                engineering_units_applied=metadata_engineering_units_applied,
                 inventory_row={
                     "unique_rows": unique_rows,
                     "missing_rows": missing_rows or 0,
@@ -4211,6 +4927,7 @@ def write_csie_image_products(
                     "zero_filled_missing_rows": zero_filled_missing_rows or 0,
                     "zero_filled_checksum_failed_rows": zero_filled_checksum_failed_rows,
                     "zero_filled_total_rows": zero_filled_total_rows,
+                    "boundary_fill_repaired_rows": boundary_fill_repaired_rows,
                     "out_of_range_rows": out_of_range_rows,
                 },
             )
@@ -4219,16 +4936,31 @@ def write_csie_image_products(
             stats.output_paths.append(fits_file)
             if write_meta_json:
                 meta_json_file = output_dir / f"image_{image_id}{suffix}_meta.json"
-                _write_csie_meta_json(meta_json_file, image_id, meta, meta_packets)
+                _write_csie_meta_json(
+                    meta_json_file,
+                    image_id,
+                    meta,
+                    meta_packets,
+                    engineering_units_applied=metadata_engineering_units_applied,
+                )
                 meta_json_path = str(meta_json_file)
                 stats.output_paths.append(meta_json_file)
+            preview_rgb = (
+                _csie_preview_rgb_uint8(image)
+                if write_png or write_jpeg2000
+                else None
+            )
             if write_png:
-                _write_csie_png(png_file, image)
+                _write_csie_png(png_file, image, preview_rgb=preview_rgb)
                 png_path = str(png_file)
                 stats.png_written += 1
                 stats.output_paths.append(png_file)
             if write_jpeg2000:
-                _write_csie_jpeg2000(jp2_file, image)
+                _write_csie_jpeg2000(
+                    jp2_file,
+                    image,
+                    preview_rgb=preview_rgb,
+                )
                 jp2_path = str(jp2_file)
                 stats.jp2_written += 1
                 stats.output_paths.append(jp2_file)
@@ -4264,6 +4996,7 @@ def write_csie_image_products(
             "zero_filled_missing_rows": zero_filled_missing_rows or 0,
             "zero_filled_checksum_failed_rows": zero_filled_checksum_failed_rows,
             "zero_filled_total_rows": zero_filled_total_rows,
+            "boundary_fill_repaired_rows": boundary_fill_repaired_rows,
             "fits_path": fits_path,
             "jpeg2000_path": jp2_path,
             "png_path": png_path,
@@ -4319,6 +5052,7 @@ def write_csie_image_products(
             "zero_filled_missing_rows",
             "zero_filled_checksum_failed_rows",
             "zero_filled_total_rows",
+            "boundary_fill_repaired_rows",
             "fits_path",
             "jpeg2000_path",
             "png_path",
@@ -4368,6 +5102,7 @@ def print_csie_image_summary(stats: CsieImageStats) -> None:
     print(f"  CSIE row checksum-valid rows:          {stats.checksum_valid_rows:,}")
     print(f"  CSIE row checksum-failed rows:         {stats.checksum_failed_rows:,}")
     print(f"  CSIE row checksums missing:            {stats.checksum_missing_rows:,}")
+    print(f"  boundary-fill repaired CSIE rows:      {stats.boundary_fill_repaired_rows:,}")
     print(f"  skipped CSIE row packets:              {stats.skipped_rows:,}")
     print(f"  duplicate CSIE row packets:            {stats.duplicate_rows:,}")
     print(f"  inventory CSV:                         {stats.inventory_path}")

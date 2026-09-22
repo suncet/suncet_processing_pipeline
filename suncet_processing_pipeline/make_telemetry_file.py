@@ -3,6 +3,10 @@
 Level 0.5 already writes one decoded CSV stream per APID. This module ingests
 those products transactionally, preserving each APID's natural sampling cadence
 instead of forcing unrelated packets onto one shared timeline.
+
+Per-APID CSVs remain intentional, inspectable test-phase products. Once the
+mission leaves this iterative test phase, Level 0.5 is expected to write DuckDB
+directly and retire the routine decoded-CSV intermediate.
 """
 
 from __future__ import annotations

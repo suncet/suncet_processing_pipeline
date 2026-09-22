@@ -30,6 +30,8 @@ def test_read_default_config(tmp_path, monkeypatch):
     assert hasattr(config, 'also_save_csie_meta_json')
     assert config.also_save_csie_meta_json is True
     assert config.data_root == str(data_root)
+    assert config.version_bus == '2.0.4'
+    assert config.version_csie == '1.1.8'
     assert config.bus_ctdb_path.startswith(str(ctdb_root))
     assert config.csie_ctdb_path.startswith(str(ctdb_root))
     assert config.calibration_path == str(data_root / 'calibration')
