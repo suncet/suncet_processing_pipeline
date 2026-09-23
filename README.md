@@ -264,8 +264,11 @@ The code uses a lightweight run management system. First, a new run is created w
 
 The canonical Level 0.5 implementation is
 `suncet_processing_pipeline.make_level0_5`. It supports X-band, hardline CCSDS,
-UHF/Hydra, and combined-source ingest while retaining inspectable intermediate
-binaries. For example:
+UHF/Hydra, and combined-source ingest. Raw concatenation, transport cleanup, and
+packet recovery stay in memory; the durable outputs are decoded tables, packet
+manifests, image inventories/products, source summaries, and provenance. Each run
+reprocesses the authoritative raw inputs; legacy intermediate binaries are ignored.
+For example:
 
 ```sh
 python -m suncet_processing_pipeline.make_level0_5 \

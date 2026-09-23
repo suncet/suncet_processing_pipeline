@@ -954,6 +954,126 @@ def test_packetizer_rejects_packets_outside_configured_apids():
     assert [record.apid for record in stats.records] == [68]
 
 
+def test_packetizer_can_return_records_without_compact_packet_stream():
+    packet = _ccsds_packet(1, b"accepted")
+
+    output, stats = packetize_checksum_valid_ccsds(
+        packet,
+        {1},
+        extract_playback_wrappers=False,
+        emit_packet_stream=False,
+    )
+
+    assert output == b""
+    assert stats.packet_bytes == len(packet)
+    assert [record.packet for record in stats.records] == [packet]
+
+
+def test_level0_5_source_processing_keeps_binary_stages_in_memory(tmp_path):
+    packet = _ccsds_packet(1, b"cross-file packet")
+    first = tmp_path / "ccsds_001.bin"
+    second = tmp_path / "ccsds_002.bin"
+    first.write_bytes(packet[:4])
+    second.write_bytes(packet[4:])
+    output_dir = tmp_path / "source_products" / "hardline"
+    spec = level0_5.SourceSpec(
+        source_id="hardline",
+        input_mode=INPUT_MODE_CCSDS,
+        search_root=tmp_path,
+        input_paths=[first, second],
+        output_dir=output_dir,
+        prefix="ccsds",
+    )
+    args = level0_5._build_argument_parser().parse_args(
+        ["--skip-decode-csv", "--skip-csie-images"]
+    )
+
+    product = level0_5.process_source_product(
+        spec,
+        args,
+        config=object(),
+        apid_names={1: "beacon"},
+        valid_apids={1},
+        expected_packet_bytes={1: len(packet)},
+    )
+
+    assert [record.packet for record in product.records] == [packet]
+    assert product.raw_bytes == len(packet)
+    assert product.packet_bytes == len(packet)
+    assert not any(
+        (output_dir / name).exists()
+        for name in level0_5.LEGACY_INTERMEDIATE_BASENAMES
+    )
+
+
+def test_single_source_run_writes_no_intermediate_binaries(tmp_path, monkeypatch):
+    packet = _ccsds_packet(1, b"single source packet")
+    (tmp_path / "ccsds_001.bin").write_bytes(packet)
+    monkeypatch.setattr(
+        level0_5,
+        "read_apid_names_from_config",
+        lambda _config: {1: "beacon"},
+    )
+    monkeypatch.setattr(
+        level0_5,
+        "read_expected_packet_bytes_from_config",
+        lambda _config: {1: len(packet)},
+    )
+
+    level0_5.run(
+        ["--input-mode", "ccsds", "--skip-decode-csv", "--skip-csie-images"],
+        _prepared=(object(), tmp_path),
+    )
+
+    assert not any(
+        (tmp_path / name).exists()
+        for name in level0_5.LEGACY_INTERMEDIATE_BASENAMES
+    )
+
+
+def test_combined_processing_writes_products_but_no_packet_binary(
+    tmp_path,
+    monkeypatch,
+):
+    packet = _ccsds_packet(1, b"combined packet")
+    (tmp_path / "ccsds_001.bin").write_bytes(packet)
+    monkeypatch.setattr(
+        level0_5,
+        "read_apid_names_from_config",
+        lambda _config: {1: "beacon"},
+    )
+    monkeypatch.setattr(
+        level0_5,
+        "read_expected_packet_bytes_from_config",
+        lambda _config: {1: len(packet)},
+    )
+    args = level0_5._build_argument_parser().parse_args(
+        ["--input-mode", "combined", "--skip-decode-csv", "--skip-csie-images"]
+    )
+
+    level0_5.run_combined_pipeline(args, config=object(), folder=tmp_path)
+
+    summary = tmp_path / level0_5.COMBINED_SOURCE_SUMMARY_BASENAME
+    assert summary.is_file()
+    assert "in_memory_from_raw_inputs" in summary.read_text()
+    assert not any(
+        path.name in level0_5.LEGACY_INTERMEDIATE_BASENAMES
+        for path in tmp_path.rglob("*")
+    )
+
+
+def test_legacy_intermediate_is_ignored_and_left_untouched(tmp_path, capsys):
+    legacy = tmp_path / "packets_valid.bin"
+    legacy.write_bytes(b"stale cache")
+
+    level0_5.warn_about_legacy_intermediates(tmp_path)
+
+    assert legacy.read_bytes() == b"stale cache"
+    output = capsys.readouterr().out
+    assert "will not be read or updated" in output
+    assert "packets_valid.bin" in output
+
+
 def test_ccsds_candidate_rejects_nonzero_version():
     packet = bytearray(_ccsds_packet(68, b"payload"))
     packet[0] |= 0x20

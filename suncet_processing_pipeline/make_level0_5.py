@@ -1,6 +1,6 @@
 """Canonical staged Level 0.5 ingest and product builder.
 
-The pipeline retains inspectable intermediate binaries while it:
+The pipeline keeps transport cleanup and packet recovery in memory while it:
 
 1. discovers and merges X-band, hardline CCSDS, and UHF/Hydra inputs;
 2. removes transport wrappers and repairs supported stream artifacts;
@@ -48,20 +48,24 @@ SYNC_MARKER = b"\x1a\xcf\xfc\x1d"
 DEFAULT_XBAND_PREFIX = "xband_gse"
 DEFAULT_HARDLINE_CCSDS_PREFIX = "ccsds"
 DEFAULT_UHF_SUBDIR_BASENAME = "hydra_uhf_rundirs"
-DEFAULT_MERGED_BASENAME = "merged.bin"
-DEFAULT_FIXED_BASENAME = "merged_fixed.bin"
-DEFAULT_PACKETS_VALID_BASENAME = "packets_valid.bin"
 DEFAULT_DECODED_DIR_BASENAME = "decoded_packets"
 DEFAULT_PACKET_MANIFEST_BASENAME = "packets_manifest.csv"
 DEFAULT_DECODE_SUMMARY_BASENAME = "decoded_packet_summary.csv"
 DEFAULT_CSIE_IMAGE_DIR_BASENAME = "csie_images"
 DEFAULT_CSIE_INVENTORY_BASENAME = "csie_image_inventory.csv"
 DEFAULT_SOURCE_PRODUCTS_DIR_BASENAME = "source_products"
-COMBINED_PACKETS_VALID_BASENAME = "combined_packets_valid.bin"
 COMBINED_DECODED_DIR_BASENAME = "combined_decoded_packets"
 COMBINED_PACKET_MANIFEST_BASENAME = "combined_packet_manifest.csv"
 COMBINED_DECODE_SUMMARY_BASENAME = "combined_decode_summary.csv"
 COMBINED_SOURCE_SUMMARY_BASENAME = "combined_source_summary.csv"
+LEGACY_INTERMEDIATE_BASENAMES = frozenset(
+    {
+        "merged.bin",
+        "merged_fixed.bin",
+        "packets_valid.bin",
+        "combined_packets_valid.bin",
+    }
+)
 
 # The attached X-band frame definition and the current GSE files agree on this:
 #   4-byte ASM + 6-byte TM primary header + 2-byte padding + 2044-byte data field.
@@ -160,7 +164,6 @@ MAX_REPAIR_EXTRA_BYTES = 64
 class MergeStats:
     input_file_count: int
     input_bytes: int
-    output_path: Path
 
 
 @dataclass
@@ -337,12 +340,8 @@ class SourceSpec:
 @dataclass
 class SourceProduct:
     spec: SourceSpec
-    packets_valid_path: Path
     output_dir: Path
     records: list[PacketRecord]
-    reused: bool
-    merged_path: Path | None = None
-    fixed_path: Path | None = None
     packet_bytes: int = 0
     raw_bytes: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -431,15 +430,12 @@ def discover_prefixed_binary_files(folder: Path, prefix: str) -> list[Path]:
     not recurse because the requested first stage is about the raw files in the configured
     folder.
     """
-    ignored = {
-        DEFAULT_MERGED_BASENAME,
-        DEFAULT_FIXED_BASENAME,
-        DEFAULT_PACKETS_VALID_BASENAME,
-    }
     paths = [
         path
         for path in folder.iterdir()
-        if path.is_file() and path.name.startswith(prefix) and path.name not in ignored
+        if path.is_file()
+        and path.name.startswith(prefix)
+        and path.name not in LEGACY_INTERMEDIATE_BASENAMES
     ]
     return sorted(paths, key=lambda p: p.name)
 
@@ -538,22 +534,37 @@ def resolve_input_files_and_mode(
     return normalized_mode, effective_prefix, paths
 
 
-def write_merged_binary(input_paths: list[Path], output_path: Path) -> MergeStats:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+def merge_binary_inputs(input_paths: list[Path]) -> tuple[bytes, MergeStats]:
+    """Concatenate ordered raw inputs in memory, preserving cross-file continuity."""
+    merged = io.BytesIO()
     total = 0
-    with output_path.open("wb") as fout:
-        for path in input_paths:
-            with path.open("rb") as fin:
-                while True:
-                    chunk = fin.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    fout.write(chunk)
-                    total += len(chunk)
-    return MergeStats(
-        input_file_count=len(input_paths),
-        input_bytes=total,
-        output_path=output_path,
+    for path in input_paths:
+        with path.open("rb") as fin:
+            while True:
+                chunk = fin.read(1024 * 1024)
+                if not chunk:
+                    break
+                merged.write(chunk)
+                total += len(chunk)
+    return merged.getvalue(), MergeStats(
+        input_file_count=len(input_paths), input_bytes=total
+    )
+
+
+def warn_about_legacy_intermediates(folder: Path) -> None:
+    """Report old persisted intermediates without deleting user data."""
+    legacy_paths = sorted(
+        path
+        for name in LEGACY_INTERMEDIATE_BASENAMES
+        if (path := folder / name).is_file()
+    )
+    if not legacy_paths:
+        return
+    names = ", ".join(path.name for path in legacy_paths)
+    print(
+        "WARNING: legacy Level 0.5 intermediate binary file(s) are present but "
+        f"will not be read or updated: {names}. Processing uses authoritative raw "
+        "inputs and in-memory streams; remove the old files separately if desired."
     )
 
 
@@ -1783,16 +1794,18 @@ def packetize_checksum_valid_ccsds(
     *,
     bypass_packet_checksums: bool = True,
     extract_playback_wrappers: bool = True,
+    emit_packet_stream: bool = True,
 ) -> tuple[bytes, PacketizeStats]:
     """
-    Emit structurally plausible CCSDS packets, dropping filler and non-valid candidates.
+    Recover structurally plausible CCSDS packets, dropping filler and invalid candidates.
 
     By default this bypasses packet checksum validation because the current flight
     software checksum span/algorithm is still being clarified. With
     ``bypass_packet_checksums=False``, APID 536 uses the additive row checksum and
     non-536 packets use Fletcher-32. In checksum-required mode, the packetizer tries a
     local repeated-word repair for APID 536 candidates and accepts repaired bytes only if
-    they validate.
+    they validate. Set ``emit_packet_stream=False`` when downstream code consumes
+    ``stats.records`` and does not need a second compact copy of all accepted bytes.
     """
     valid_records: list[tuple[int, bytes]] = []
     stats = PacketizeStats()
@@ -1927,7 +1940,12 @@ def packetize_checksum_valid_ccsds(
             )
         last_valid_end = max(last_valid_end, offset + len(packet))
 
-    return b"".join(packet for _offset, packet in valid_records), stats
+    packet_stream = (
+        b"".join(packet for _offset, packet in valid_records)
+        if emit_packet_stream
+        else b""
+    )
+    return packet_stream, stats
 
 
 def build_fixed_binary(
@@ -1940,7 +1958,7 @@ def build_fixed_binary(
     packetize_checksum_valid: bool = False,
     strip_out_of_phase_xband_artifacts: bool = True,
 ) -> tuple[bytes, FixStats]:
-    """Run the first-stage cleaning pipeline and return ``merged_fixed`` bytes."""
+    """Run the first-stage cleaning pipeline and return the cleaned stream bytes."""
     if input_mode == INPUT_MODE_UHF:
         uhf_fixed, uhf_stats = unwrap_uhf_playback_stream(
             merged_data,
@@ -2059,7 +2077,7 @@ def print_fix_summary(stats: FixStats) -> None:
         print(f"  direct CCSDS packets preserved:        {uhf.direct_packets_preserved:,}")
         print(f"  direct CCSDS packet bytes preserved:   {uhf.non_wrapper_bytes_preserved:,}")
         print(f"  non-packet side-channel bytes dropped: {uhf.non_wrapper_bytes_dropped:,}")
-        print(f"  merged_fixed.bin bytes:                {stats.fixed_bytes:,}")
+        print(f"  cleaned payload-stream bytes:          {stats.fixed_bytes:,}")
         if uhf.duplicate_segment_packets:
             print(
                 "WARNING: UHF segment retransmissions were de-duplicated by inner "
@@ -2080,7 +2098,7 @@ def print_fix_summary(stats: FixStats) -> None:
             "hardline_apid72_playback_unwrap",
             "uhf_apid72_playback_unwrap",
         }:
-            print(f"  merged_fixed.bin bytes:                {stats.fixed_bytes:,}")
+            print(f"  cleaned payload-stream bytes:          {stats.fixed_bytes:,}")
             return
     if tf.mode in {"hardline_ccsds_passthrough", "uhf_ccsds_passthrough"}:
         label = (
@@ -2090,7 +2108,7 @@ def print_fix_summary(stats: FixStats) -> None:
         )
         print(f"  {label}:         no ASM or transfer-frame wrapper stripped")
         print(f"  bytes passed through unchanged:        {tf.passthrough_bytes:,}")
-        print(f"  merged_fixed.bin bytes:                {stats.fixed_bytes:,}")
+        print(f"  cleaned payload-stream bytes:          {stats.fixed_bytes:,}")
         return
     if tf.boundary_records_seen:
         print(f"  boundary frame records seen:           {tf.boundary_records_seen:,}")
@@ -2152,7 +2170,7 @@ def print_fix_summary(stats: FixStats) -> None:
             "discard any corrupted inner packets."
         )
     if pkt is None:
-        print(f"  merged_fixed.bin bytes:                {stats.fixed_bytes:,}")
+        print(f"  cleaned payload-stream bytes:          {stats.fixed_bytes:,}")
         return
     checksum_verified = pkt.checksum_valid_packets - pkt.checksum_bypassed_packets
     print(f"  accepted CCSDS packets emitted:        {pkt.checksum_valid_packets:,}")
@@ -2167,7 +2185,7 @@ def print_fix_summary(stats: FixStats) -> None:
     print(f"  dropped filler bytes:                  {pkt.dropped_filler_bytes:,}")
     print(f"  dropped non-filler bytes:              {pkt.dropped_non_filler_bytes:,}")
     print(f"  incomplete packet candidates:          {pkt.incomplete_packet_candidates:,}")
-    print(f"  merged_fixed.bin bytes:                {stats.fixed_bytes:,}")
+    print(f"  cleaned payload-stream bytes:          {stats.fixed_bytes:,}")
     if pkt.apids:
         top = ", ".join(f"{apid}:{count}" for apid, count in pkt.apids.most_common(16))
         print(f"  top APIDs:                             {top}")
@@ -2211,7 +2229,7 @@ def print_packet_summary(stats: PacketizeStats, apid_names: dict[int, str]) -> N
     if stats.checksum_bypassed_packets:
         print(
             "WARNING: packet checksum validation is bypassed for this run; "
-            "packets_valid.bin contains structurally recovered packets, not "
+            "the accepted in-memory records contain structurally recovered packets, not "
             "checksum-confirmed packets."
         )
     if normalized_count:
@@ -2842,7 +2860,7 @@ def decode_packet_records_to_csv(
                     packet_object = packet_class(
                         record.packet[6:],
                         bytearray(record.packet[:6]),
-                        "packets_valid.bin",
+                        record.input_file_relative_path or "recovered_packet_in_memory",
                     )
                 decoder_stdout = decoder_output.getvalue().strip().replace("\n", " | ")
                 row.update(
@@ -4266,15 +4284,18 @@ def scan_csie_records_from_fixed_stream(
     """
     Recover CSIE metadata/row packets from the full fixed payload stream.
 
-    HK/ADCS packets currently decode from the VCDU 32-bit-reversed ``merged_fixed``
-    stream. CSIE image rows in this test file appear in the opposite byte-order view,
+    HK/ADCS packets currently decode from the VCDU 32-bit-reversed cleaned stream.
+    CSIE image rows in this test file appear in the opposite byte-order view,
     so scan both views and choose the one with the most CSIE structure.
     """
     expected_meta_len = expected_packet_bytes.get(CSIE_META_APID)
     scan_results: list[tuple[int, list[PacketRecord], str, list[str]]] = []
     for source, stream in (
-        ("merged_fixed_full_stream", fixed_payload_stream),
-        ("merged_fixed_pre_vcdu_word32_full_stream", reverse_32bit_words(fixed_payload_stream)),
+        ("cleaned_full_stream", fixed_payload_stream),
+        (
+            "cleaned_pre_vcdu_word32_full_stream",
+            reverse_32bit_words(fixed_payload_stream),
+        ),
     ):
         warnings: list[str] = []
         meta_records = _scan_csie_meta_records_in_stream(
@@ -4310,16 +4331,18 @@ def scan_csie_records_from_fixed_stream(
         scan_results.append((score, records, source, warnings))
 
     _score, records, source, warnings = max(scan_results, key=lambda item: item[0])
-    if source == "merged_fixed_pre_vcdu_word32_full_stream" and records:
+    if source == "cleaned_pre_vcdu_word32_full_stream" and records:
         warnings.insert(
             0,
-            "CSIE image extraction used reverse_32bit_words(merged_fixed.bin) for the "
-            "full-stream scan. HK/ADCS decoding still uses merged_fixed.bin directly; "
+            "CSIE image extraction used reverse_32bit_words(cleaned in-memory stream) "
+            "for the full-stream scan. HK/ADCS decoding still uses the cleaned stream "
+            "directly; "
             "this CSIE byte-order exception is a temporary FSW/FPGA contract item to revisit.",
         )
     if records:
         warnings.append(
-            "CSIE image extraction scans merged_fixed.bin directly, not packets_valid.bin."
+            "CSIE image extraction scans the full cleaned stream as well as the "
+            "accepted packet records."
         )
         warnings.append(
             "APID 536 secondary header bytes are interpreted as CSIE image_id/filler "
@@ -4394,14 +4417,14 @@ def write_csie_image_products(
         stats.warnings.extend(stream_warnings)
 
     csie_records = packet_csie_records
-    stats.source = "packets_valid_records"
+    stats.source = "recovered_packet_records"
     if len(stream_csie_records) > len(packet_csie_records):
         csie_records = stream_csie_records
         stats.source = stream_source
     elif packet_csie_records and stream_csie_records:
         stats.warnings.append(
-            "CSIE packets were found in both packets_valid records and the full fixed stream; "
-            "using packets_valid records because they are at least as complete."
+            "CSIE packets were found in both recovered packet records and the full "
+            "cleaned stream; using packet records because they are at least as complete."
         )
 
     metadata_by_image: dict[int, list[dict[str, object]]] = {}
@@ -5147,20 +5170,6 @@ def _relative_path_text(path: Path, root: Path) -> str:
         return str(path)
 
 
-def _total_input_bytes(paths: list[Path]) -> int:
-    return sum(path.stat().st_size for path in paths)
-
-
-def _products_are_current(input_paths: list[Path], required_outputs: list[Path]) -> bool:
-    if not input_paths or not required_outputs:
-        return False
-    if any(not path.is_file() for path in required_outputs):
-        return False
-    newest_input = max(path.stat().st_mtime for path in input_paths)
-    oldest_output = min(path.stat().st_mtime for path in required_outputs)
-    return oldest_output >= newest_input
-
-
 def discover_combined_source_specs(folder: Path) -> list[SourceSpec]:
     """Discover top-level X-band/hardline files and explicit nested UHF captures."""
     source_products_root = folder / DEFAULT_SOURCE_PRODUCTS_DIR_BASENAME
@@ -5259,32 +5268,6 @@ def annotate_records_with_source_metadata(
         record.source_output_dir = str(spec.output_dir)
 
 
-def load_reusable_packet_records(
-    packets_valid_path: Path,
-    valid_apids: set[int],
-    expected_packet_bytes: dict[int, int],
-) -> tuple[bytes, list[PacketRecord], list[str]]:
-    data = packets_valid_path.read_bytes()
-    repacketized, stats = packetize_checksum_valid_ccsds(
-        data,
-        valid_apids,
-        expected_packet_bytes=expected_packet_bytes,
-        bypass_packet_checksums=True,
-        extract_playback_wrappers=False,
-    )
-    warnings: list[str] = []
-    if len(repacketized) != len(data):
-        warnings.append(
-            "Reused packets_valid.bin did not reparse byte-for-byte; combined mode "
-            f"kept {len(repacketized):,} of {len(data):,} bytes."
-        )
-    warnings.append(
-        "Reused packets_valid.bin for this source; source_offset values are offsets "
-        "within that compact packet stream, not the original merged_fixed.bin."
-    )
-    return repacketized, stats.records, warnings
-
-
 def process_source_product(
     spec: SourceSpec,
     args: argparse.Namespace,
@@ -5296,17 +5279,7 @@ def process_source_product(
 ) -> SourceProduct:
     output_dir = spec.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
-    merged_path = output_dir / DEFAULT_MERGED_BASENAME
-    fixed_path = output_dir / DEFAULT_FIXED_BASENAME
-    packets_valid_path = output_dir / DEFAULT_PACKETS_VALID_BASENAME
-    csie_inventory_path = (
-        output_dir
-        / args.csie_dir_name
-        / DEFAULT_CSIE_INVENTORY_BASENAME
-    )
-    required_outputs = [packets_valid_path]
-    if not args.skip_csie_images:
-        required_outputs.append(csie_inventory_path)
+    warn_about_legacy_intermediates(output_dir)
 
     print(f"\n=== Source {spec.source_id} ({spec.input_mode}) ===")
     print(f"Search root: {spec.search_root}")
@@ -5323,47 +5296,12 @@ def process_source_product(
             "before packet recovery."
         )
 
-    if (
-        not args.force_source_reprocess
-        and _products_are_current(spec.input_paths, required_outputs)
-    ):
-        packets_valid_data, records, warnings = load_reusable_packet_records(
-            packets_valid_path,
-            valid_apids,
-            expected_packet_bytes,
-        )
-        annotate_records_with_source_metadata(
-            records,
-            spec,
-            provenance_quality="reused_packets_valid_only",
-            packet_offsets_are_passthrough=False,
-        )
-        print(
-            f"Reused current source products from {output_dir}: "
-            f"{len(records):,} packet(s), {len(packets_valid_data):,} packet byte(s)"
-        )
-        for warning in warnings:
-            print(f"WARNING: {warning}")
-        return SourceProduct(
-            spec=spec,
-            packets_valid_path=packets_valid_path,
-            output_dir=output_dir,
-            records=records,
-            reused=True,
-            merged_path=merged_path if merged_path.is_file() else None,
-            fixed_path=fixed_path if fixed_path.is_file() else None,
-            packet_bytes=len(packets_valid_data),
-            raw_bytes=_total_input_bytes(spec.input_paths),
-            warnings=warnings,
-        )
-
-    merge_stats = write_merged_binary(spec.input_paths, merged_path)
+    merged_data, merge_stats = merge_binary_inputs(spec.input_paths)
     print(
-        f"Wrote {merge_stats.output_path} from {merge_stats.input_file_count} file(s): "
+        f"Merged {merge_stats.input_file_count} raw file(s) in memory: "
         f"{merge_stats.input_bytes:,} bytes"
     )
 
-    merged_data = merged_path.read_bytes()
     fixed_data, fix_stats = build_fixed_binary(
         merged_data,
         valid_apids=valid_apids,
@@ -5372,25 +5310,22 @@ def process_source_product(
         spacecraft_id=args.spacecraft_id,
         strip_out_of_phase_xband_artifacts=not args.preserve_rf_lapse_artifacts,
     )
-    fixed_path.write_bytes(fixed_data)
-    print(f"Wrote {fixed_path}: {len(fixed_data):,} bytes")
     print_fix_summary(fix_stats)
 
-    packets_valid_data, packet_stats = packetize_checksum_valid_ccsds(
+    _packet_stream, packet_stats = packetize_checksum_valid_ccsds(
         fixed_data,
         valid_apids,
         expected_packet_bytes=expected_packet_bytes,
         bypass_packet_checksums=not args.require_packet_checksums,
         extract_playback_wrappers=spec.input_mode == INPUT_MODE_XBAND,
+        emit_packet_stream=False,
     )
-    packets_valid_path.write_bytes(packets_valid_data)
-    print(f"Wrote {packets_valid_path}: {len(packets_valid_data):,} bytes")
     print_packet_summary(packet_stats, apid_names)
 
     annotate_records_with_source_metadata(
         packet_stats.records,
         spec,
-        provenance_quality="source_offset_from_merged_fixed_stream",
+        provenance_quality="source_offset_from_cleaned_stream",
         packet_offsets_are_passthrough=(
             (
                 spec.input_mode == INPUT_MODE_CCSDS
@@ -5427,13 +5362,9 @@ def process_source_product(
 
     return SourceProduct(
         spec=spec,
-        packets_valid_path=packets_valid_path,
         output_dir=output_dir,
         records=packet_stats.records,
-        reused=False,
-        merged_path=merged_path,
-        fixed_path=fixed_path,
-        packet_bytes=len(packets_valid_data),
+        packet_bytes=packet_stats.packet_bytes,
         raw_bytes=merge_stats.input_bytes,
     )
 
@@ -5538,8 +5469,7 @@ def write_combined_source_summary(
                 "input_bytes": product.raw_bytes,
                 "packets": len(product.records),
                 "packet_bytes": product.packet_bytes,
-                "reused": product.reused,
-                "packets_valid_path": str(product.packets_valid_path),
+                "processing_mode": "in_memory_from_raw_inputs",
                 "top_apids": ", ".join(
                     f"{apid}:{count}" for apid, count in apids.most_common(12)
                 ),
@@ -5558,8 +5488,7 @@ def write_combined_source_summary(
             "input_bytes",
             "packets",
             "packet_bytes",
-            "reused",
-            "packets_valid_path",
+            "processing_mode",
             "top_apids",
             "warnings",
         ],
@@ -5572,6 +5501,7 @@ def run_combined_pipeline(
     config: Config,
     folder: Path,
 ) -> None:
+    warn_about_legacy_intermediates(folder)
     if args.prefix is not None:
         print(
             "WARNING: --prefix is ignored in combined mode; using default source "
@@ -5617,12 +5547,8 @@ def run_combined_pipeline(
     ]
 
     combined_records = prepare_combined_records(source_products)
-    combined_data = b"".join(record.packet for record in combined_records)
-    combined_packets_path = folder / COMBINED_PACKETS_VALID_BASENAME
-    combined_packets_path.write_bytes(combined_data)
     print(
-        f"\nWrote {combined_packets_path}: {len(combined_data):,} bytes from "
-        f"{len(combined_records):,} merged packet record(s)"
+        f"\nCombined {len(combined_records):,} recovered packet record(s) in memory."
     )
 
     combined_stats = packetize_stats_from_records(combined_records)
@@ -5703,42 +5629,16 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--force-source-reprocess",
-        action="store_true",
-        help=(
-            "Combined mode only: rebuild per-source products even when existing "
-            "source_products outputs are newer than the raw inputs."
-        ),
-    )
-    parser.add_argument(
         "--spacecraft-id",
         type=int,
         default=DEFAULT_SPACECRAFT_ID,
         help=f"Expected outer transfer-frame spacecraft ID. Default: {DEFAULT_SPACECRAFT_ID}.",
     )
     parser.add_argument(
-        "--merged-name",
-        default=DEFAULT_MERGED_BASENAME,
-        help=f"Merged raw output basename. Default: {DEFAULT_MERGED_BASENAME}.",
-    )
-    parser.add_argument(
-        "--fixed-name",
-        default=DEFAULT_FIXED_BASENAME,
-        help=f"Fixed payload-stream output basename. Default: {DEFAULT_FIXED_BASENAME}.",
-    )
-    parser.add_argument(
-        "--packets-valid-name",
-        default=DEFAULT_PACKETS_VALID_BASENAME,
-        help=(
-            "Accepted CCSDS packet output basename. "
-            f"Default: {DEFAULT_PACKETS_VALID_BASENAME}."
-        ),
-    )
-    parser.add_argument(
         "--require-packet-checksums",
         action="store_true",
         help=(
-            "Require inner packet checksum validation before writing packets_valid.bin. "
+            "Require inner packet checksum validation before accepting packet records. "
             "Default is to bypass packet checksums while the FSW checksum contract is "
             "being clarified."
         ),
@@ -5754,7 +5654,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skip-decode-csv",
         action="store_true",
-        help="Skip CTDB decoder CSV export after writing packets_valid.bin.",
+        help="Skip CTDB decoder CSV export after in-memory packet recovery.",
     )
     parser.add_argument(
         "--csie-dir-name",
@@ -5827,6 +5727,8 @@ def run(
         run_combined_pipeline(args, config=config, folder=folder)
         return
 
+    warn_about_legacy_intermediates(folder)
+
     input_mode, input_prefix, input_paths = resolve_input_files_and_mode(
         folder,
         prefix=args.prefix,
@@ -5874,13 +5776,9 @@ def run(
             "unwrapped before inner packet recovery."
         )
 
-    merged_path = folder / args.merged_name
-    fixed_path = folder / args.fixed_name
-    packets_valid_path = folder / args.packets_valid_name
-
-    merge_stats = write_merged_binary(input_paths, merged_path)
+    merged_data, merge_stats = merge_binary_inputs(input_paths)
     print(
-        f"\nWrote {merge_stats.output_path} from {merge_stats.input_file_count} file(s): "
+        f"\nMerged {merge_stats.input_file_count} raw file(s) in memory: "
         f"{merge_stats.input_bytes:,} bytes"
     )
 
@@ -5899,7 +5797,6 @@ def run(
         f"Loaded fixed packet byte sizes for {len(expected_packet_bytes)} APIDs "
         "from configured CTDB telemetry definitions."
     )
-    merged_data = merged_path.read_bytes()
     fixed_data, fix_stats = build_fixed_binary(
         merged_data,
         valid_apids=valid_apids,
@@ -5908,19 +5805,16 @@ def run(
         spacecraft_id=args.spacecraft_id,
         strip_out_of_phase_xband_artifacts=not args.preserve_rf_lapse_artifacts,
     )
-    fixed_path.write_bytes(fixed_data)
-    print(f"Wrote {fixed_path}: {len(fixed_data):,} bytes")
     print_fix_summary(fix_stats)
 
-    packets_valid_data, packet_stats = packetize_checksum_valid_ccsds(
+    _packet_stream, packet_stats = packetize_checksum_valid_ccsds(
         fixed_data,
         valid_apids,
         expected_packet_bytes=expected_packet_bytes,
         bypass_packet_checksums=not args.require_packet_checksums,
         extract_playback_wrappers=input_mode == INPUT_MODE_XBAND,
+        emit_packet_stream=False,
     )
-    packets_valid_path.write_bytes(packets_valid_data)
-    print(f"\nWrote {packets_valid_path}: {len(packets_valid_data):,} bytes")
     print_packet_summary(packet_stats, apid_names)
     single_source_spec = SourceSpec(
         source_id=input_mode,
@@ -5933,7 +5827,7 @@ def run(
     annotate_records_with_source_metadata(
         packet_stats.records,
         single_source_spec,
-        provenance_quality="source_offset_from_merged_fixed_stream",
+        provenance_quality="source_offset_from_cleaned_stream",
         packet_offsets_are_passthrough=(
             (
                 input_mode == INPUT_MODE_CCSDS
