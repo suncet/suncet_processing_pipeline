@@ -41,7 +41,7 @@ def test_run_metadata_snapshot_is_versioned_and_checksum_guarded(tmp_path):
 
     manifest = snapshot_metadata_for_run(run, data_root=data_root)
 
-    assert manifest["metadata_version"] == "1.0.2dev"
+    assert manifest["metadata_version"] == "1.0.4dev"
     assert verify_run_metadata_snapshot(run) == json.loads(
         (run / "metadata_snapshot.json").read_text()
     )

@@ -3587,6 +3587,8 @@ def _write_csie_fits(
     path.parent.mkdir(parents=True, exist_ok=True)
     hdu = fits.PrimaryHDU(np.asanyarray(image, dtype=np.uint16))
     header = hdu.header
+    header["LEVEL"] = (0.5, "SunCET processing level")
+    header["BUNIT"] = ("DN", "Primary-array units")
     header["IMAGEID"] = int(image_id)
     header["ROWS"] = int(image.shape[0])
     header["COLS"] = int(image.shape[1])

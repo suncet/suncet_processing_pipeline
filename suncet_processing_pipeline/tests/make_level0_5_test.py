@@ -665,6 +665,8 @@ def test_csie_fits_uses_spreadsheet_names_and_omits_spares(tmp_path):
     )
 
     header = fits.getheader(output)
+    assert header["LEVEL"] == 0.5
+    assert header["BUNIT"] == "DN"
     assert header["IMGCTR"] == 4360
     assert header["DET_TEMP"] == 23.8449
     assert header["BRD_TEMP"] == 24.1275

@@ -11,7 +11,7 @@ from pathlib import Path
 from .data_paths import get_data_root
 
 
-METADATA_VERSION = "1.0.2dev"
+METADATA_VERSION = "1.0.4dev"
 FITS_SOURCE_FILENAME = (
     f"suncet_metadata_definition_v{METADATA_VERSION}-FITS.csv"
 )

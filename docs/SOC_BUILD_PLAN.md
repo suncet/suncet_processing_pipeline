@@ -541,6 +541,15 @@ This work is independent of the Jetson NVMe installation.
   files. Before activation, teach the product writer to populate and validate
   `SOLAR_R`, update the code/configuration metadata pin, pull the new CSVs to
   the Jetson, and run the metadata and Level 2 regression checks.
+- On 2026-09-23, the same live workbook advanced in place to `v1.0.4dev`.
+  The FITS and NetCDF/Zarr definitions now state that primary Level 0.5 image
+  arrays are in DN and Level 1 and later arrays are in DN/s. The Level 0.5
+  `LEVEL` value is explicitly a floating-point `0.5` rather than an integer
+  Level 1 template value. Separate immutable `v1.0.4dev` CSV exports were
+  published alongside the retained earlier versions, the code/configuration
+  metadata pin was advanced, and the Level 0.5 FITS writer now emits
+  `LEVEL = 0.5` and `BUNIT = 'DN'`. Relevant local regressions pass. Pull the
+  new CSVs to the Jetson before the next metadata-snapshotted processing run.
 - Verified the mount identity and fstab syntax, shell and Conda path behavior,
   pipeline path resolution, directory ownership, and available 1.8 TiB data
   capacity. A controlled reboot on 2026-08-25 automatically restored the
