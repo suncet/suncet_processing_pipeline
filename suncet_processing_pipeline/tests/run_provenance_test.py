@@ -113,11 +113,13 @@ def test_resolved_config_hides_private_ctdb_root(tmp_path):
         ctdb_base = str(private_root)
         bus_ctdb_path = str(private_root / "suncet_v2-0-1")
         csie_ctdb_path = str(private_root / "suncet_csie_v1-1-2")
+        dsps_ctdb_path = str(private_root / "suncet_dsps_v6-09")
         packet_definitions_path = str(
             private_root / "suncet_v2-0-1" / "decoders"
         )
         version_bus = "2.0.1"
         version_csie = "1.1.2"
+        version_dsps = "6.09"
 
     snapshot = run_provenance.resolved_config_snapshot(
         ConfigStub(), tmp_path / "public-data"
@@ -126,6 +128,8 @@ def test_resolved_config_hides_private_ctdb_root(tmp_path):
     assert snapshot["ctdb_base"] == "$suncet_ctdb"
     assert snapshot["bus_ctdb_path"] == "$suncet_ctdb/suncet_v2-0-1"
     assert snapshot["csie_ctdb_path"] == "$suncet_ctdb/suncet_csie_v1-1-2"
+    assert snapshot["dsps_ctdb_path"] == "$suncet_ctdb/suncet_dsps_v6-09"
+    assert snapshot["version_dsps"] == "6.09"
     assert snapshot["packet_definitions_path"] == (
         "$suncet_ctdb/suncet_v2-0-1/decoders"
     )

@@ -46,10 +46,12 @@ class Config:
         # structure (needed for CTDB paths)
         structure = config["structure"]
         # Version fields (2026-04): separate pipeline output version from CTDB versions.
-        # These keys are required in the config.
+        # Older specialized configs predate the standalone DSPS CTDB, so let
+        # them continue to follow the bus version and nested-decoder fallback.
         self.version_pipeline = structure["version_pipeline"]
         self.version_bus = structure["version_bus"]
         self.version_csie = structure["version_csie"]
+        self.version_dsps = structure.get("version_dsps", fallback=self.version_bus)
         # Internal alias used by some processing modules: pipeline version only.
         self.version = self.version_pipeline
         self.base_metadata_filename = config['structure']['base_metadata_filename']
@@ -65,14 +67,20 @@ class Config:
 
         bus_version_path = _version_to_path_format(self.version_bus)
         csie_version_path = _version_to_path_format(self.version_csie)
+        dsps_version_path = _version_to_path_format(self.version_dsps)
 
         # CTDB directory layout (2026-04):
         # - bus:  <ctdb_base>/suncet_vX-Y-Z/{decoders,packet_definitions}
         # - csie: <ctdb_base>/suncet_csie_vA-B-C/{decoders,packet_definitions}
+        # - dsps: <ctdb_base>/suncet_dsps_vD-E/{decoders}
         self.ctdb_base = str(ctdb_base)
         self.bus_ctdb_path = os.path.join(ctdb_base, f"suncet_{bus_version_path}")
         self.csie_ctdb_path = os.path.join(ctdb_base, f"suncet_csie_{csie_version_path}")
-        # Historical name: bus ``decoders/`` folder (gen_pkts.py + dsps_decoders/ codegen).
+        self.dsps_ctdb_path = os.path.join(
+            ctdb_base, f"suncet_dsps_{dsps_version_path}"
+        )
+        # Historical name: bus ``decoders/`` folder (gen_pkts.py and, in
+        # older CTDBs, nested dsps_decoders/ codegen).
         self.packet_definitions_path = os.path.join(self.bus_ctdb_path, "decoders")
 
         # calibration

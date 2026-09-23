@@ -156,6 +156,7 @@ def resolved_config_snapshot(config: object, data_root: Path) -> dict[str, objec
         "version_pipeline",
         "version_bus",
         "version_csie",
+        "version_dsps",
         "output_suffix",
         "base_metadata_filename",
         "ctdb_base",
@@ -167,12 +168,18 @@ def resolved_config_snapshot(config: object, data_root: Path) -> dict[str, objec
         "packet_definitions_path",
         "bus_ctdb_path",
         "csie_ctdb_path",
+        "dsps_ctdb_path",
     )
     values = {name: getattr(config, name) for name in names if hasattr(config, name)}
     ctdb_base = Path(values["ctdb_base"]) if "ctdb_base" in values else None
     if ctdb_base is not None:
         values["ctdb_base"] = "$suncet_ctdb"
-        for name in ("packet_definitions_path", "bus_ctdb_path", "csie_ctdb_path"):
+        for name in (
+            "packet_definitions_path",
+            "bus_ctdb_path",
+            "csie_ctdb_path",
+            "dsps_ctdb_path",
+        ):
             if name not in values:
                 continue
             try:

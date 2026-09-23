@@ -35,8 +35,8 @@ where the two roots overlap so CTDB content cannot accidentally enter the
 publicly synchronized data tree.
 
 The checked-in configurations use `${suncet_ctdb}` for `paths.ctdb_base` and
-select bus and CSIE versions below that root. A specialized configuration may
-provide an explicit absolute CTDB root instead.
+select bus, CSIE, and DSPS versions below that root. A specialized configuration
+may provide an explicit absolute CTDB root instead.
 
 The stable top-level convention is:
 
@@ -54,7 +54,8 @@ $suncet_data/                  public or synchronized
 
 $suncet_ctdb/                  private and host-managed
 ├── suncet_v<bus-version>/
-└── suncet_csie_v<csie-version>/
+├── suncet_csie_v<csie-version>/
+└── suncet_dsps_v<dsps-version>/
 ```
 
 Additional science/reference directories may live below `suncet_data`, but code
@@ -127,7 +128,8 @@ Processing commands automatically write a unique JSON manifest under `<data fold
 - UTC start/end times, duration, status, command line, and parsed arguments
 - Git commit, branch, dirty-tree state, and changed file names
 - configuration contents and SHA-256 checksum, with sensitive-looking values redacted
-- resolved data paths, private-root-relative CTDB labels, and pipeline, bus, and CSIE versions
+- resolved data paths, private-root-relative CTDB labels, and pipeline, bus,
+  CSIE, and DSPS versions
 - hostname, operating system, CPU architecture, Python, Conda, and installed package versions
 - input file sizes, timestamps, and SHA-256 checksums
 - created, modified, or deleted outputs and SHA-256 checksums

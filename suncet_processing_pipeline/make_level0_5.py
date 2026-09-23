@@ -2292,13 +2292,18 @@ def _restore_modules(saved: dict[str, object], missing_sentinel: object) -> None
 def import_bus_decoder_bundle(config: Config) -> DecoderBundle:
     """Import CTDB-generated bus and DSPS packet decoders without editing CTDB files."""
     decoder_path = Path(config.packet_definitions_path).expanduser()
-    # Current CTDBs put DSPS codegen beside the bus CTDB, while older ones
-    # nested it inside the bus decoders directory. Use the generated packet
-    # class only when gen_pkts.py is present, and retain the old layout.
+    # Current CTDBs version DSPS independently beside the bus CTDB, while
+    # older ones nested it inside the bus decoders directory. Config-like
+    # objects created outside Config may not yet expose the independent path.
+    dsps_ctdb_path = getattr(config, "dsps_ctdb_path", None)
+    if dsps_ctdb_path is None:
+        version_dsps = getattr(config, "version_dsps", config.version_bus)
+        dsps_ctdb_path = (
+            Path(config.ctdb_base).expanduser()
+            / f"suncet_dsps_v{version_dsps.replace('.', '-')}"
+        )
     dsps_candidates = (
-        Path(config.ctdb_base).expanduser()
-        / f"suncet_dsps_v{config.version_bus.replace('.', '-')}"
-        / "decoders",
+        Path(dsps_ctdb_path).expanduser() / "decoders",
         decoder_path / "dsps_decoders",
     )
     dsps_dir = next(

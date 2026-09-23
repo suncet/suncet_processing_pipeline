@@ -24,23 +24,33 @@ def _config(tmp_path):
     return SimpleNamespace(
         ctdb_base=str(tmp_path),
         version_bus="2.0.4",
+        version_dsps="6.09",
         bus_ctdb_path=str(tmp_path / "suncet_v2-0-4"),
         packet_definitions_path=str(bus_decoders),
         csie_ctdb_path=str(tmp_path / "suncet_csie_v1-1-6"),
+        dsps_ctdb_path=str(tmp_path / "suncet_dsps_v6-09"),
     )
 
 
 def test_dsps_split_ctdb_uses_bus_helpers_and_generated_packet_fields(tmp_path):
     config = _config(tmp_path)
-    split_decoders = tmp_path / "suncet_dsps_v2-0-4" / "decoders"
+    split_decoders = tmp_path / "suncet_dsps_v6-09" / "decoders"
     split_decoders.mkdir(parents=True)
     (split_decoders / "gen_pkts.py").write_text(
         "import gen_eus\nimport gen_states\n"
         "class DSPS_PASS:\n"
+        "    ctdb_version = '6.09'\n"
         "    def __init__(self, packet, header, file_origin):\n"
         "        self.dsps_power_5V_mV = int.from_bytes(packet[:2], 'big')\n"
         "        self.dsps_pass_checksum = int.from_bytes(packet[112:116], 'big')\n"
         "        self.helpers = (gen_eus.SOURCE, gen_states.SOURCE)\n"
+    )
+    # A bus-version-coupled path must not win over the independently pinned
+    # DSPS CTDB.
+    wrong_decoders = tmp_path / "suncet_dsps_v2-0-4" / "decoders"
+    wrong_decoders.mkdir(parents=True)
+    (wrong_decoders / "gen_pkts.py").write_text(
+        "class DSPS_PASS:\n    ctdb_version = 'wrong-bus-coupled-path'\n"
     )
 
     bundle = import_bus_decoder_bundle(config)
@@ -50,6 +60,7 @@ def test_dsps_split_ctdb_uses_bus_helpers_and_generated_packet_fields(tmp_path):
     assert kind == "generated_dsps_temp_dsps_data_alias"
     assert decoded.dsps_power_5V_mV == 5000
     assert decoded.helpers == ("bus", "bus")
+    assert packet_class.ctdb_version == "6.09"
     assert bundle.bus_pkts.BUS.source == "bus"
     assert not any("DSPS generated decoder not found" in warning for warning in bundle.warnings)
 
@@ -65,7 +76,7 @@ def test_dsps_data_csv_marks_provisional_fields_and_unknown_tail(
     tmp_path, unknown_tail, expected_nonzero, expected_suffix
 ):
     config = _config(tmp_path)
-    split_decoders = tmp_path / "suncet_dsps_v2-0-4" / "decoders"
+    split_decoders = tmp_path / "suncet_dsps_v6-09" / "decoders"
     split_decoders.mkdir(parents=True)
     (split_decoders / "gen_pkts.py").write_text(
         "import gen_eus\nimport gen_states\n"
