@@ -1,13 +1,13 @@
 # SunCET SatNOGS Onboarding and Operations Plan
 
-Last updated: 2026-09-01
+Last updated: 2026-09-25
 
 ## Purpose
 
 This document tracks the work required to establish SunCET in SatNOGS before
-launch and operate its public beacon presence after launch. Work can begin
-before SunCET receives a NORAD catalog number: the initial SatNOGS DB record
-will leave the NORAD field blank and use the `Future` status.
+launch and operate its public beacon presence after launch. The pre-launch
+SatNOGS DB record is accepted with `Future` status. SatNOGS assigns temporary
+NORAD ID `98244`; the official on-orbit catalog assignment remains pending.
 
 SunCET will expose only the globally broadcast beacon, CCSDS APID 1, through
 SatNOGS. Other spacecraft APIDs may travel through the mission's private ground
@@ -234,7 +234,7 @@ The transmitter suggestion requires a reviewed public citation for its
 DB-facing frequency, mode, nominal baud rate, status, and service description.
 Unresolved receiver and decoder parameters may remain explicitly `TBC`.
 
-### 2. Create the pre-launch SatNOGS DB record — submitted, awaiting review
+### 2. Create the pre-launch SatNOGS DB record — complete
 
 - An offline [SatNOGS DB submission draft](SATNOGS_DB_SUBMISSION_DRAFT.md) now
   contains proposed values for every spacecraft field and the nominal 9600-baud
@@ -244,23 +244,24 @@ Unresolved receiver and decoder parameters may remain explicitly `TBC`.
   [`assets/suncet_spacecraft.jpg`](assets/suncet_spacecraft.jpg) so the accepted
   record does not depend on a private local file or leak phone/GPS metadata.
 - The spacecraft suggestion was submitted by `jmason86` on 2026-09-01 as
-  [suggestion 11880](https://db.satnogs.org/satellite-suggestions/11880).
-- SatNOGS assigned provisional identifier
+  [suggestion 11880](https://db.satnogs.org/satellite-reviewed-suggestions/11880)
+  and approved by `fredy` on 2026-09-01 at 21:20 as displayed in the DB history.
+- The live record retains SatNOGS identifier
   [`MNRC-9829-4319-5529-8975`](https://db.satnogs.org/satellite/MNRC-9829-4319-5529-8975).
+  Its acceptance and `Future` status were verified on 2026-09-25. The displayed
+  temporary NORAD ID `98244` is not an official on-orbit catalog assignment.
 - The submitted record leaves NORAD and owner/operator blank, uses `Future`
   status, identifies the United States of America as the country of origin, and
   includes the public image, mission website, APL citation, and the submitted
   2027-03-15 launch-planning date.
-- Review the suggestion with SatNOGS maintainers and resolve any requested
-  changes.
-- Confirm that the provisional identifier remains the permanent SatNOGS ID
-  after acceptance.
+- Keep the record synchronized with reviewed mission-planning changes.
 
-**Gate:** The accepted DB record accurately represents SunCET and contains no
-private or speculative information.
+**Gate passed:** The accepted spacecraft record is live; spacecraft review no
+longer blocks the transmitter suggestion.
 
 ### 3. Add the UHF transmitter record — pending
 
+- The live spacecraft page showed no approved transmitters on 2026-09-25.
 - Suggest a transmitter attached to the accepted SunCET DB record.
 - Enter the cited DB-facing frequency, mode, nominal baud rate, placeholder
   drift, service, coordination references, and source citation.
@@ -398,7 +399,7 @@ beacon without consulting raw bytes.
 | Deliverable | Completion evidence |
 | --- | --- |
 | Public SunCET communications specification | Stable public URL and reviewed revision |
-| SatNOGS satellite record | Accepted SatNOGS ID with status `Future` |
+| SatNOGS satellite record | Complete: [`MNRC-9829-4319-5529-8975`](https://db.satnogs.org/satellite/MNRC-9829-4319-5529-8975), accepted with status `Future`; verified 2026-09-25 |
 | SatNOGS transmitter record | Accepted record with cited flight parameters |
 | Receiver validation package | RF recording, raw APID 1 frame, and reproducible procedure |
 | APID 1 decoder | Merged `satnogs-decoders` contribution and passing test vectors |
@@ -409,10 +410,9 @@ beacon without consulting raw bytes.
 
 ## Immediate next action
 
-Monitor spacecraft suggestion 11880 and respond to SatNOGS moderator feedback.
-In parallel, review the DB-facing transmitter statements in the public beacon
-specification. After the satellite record is accepted, submit the nominal
-9600-baud transmitter as inactive and unconfirmed. Track the revised beacon
+Review the DB-facing transmitter statements and public citation in the beacon
+specification, then submit the nominal 9600-baud transmitter as inactive and
+unconfirmed against the accepted spacecraft record. Track the revised beacon
 definition and obtain an RF sample for receiver and decoder validation without
 treating them as DB blockers.
 

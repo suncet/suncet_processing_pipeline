@@ -1,6 +1,6 @@
 # SunCET SatNOGS DB Submission Draft
 
-Last updated: 2026-09-01
+Last updated: 2026-09-25
 
 ## Purpose
 
@@ -11,13 +11,16 @@ status. Recheck the live SatNOGS form vocabulary before any later entry. The
 satellite suggestion may cite existing public mission pages; it does not depend
 on completion of the receiver or telemetry-decoder specification.
 
-## Spacecraft suggestion — submitted, awaiting review
+## Spacecraft suggestion — accepted
 
 Submitted by `jmason86` on 2026-09-01 as
-[suggestion 11880](https://db.satnogs.org/satellite-suggestions/11880), with
-provisional SatNOGS identifier
+[suggestion 11880](https://db.satnogs.org/satellite-reviewed-suggestions/11880), with
+SatNOGS identifier
 [`MNRC-9829-4319-5529-8975`](https://db.satnogs.org/satellite/MNRC-9829-4319-5529-8975).
-The record has not yet been accepted into SatNOGS DB.
+The DB history records approval by `fredy` on 2026-09-01 at 21:20. The live
+record was verified on 2026-09-25 with `Future` status and temporary NORAD ID
+`98244`; this is not an official on-orbit catalog assignment. The table below
+preserves the originally submitted values.
 
 | SatNOGS field | Submitted entry |
 | --- | --- |
@@ -43,7 +46,9 @@ Stable image URL after this file is merged to `main`:
 
 ## Nominal UHF transmitter suggestion
 
-Create this suggestion only after the spacecraft record is accepted.
+The spacecraft acceptance prerequisite is complete. No approved transmitters
+were listed on its live page on 2026-09-25; the nominal suggestion remains the
+next DB task after the public-citation review below.
 
 | SatNOGS field | Proposed entry |
 | --- | --- |
@@ -78,16 +83,9 @@ that requires a different receiver configuration is represented separately.
 
 ## Submission gates
 
-The satellite suggestion has passed its submission gate. While it is under
-review:
-
-1. Monitor suggestion 11880 and respond to moderator questions.
-2. Keep the submitted launch date synchronized with mission planning.
-3. Do not create the transmitter suggestion until the spacecraft record is
-   accepted.
-
-Before submitting the nominal transmitter suggestion after the satellite
-record is accepted:
+The satellite suggestion has passed both submission and acceptance gates.
+Keep the accepted record's launch date synchronized with reviewed mission
+planning. Before submitting the nominal transmitter suggestion:
 
 1. Approve a public DB-facing citation for 401.200 MHz, `GFSK`, and the nominal
    9600-baud beacon configuration.

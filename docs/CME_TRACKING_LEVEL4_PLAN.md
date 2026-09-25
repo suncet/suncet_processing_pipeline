@@ -1,12 +1,14 @@
 # SunCET Level 4 Automated CME Tracking Plan
 
-Last updated: 2026-08-31
+Last updated: 2026-09-25
 
 Status: first known-window vertical slice, full-circle automatic angular-sector
 discovery, and stock-power-mode Jetson characterization implemented. The
 two-stage tracker recovers the timestamp-correct worst-case particle-snow case
-without a supplied position-angle sector. Scientific validation, continuous
-event discovery, and additional baselines remain in progress.
+without a supplied position-angle sector. A paired Jetson experiment now
+quantifies Level 2 PSF-deconvolution sensitivity and compute cost. Scientific
+validation, continuous event discovery, and additional baselines remain in
+progress.
 
 ## Purpose
 
@@ -649,11 +651,17 @@ scenario manifest. Production CME tracking must still consume the Level 3
 contract; it must not absorb dark, flat, PSF, pointing, or compositing
 corrections that belong upstream.
 
-PSF sensitivity is a planned paired test: run identical tracker configurations
-on corresponding pre- and post-Level-2 images with geometry held fixed or
-co-registered, then compare front and kinematic products. This will isolate
-whether PSF deconvolution materially changes the inferred height-time profile
-without confusing it with Level 3 geometric corrections.
+The first paired PSF-sensitivity test was completed on 2026-09-22. It ran the
+same automatic tracker configuration on the 241-frame timestamp-correct
+particle-snow sequence before and after matched Level 2 deconvolution, with
+geometry and times held fixed. Deconvolution did not materially change
+tracker-only time or energy, but reduced accepted angular support by 48% and
+changed the headline height substantially. Common time/angle edge locations
+usually remained close, so the large headline change is mainly an automatic
+sector/support-selection effect. With no truth contour, this establishes
+preprocessing sensitivity rather than which arm is more accurate. Full method,
+metrics, interpretation, and artifacts are recorded in
+`docs/JETSON_LEVEL2_CME_TRACKING_AB_RESULTS_20260922.md`.
 
 ## Validation strategy
 
@@ -1095,6 +1103,16 @@ human labels or exported contours, test additional simulations and real EUV
 sequences, and compare height definitions and kinematic fits when quantitative
 reference data exist.
 
+The matched Level 2 / Level 4 Jetson A/B is also complete. CuPy deconvolution
+of the 241 frames took 38.21 s and 383.68 J after a 0.93 s / 7.35 J prepared-
+kernel setup. Tracker-only medians were effectively unchanged at 41.88 s /
+371.45 J for undeconvolved input and 41.71 s / 369.39 J for deconvolved input.
+The combined deconvolved path remains roughly 44 times faster than the 15 s
+image cadence, so compute is not the immediate concern. The unchanged tracker
+configuration selected a much narrower angular front after deconvolution,
+making preprocessing robustness and truth-based validation the next science
+questions.
+
 ## Milestones and status
 
 ### 0. Research and initial data audit — complete
@@ -1170,6 +1188,9 @@ reference data exist.
   thin fronts; explicitly mark unsupported first/last frames. The first Mac
   science A/B passes its engineering gates; paired Jetson timing/energy remains
   optional follow-up rather than part of the science decision.
+- [x] Run the same automatic tracker on a matched undeconvolved/deconvolved
+  241-frame sequence, quantify local-front, support, headline-height,
+  kinematic, timing, and energy sensitivity, and preserve review artifacts.
 - [ ] Replace the one-best-history fragment dynamic program with a bounded
   multi-hypothesis/Pareto state so start radius, running maximum, and robust
   final ranking cannot discard a valid alternative history.
@@ -1204,6 +1225,12 @@ reference data exist.
 - [x] Profile the pipeline and identify actual bottlenecks.
 - [x] Retain the first science-equivalent CPU optimization after a controlled
   timing/energy A/B comparison.
+- [x] Measure matched CuPy Level 2 plus Level 4 timing and energy on the
+  timestamp-correct 241-frame sequence, keeping deconvolution and tracker costs
+  separate.
+- [x] Measure a headless hybrid Level 0.5–4 241-frame batch with durable-write
+  boundaries, per-level covered-rail energy, and reversed-order Level 0.5
+  pairing; see `JETSON_END_TO_END_PIPELINE_RESULTS_20260925.md`.
 - [ ] Implement GPU versions only for bottlenecks with plausible benefit.
 - [ ] Compare CPU/GPU science equivalence, latency, and energy.
 - [ ] Validate final whole-kit power with an external DC measurement.

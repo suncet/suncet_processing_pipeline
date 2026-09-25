@@ -1,6 +1,6 @@
 # SunCET SOC Jetson Build and Operations Plan
 
-Last updated: 2026-09-01
+Last updated: 2026-09-25
 
 ## Purpose
 
@@ -29,17 +29,17 @@ under its hostname.
 
 ## Cross-plan status snapshot
 
-| Workstream | Status on 2026-09-15 | Next completion gate |
+| Workstream | Status on 2026-09-25 | Next completion gate |
 |---|---|---|
 | Jetson platform, SSH, NVMe, and portable environment | Release `3da31c5` deployed in a locked Python 3.14 runtime; 358 Jetson tests pass in stock 30 W mode | Use the release runtime for the next representative manual run while retaining `4fbd7b9` as rollback |
 | AWS X-band/UHF custody | Live and tested; AWS CLI and version-aware monitor deployed and healthy | Confirm the first lifecycle expirations and complete an independent archive inventory/restore drill |
 | Manual ingest and public-data synchronization | Safe ingest/preflight and the metadata-only Dropbox copy/check are operationally validated | Validate a separately approved, manifest-gated product push |
-| Level 0.5 decoding | Mac/Jetson parity validated; the single Jetson CTDB tree passes exact off-host manifest verification | Require the CTDB gate before every representative decode |
-| Level 1 calibration | Prototype only | Finish the end-to-end writer and approve/version the calibration set |
-| Level 2 PSF deconvolution | Exact FP64 NumPy/CuPy paths and provisional end-to-end FITS acceptance complete; controlled 30 W core benchmark favors CuPy | Wire Level 1 and `v1.0.3dev` `SOLAR_R`, approve the calibration set, then measure the full powered processing cycle |
-| Level 4 CME tracking | Strong known-window engineering prototype | Test the frozen raw/temporal-median variants on Meng Jin's additional scenarios, then add held-out evaluation and broader event association |
+| Level 0.5 decoding | Mac/Jetson parity validated; active bus, CSIE, and DSPS CTDB versions match across hosts | Refresh the private snapshot to cover the active versions and pass the exact CTDB gate before the next representative decode |
+| Level 1 calibration | Config-truth synthetic exposure normalization demonstrated; production writer incomplete | Associate flight APID 537 geometry, finish detector corrections, and approve/version the calibration set |
+| Level 2 PSF deconvolution | Strict Level 1 input, active `v1.0.4dev` contract, exact FP64 NumPy/CuPy paths, and a 241-frame Jetson end-to-end batch are validated | Approve the calibration set, replace provisional Level 1/3 fixtures, and measure the full external-input power cycle |
+| Level 4 CME tracking | Strong known-window engineering prototype; headless 241-frame Level 0.5–4 throughput/covered-rail baseline complete | Test Meng Jin's additional scenarios, compare binned/unbinned fidelity, then add held-out evaluation and broader event association |
 | LASP publication | SFTP transport validated; policy pending | Approve product mapping, naming/versioning, and release authority |
-| SatNOGS | Spacecraft suggestion submitted; public-specification draft and decoder prototype substantially complete | Monitor spacecraft review, then submit its inactive/unconfirmed nominal transmitter; track the revised APID 1 definition and finish RF receiver/decoder validation |
+| SatNOGS | Spacecraft record accepted and live; public-specification draft and decoder prototype substantially complete | Review the public citation and submit the inactive/unconfirmed nominal transmitter; track the revised APID 1 definition and finish RF receiver/decoder validation |
 | Unattended operations | Deliberately deferred | Close monitoring, recovery, locking, and release-policy gates first |
 
 ## Decisions
@@ -474,6 +474,15 @@ This work is independent of the Jetson NVMe installation.
   matched its expected tree hash exactly with zero missing, unexpected, or
   mismatched files. The mode-`0600` manifest now resides inside the private
   CTDB root and is excluded from its own inventory.
+- On 2026-09-25, read-only verification confirmed identical complete content
+  inventories on the Mac and Jetson for the selected bus `2.0.5` (19 files),
+  CSIE `1.1.8` (17 files), and DSPS `6.09` (one file) versions. This validates
+  the intended bus-default update to `2.0.5`, but not a new whole-tree baseline:
+  the Jetson's August 31 manifest reports exactly these 37 files as unexpected,
+  with zero missing or modified previously recorded files. The full trees also
+  retain different historical-version inventories. Refresh a reviewed,
+  authoritative off-host snapshot and pass the exact integrity gate before
+  the next representative decode; do not rebaseline from the Jetson alone.
 - On 2026-08-31 the representative Level 2 handoff bundle was regenerated from
   the corrected-timestamp middle frame of the 241-frame synthetic sequence and
   clean release checkpoint `4fbd7b9aeda539ffd7a057d3a49d063a4f503edb`. It
@@ -490,6 +499,34 @@ This work is independent of the Jetson NVMe installation.
   defaults to a strict `LEVEL=1` boundary; the direct synthetic Level 0.5 rate
   path must be selected explicitly and cannot silently invoke the obsolete
   fixed-exposure development calibrator.
+- On 2026-09-23, frame 300 of the historical `config_default` simulation was
+  rebuilt through a stricter synthetic Level 1-to-Level 2 path. Generation-era
+  simulator configuration at commit `b643ef3` establishes sum-minus-maximum
+  stacks of nine 0.035-second inner integrations and four 15-second outer
+  integrations followed by a two-bit right shift. The resulting effective
+  stored-DN exposures are 0.07 seconds inside and 11.25 seconds outside. The
+  analytic circle uses the generation-time radiance-map apparent solar radius,
+  not the later corrected observation header, giving center
+  `(499.75, 374.75)` and radius `134.570808` output pixels. The new Level 1
+  product is checksum- and `v1.0.4dev`-valid with `LEVEL = 1` and
+  `BUNIT = 'DN/s'`; the strict Level 2 run records `L1BYPASS = F` and conserves
+  summed flux to 0.175%. This is still a provisional synthetic fixture: only
+  exposure normalization was applied, the calibration references explicitly
+  say that dark/flat corrections were not applied, and 3,883 pixels clipped
+  at 65,535 DN cannot be radiometrically recovered. The products and native
+  diagnostic are under `synthetic/level1/frame300_config_default_v1.0.4dev_20260923`
+  and `synthetic/level2/frame300_config_default_v1.0.4dev_20260923`.
+- On 2026-09-25, a zero-copy hybrid Level 0.5–4 preflight and three measured
+  Jetson runs completed in stock 30 W mode. The exact X-band file was processed
+  through Level 0.5 and DuckDB; a reviewed 241-frame, 15-second, 2×2-binned
+  synthetic sequence then exercised provisional Level 1, CuPy Level 2,
+  pass-through Level 3, and headless Level 4. The median image-scaled model was
+  4,357.059 J in 476.911 s, or 18.079 J and 1.979 s per target frame, with a
+  10.815 W observed maximum and 48.0 °C peak. All three runs produced exactly
+  241 FITS files at Levels 1–3, no optional visual artifacts, identical DuckDB
+  row counts, and a successful 241-frame CME detection. See the
+  [end-to-end results](JETSON_END_TO_END_PIPELINE_RESULTS_20260925.md) for the
+  paired Level 0.5 model, per-level values, and limits.
 - Measure elapsed time, peak memory, disk growth, and failure behavior.
 - A manual operator runbook now covers input discovery, private receipts,
   version-aware replication checks, quiescent CTDB integrity and exact refresh
@@ -638,8 +675,9 @@ the portable production environment and lock file.
 - Retain FP64 and the existing boundary models as the science reference. Treat
   real FFTs, FP32, or algorithmic regularization changes as separate,
   tolerance-gated experiments.
-- Repeat cold-start and full Level 1-to-Level 4 measurements after those stages
-  and approved calibration products exist.
+- The provisional 241-frame Level 1-to-Level 4 covered-rail batch is now
+  measured. Repeat it after production Level 1/3 and approved calibration
+  products exist, and add cold-start/power-cycle scope at the external DC input.
 - Measure the complete power-on/boot/process/persist/shutdown cycle at the
   external DC input before drawing spacecraft energy conclusions. The current
   `tegrastats` result covers on-module rails only and cannot measure off/boot
@@ -647,6 +685,13 @@ the portable production environment and lock file.
 
 ### 8.1 Resolve retained metadata documentation debt — pending
 
+- Associate each image with the latest valid at-or-before APID 537 CSIE
+  housekeeping sample so the commandable ICM circle center and radius can be
+  carried into Level 0.5. Before making those fields contractual, resolve the
+  contradictory FPM-inside/outside label for ICM mode 3 and confirm the circle
+  coordinate origin, binning convention, and allowed housekeeping age. Level 1
+  must fail closed for an unequal-exposure composite whose geometry is missing,
+  stale, or ambiguous; it must not substitute the solar WCS circle.
 - Obtain the authoritative internal variable names, FITS keywords, units, and
   data types for the Dual-SPS Solar Angle Error X/Y fields, then update the live
   Google Sheet and versioned exports.
@@ -687,6 +732,14 @@ candidates, shifted the median headline height by 0.030 solar radii before raw
 FOV contact, and changed the provisional median speed from 757.9 to 748.0 km/s.
 It also erases a deliberately thin feature moving five pixels per frame, so it
 remains disabled by default until the additional simulations are available.
+The same sequence has now completed a three-trial, headless Level 0.5–4 Jetson
+characterization. The modeled hybrid batch used 4.357 kJ and 476.9 s at the
+median, leaving 7.58× throughput headroom at 15-second cadence and 5.05× at
+10 seconds. These are gross covered-module-rail results for 2×2-binned data;
+Level 3 was a validation/I/O pass-through, the Level 0.5 image term was modeled
+from a paired marginal measurement, and boot/shutdown and carrier-board losses
+remain outside scope. Details are in the
+[end-to-end results](JETSON_END_TO_END_PIPELINE_RESULTS_20260925.md).
 Deeper CPU/GPU optimization, production end-to-end scope, whole-kit DC-input
 measurement, and future labeled-data validation are tracked in the dedicated
 [Level 4 CME tracking plan](CME_TRACKING_LEVEL4_PLAN.md). Do not connect this
@@ -721,6 +774,14 @@ post-launch identification. The NORAD catalog number is expected only after
 launch and does not block the pre-launch work. This workstream is tracked in the
 [SunCET SatNOGS onboarding plan](SATNOGS_ONBOARDING_PLAN.md).
 
+The spacecraft record is now accepted and live as
+[`MNRC-9829-4319-5529-8975`](https://db.satnogs.org/satellite/MNRC-9829-4319-5529-8975).
+Verified on 2026-09-25, its history records approval of suggestion 11880 on
+2026-09-01. It has `Future` status and temporary NORAD ID `98244`, with no
+approved transmitters yet. The spacecraft acceptance gate has passed; review
+the public transmitter citation and submit the inactive/unconfirmed nominal
+9600-baud entry next.
+
 The APID 1 public-field review is complete: 112 fields are approved for public
 decoding and 24 remain opaque. The first generated bare-CCSDS Kaitai decoder
 pass and a synthetic public test vector now compile and validate successfully.
@@ -734,16 +795,18 @@ the pipeline and public decoder artifacts.
 
 ## Immediate next action
 
+Refresh and verify the authoritative private CTDB snapshot covering the active
+bus `2.0.5`, CSIE `1.1.8`, and DSPS `6.09` versions before the next decode.
 Validate a separately approved manifest-gated Dropbox product push, then share
 the explicitly provisional Level 2 bundle with the Level 3 developer together
 with its contract and checksum list. Confirm the first 30-day source lifecycle
 expirations and perform an independent archive inventory/restore drill. When
 Meng Jin's additional simulations arrive, generate reviewed manifests, freeze
 development/validation cases, and run the same raw and temporal-median
-configurations before changing thresholds or adding GPU work. SunCET spacecraft
-suggestion 11880 is now awaiting SatNOGS review; monitor it and, after
-acceptance, submit the inactive/unconfirmed nominal transmitter. The revised
-APID 1 definition and flight-equivalent RF package remain receiver/decoder
+configurations before changing thresholds or adding GPU work. SunCET's
+spacecraft record is accepted and live; review the public citation and submit
+the inactive/unconfirmed nominal transmitter. The revised APID 1 definition
+and flight-equivalent RF package remain receiver/decoder
 gates. No unattended ingest or publication should begin before its separate
 operational gates pass.
 
