@@ -547,6 +547,7 @@ def write_event_products(
     summary: Mapping[str, Any],
     *,
     front_overlay: FrontOverlayProduct | None = None,
+    include_diagnostic_plots: bool = True,
     diagnostic_movie_writer: Callable[[Path], None] | None = None,
     diagnostic_movie_metadata: Mapping[str, Any] | None = None,
     overwrite: bool = False,
@@ -556,7 +557,10 @@ def write_event_products(
     The final event directory is never populated file by file.  If generation
     fails, the prior product (when present) remains untouched and the staging
     directory is removed.  ``overwrite=True`` performs a recoverable directory
-    swap before deleting the old product.
+    swap before deleting the old product.  The authoritative ECSV tables and
+    JSON provenance are always written.  ``include_diagnostic_plots=False``
+    omits all derived PNG plots, including ``front_overlay`` when supplied.
+    Its default remains ``True`` for compatibility with ordinary product runs.
     """
 
     if diagnostic_movie_metadata is not None and diagnostic_movie_writer is None:
@@ -593,6 +597,7 @@ def write_event_products(
             front_samples,
             summary,
             front_overlay=front_overlay,
+            include_diagnostic_plots=include_diagnostic_plots,
             diagnostic_movie_writer=diagnostic_movie_writer,
             diagnostic_movie_metadata=diagnostic_movie_metadata,
         )
@@ -632,6 +637,7 @@ def _write_product_set(
     summary: Mapping[str, Any],
     *,
     front_overlay: FrontOverlayProduct | None,
+    include_diagnostic_plots: bool,
     diagnostic_movie_writer: Callable[[Path], None] | None,
     diagnostic_movie_metadata: Mapping[str, Any] | None,
 ) -> None:
@@ -644,81 +650,84 @@ def _write_product_set(
         samples_path, format="ascii.ecsv", overwrite=True
     )
 
-    elapsed = np.asarray(track.elapsed_s, dtype=np.float64)
     solar_radius_km = float(track.metadata.get("solar_radius_km", 695_700.0))
-    derivative_exclusions = int(
-        QualityFlag.DERIVATIVE_ENDPOINT | QualityFlag.TRACK_GAP
-    )
-    derivative_valid = (
-        np.asarray(track.quality_mask, dtype=np.uint32) & derivative_exclusions
-    ) == 0
-    _plot_series(
-        elapsed,
-        np.asarray(track.height_fit_rsun, dtype=np.float64),
-        np.asarray(track.height_fit_sigma_rsun, dtype=np.float64),
-        raw_values=np.asarray(track.height_raw_rsun, dtype=np.float64),
-        raw_quality_mask=np.asarray(track.quality_mask, dtype=np.uint32),
-        ylabel="Projected height (R_sun)",
-        title=f"{track.event_id}: CME height-time",
-        path=event_directory / "height_time.png",
-    )
-    _plot_series(
-        elapsed,
-        np.where(
-            derivative_valid,
-            np.asarray(track.speed_fit_km_s, dtype=np.float64),
-            np.nan,
-        ),
-        np.where(
-            derivative_valid,
-            np.asarray(track.speed_sigma_km_s, dtype=np.float64),
-            np.nan,
-        ),
-        ylabel="Projected speed (km/s)",
-        title=f"{track.event_id}: CME speed-time",
-        path=event_directory / "speed_time.png",
-    )
-    _plot_series(
-        elapsed,
-        np.where(
+    if include_diagnostic_plots:
+        elapsed = np.asarray(track.elapsed_s, dtype=np.float64)
+        derivative_exclusions = int(
+            QualityFlag.DERIVATIVE_ENDPOINT | QualityFlag.TRACK_GAP
+        )
+        derivative_valid = (
+            np.asarray(track.quality_mask, dtype=np.uint32) & derivative_exclusions
+        ) == 0
+        _plot_series(
+            elapsed,
+            np.asarray(track.height_fit_rsun, dtype=np.float64),
+            np.asarray(track.height_fit_sigma_rsun, dtype=np.float64),
+            raw_values=np.asarray(track.height_raw_rsun, dtype=np.float64),
+            raw_quality_mask=np.asarray(track.quality_mask, dtype=np.uint32),
+            ylabel="Projected height (R_sun)",
+            title=f"{track.event_id}: CME height-time",
+            path=event_directory / "height_time.png",
+        )
+        _plot_series(
+            elapsed,
+            np.where(
+                derivative_valid,
+                np.asarray(track.speed_fit_km_s, dtype=np.float64),
+                np.nan,
+            ),
+            np.where(
+                derivative_valid,
+                np.asarray(track.speed_sigma_km_s, dtype=np.float64),
+                np.nan,
+            ),
+            ylabel="Projected speed (km/s)",
+            title=f"{track.event_id}: CME speed-time",
+            path=event_directory / "speed_time.png",
+        )
+        _plot_series(
+            elapsed,
+            np.where(
+                derivative_valid,
+                np.asarray(track.acceleration_fit_m_s2, dtype=np.float64),
+                np.nan,
+            ),
+            np.where(
+                derivative_valid,
+                np.asarray(track.acceleration_sigma_m_s2, dtype=np.float64),
+                np.nan,
+            ),
+            ylabel="Projected acceleration (m/s^2)",
+            title=f"{track.event_id}: CME acceleration-time",
+            path=event_directory / "acceleration_time.png",
+            zero_reference=True,
+        )
+        acceleration_values = np.where(
             derivative_valid,
             np.asarray(track.acceleration_fit_m_s2, dtype=np.float64),
             np.nan,
-        ),
-        np.where(
-            derivative_valid,
-            np.asarray(track.acceleration_sigma_m_s2, dtype=np.float64),
-            np.nan,
-        ),
-        ylabel="Projected acceleration (m/s^2)",
-        title=f"{track.event_id}: CME acceleration-time",
-        path=event_directory / "acceleration_time.png",
-        zero_reference=True,
-    )
-    acceleration_values = np.where(
-        derivative_valid,
-        np.asarray(track.acceleration_fit_m_s2, dtype=np.float64),
-        np.nan,
-    )
-    _plot_series(
-        elapsed,
-        acceleration_values,
-        np.where(
-            derivative_valid,
-            np.asarray(track.acceleration_sigma_m_s2, dtype=np.float64),
-            np.nan,
-        ),
-        ylabel="Projected acceleration (m/s^2)",
-        title=(
-            f"{track.event_id}: CME acceleration-time detail "
-            "(1-sigma clipped)"
-        ),
-        path=event_directory / "acceleration_time_detail.png",
-        y_limits=_zero_centered_detail_limits(acceleration_values),
-        zero_reference=True,
-    )
-    if front_overlay is not None:
-        _write_front_overlay(front_overlay, event_directory / "front_overlay.png")
+        )
+        _plot_series(
+            elapsed,
+            acceleration_values,
+            np.where(
+                derivative_valid,
+                np.asarray(track.acceleration_sigma_m_s2, dtype=np.float64),
+                np.nan,
+            ),
+            ylabel="Projected acceleration (m/s^2)",
+            title=(
+                f"{track.event_id}: CME acceleration-time detail "
+                "(1-sigma clipped)"
+            ),
+            path=event_directory / "acceleration_time_detail.png",
+            y_limits=_zero_centered_detail_limits(acceleration_values),
+            zero_reference=True,
+        )
+        if front_overlay is not None:
+            _write_front_overlay(
+                front_overlay, event_directory / "front_overlay.png"
+            )
     movie_path = event_directory / "front_tracking.mp4"
     if diagnostic_movie_writer is not None:
         diagnostic_movie_writer(movie_path)
@@ -732,43 +741,50 @@ def _write_product_set(
                 f"file at {movie_path}."
             )
 
-    height_plot = event_directory / "height_time.png"
-    speed_plot = event_directory / "speed_time.png"
-    acceleration_plot = event_directory / "acceleration_time.png"
-    acceleration_detail_plot = event_directory / "acceleration_time_detail.png"
-    overlay_plot = event_directory / "front_overlay.png"
     product_index: dict[str, Any] = {
         "track": {"path": track_path.name, "sha256": _sha256(track_path)},
         "front_samples": {
             "path": samples_path.name,
             "sha256": _sha256(samples_path),
         },
-        "height_time_plot": {
-            "path": height_plot.name,
-            "sha256": _sha256(height_plot),
-        },
-        "speed_time_plot": {
-            "path": speed_plot.name,
-            "sha256": _sha256(speed_plot),
-        },
-        "acceleration_time_plot": {
-            "path": acceleration_plot.name,
-            "sha256": _sha256(acceleration_plot),
-        },
-        "acceleration_time_detail_plot": {
-            "path": acceleration_detail_plot.name,
-            "sha256": _sha256(acceleration_detail_plot),
-            "uncertainty_display": "clipped_with_boundary_markers",
-        },
-        "front_overlay": (
+    }
+    if include_diagnostic_plots:
+        height_plot = event_directory / "height_time.png"
+        speed_plot = event_directory / "speed_time.png"
+        acceleration_plot = event_directory / "acceleration_time.png"
+        acceleration_detail_plot = event_directory / "acceleration_time_detail.png"
+        product_index.update(
             {
+                "height_time_plot": {
+                    "path": height_plot.name,
+                    "sha256": _sha256(height_plot),
+                },
+                "speed_time_plot": {
+                    "path": speed_plot.name,
+                    "sha256": _sha256(speed_plot),
+                },
+                "acceleration_time_plot": {
+                    "path": acceleration_plot.name,
+                    "sha256": _sha256(acceleration_plot),
+                },
+                "acceleration_time_detail_plot": {
+                    "path": acceleration_detail_plot.name,
+                    "sha256": _sha256(acceleration_detail_plot),
+                    "uncertainty_display": "clipped_with_boundary_markers",
+                },
+            }
+        )
+        if front_overlay is not None:
+            overlay_plot = event_directory / "front_overlay.png"
+            product_index["front_overlay"] = {
                 "path": overlay_plot.name,
                 "sha256": _sha256(overlay_plot),
             }
-            if front_overlay is not None
-            else None
-        ),
-    }
+        else:
+            # Retain the historical default-mode schema.  Headless runs omit
+            # this key altogether because no diagnostic products were
+            # requested; plotted runs without an overlay explicitly record it.
+            product_index["front_overlay"] = None
     if diagnostic_movie_writer is not None:
         product_index["front_tracking_movie"] = {
             **dict(diagnostic_movie_metadata or {}),

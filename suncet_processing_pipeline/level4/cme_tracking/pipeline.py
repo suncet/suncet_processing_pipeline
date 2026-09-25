@@ -752,16 +752,22 @@ def write_known_window_products(
     event_id: str,
     *,
     repository: str | Path | None = None,
+    include_diagnostic_plots: bool = True,
     include_diagnostic_movie: bool = False,
     movie_fps: float = 10.0,
     overwrite: bool = False,
 ) -> Path:
-    """Write the provisional product directory for a completed run."""
+    """Write the provisional product directory for a completed run.
+
+    Authoritative science tables and JSON provenance are unconditional.
+    Diagnostic PNG plots/overlays can be omitted for controlled energy
+    measurements without changing the ordinary-run default.
+    """
 
     track = build_track_product(run, event_id)
     front_samples = build_front_samples_product(run, event_id)
     summary = build_event_summary(run, event_id, repository=repository)
-    overlay = build_front_overlay_product(run)
+    overlay = build_front_overlay_product(run) if include_diagnostic_plots else None
 
     diagnostic_movie_writer = None
     diagnostic_movie_metadata = None
@@ -789,6 +795,7 @@ def write_known_window_products(
         front_samples,
         summary,
         front_overlay=overlay,
+        include_diagnostic_plots=include_diagnostic_plots,
         diagnostic_movie_writer=diagnostic_movie_writer,
         diagnostic_movie_metadata=diagnostic_movie_metadata,
         overwrite=overwrite,

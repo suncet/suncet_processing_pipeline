@@ -129,6 +129,81 @@ def test_write_event_products(tmp_path) -> None:
     assert len(completion["summary_sha256"]) == 64
 
 
+def test_write_event_products_can_omit_all_diagnostic_pngs(tmp_path) -> None:
+    count = 4
+    elapsed = np.arange(count, dtype=float) * 15.0
+    values = np.linspace(1.2, 1.5, count)
+    track = TrackProduct(
+        event_id="headless-event",
+        frame_number=np.arange(count),
+        elapsed_s=elapsed,
+        time_utc=(None,) * count,
+        height_raw_rsun=values,
+        height_raw_sigma_rsun=np.full(count, 0.01),
+        height_fit_rsun=values,
+        height_fit_sigma_rsun=np.full(count, 0.02),
+        speed_fit_km_s=np.ones(count),
+        speed_sigma_km_s=np.ones(count),
+        acceleration_fit_m_s2=np.zeros(count),
+        acceleration_sigma_m_s2=np.ones(count),
+        position_angle_deg=np.full(count, 250.0),
+        angular_width_deg=np.full(count, 30.0),
+        front_coverage_fraction=np.ones(count),
+        confidence=np.ones(count),
+        quality_mask=np.zeros(count, dtype=np.uint32),
+    )
+    empty = np.array([], dtype=float)
+    front = FrontSamplesProduct(
+        event_id=track.event_id,
+        frame_number=np.array([], dtype=int),
+        elapsed_s=empty,
+        position_angle_deg=empty,
+        radius_rsun=empty,
+        radius_sigma_rsun=empty,
+        score=empty,
+        accepted=np.array([], dtype=bool),
+        quality_mask=np.array([], dtype=np.uint32),
+    )
+    overlay = FrontOverlayProduct(
+        frames=(
+            FrontOverlayFrame(
+                image=np.ones((8, 8), dtype=np.float32),
+                frame_number=0,
+                elapsed_s=0.0,
+                radius_px=np.array([2.0]),
+                position_angle_deg=np.array([270.0]),
+                headline_height_rsun=1.2,
+            ),
+        ),
+        center_yx=(3.5, 3.5),
+        north_vector_yx=(-1.0, 0.0),
+        east_vector_yx=(0.0, -1.0),
+    )
+
+    directory = write_event_products(
+        tmp_path,
+        track,
+        front,
+        {
+            "scenario_id": "headless-fixture",
+            "run_provenance": {"git_commit": "fixture"},
+        },
+        front_overlay=overlay,
+        include_diagnostic_plots=False,
+    )
+
+    assert {path.name for path in directory.iterdir()} == {
+        "track.ecsv",
+        "front_samples.ecsv",
+        "summary.json",
+        "COMPLETE.json",
+    }
+    summary = json.loads((directory / "summary.json").read_text())
+    assert set(summary["products"]) == {"track", "front_samples"}
+    assert summary["scenario_id"] == "headless-fixture"
+    assert summary["run_provenance"] == {"git_commit": "fixture"}
+
+
 def test_overwrite_failure_never_publishes_a_partial_product(
     tmp_path, monkeypatch
 ) -> None:
