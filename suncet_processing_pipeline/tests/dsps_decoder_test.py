@@ -14,7 +14,7 @@ from ..make_level0_5 import (
 
 
 def _config(tmp_path):
-    bus_decoders = tmp_path / "suncet_v2-0-4" / "decoders"
+    bus_decoders = tmp_path / "suncet_v2-0-5" / "decoders"
     bus_decoders.mkdir(parents=True)
     (bus_decoders / "gen_eus.py").write_text('SOURCE = "bus"\n')
     (bus_decoders / "gen_states.py").write_text('SOURCE = "bus"\n')
@@ -23,11 +23,11 @@ def _config(tmp_path):
     )
     return SimpleNamespace(
         ctdb_base=str(tmp_path),
-        version_bus="2.0.4",
+        version_bus="2.0.5",
         version_dsps="6.09",
-        bus_ctdb_path=str(tmp_path / "suncet_v2-0-4"),
+        bus_ctdb_path=str(tmp_path / "suncet_v2-0-5"),
         packet_definitions_path=str(bus_decoders),
-        csie_ctdb_path=str(tmp_path / "suncet_csie_v1-1-6"),
+        csie_ctdb_path=str(tmp_path / "suncet_csie_v1-1-8"),
         dsps_ctdb_path=str(tmp_path / "suncet_dsps_v6-09"),
     )
 
@@ -47,7 +47,7 @@ def test_dsps_split_ctdb_uses_bus_helpers_and_generated_packet_fields(tmp_path):
     )
     # A bus-version-coupled path must not win over the independently pinned
     # DSPS CTDB.
-    wrong_decoders = tmp_path / "suncet_dsps_v2-0-4" / "decoders"
+    wrong_decoders = tmp_path / "suncet_dsps_v2-0-5" / "decoders"
     wrong_decoders.mkdir(parents=True)
     (wrong_decoders / "gen_pkts.py").write_text(
         "class DSPS_PASS:\n    ctdb_version = 'wrong-bus-coupled-path'\n"
@@ -125,7 +125,7 @@ def test_dsps_data_csv_marks_provisional_fields_and_unknown_tail(
 def test_dsps_nested_ctdb_remains_supported(tmp_path):
     config = _config(tmp_path)
     nested_decoders = (
-        tmp_path / "suncet_v2-0-4" / "decoders" / "dsps_decoders"
+        tmp_path / "suncet_v2-0-5" / "decoders" / "dsps_decoders"
     )
     nested_decoders.mkdir(parents=True)
     (nested_decoders / "gen_eus.py").write_text('SOURCE = "nested"\n')
