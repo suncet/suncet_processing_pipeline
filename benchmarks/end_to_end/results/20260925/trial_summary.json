@@ -1,0 +1,536 @@
+{
+  "caveats": {
+    "level3": {
+      "benchmark_only_passthrough": true,
+      "description": "Benchmark-only Level 3 pass-through; no applicable rotation, geometry, or special dark correction is available for this source",
+      "interpretation": "The Level 3 measurement covers the present pass-through, validation, and file-I/O work only; it is not an estimate of future Level 3 rotation, geometry, or special dark-correction algorithms.",
+      "present": true
+    },
+    "paired_projection_models": [
+      {
+        "description": "Keep exact-file fixed Level 0.5 work and scale only the marginal CSIE image assembly from 89,864,000 observed pixels to the 241-frame synthetic workload of 180,750,000 pixels; then add DuckDB and measured Levels 1-4.",
+        "name": "hybrid_241_frame_pipeline",
+        "quality_warnings": [
+          "The projection assumes variable image-processing cost is linear in image_pixels; repeat the pair in reversed order to bound cache and thermal-order bias."
+        ],
+        "scope": [
+          "Phase-only model; excludes paired diagnostic duplication, interphase gaps, substitution/staging, supervisor work, network transfer, boot, and shutdown."
+        ]
+      }
+    ],
+    "plan_notes": [
+      "Real X-band telemetry is processed exactly once through Level 0.5. Its 124 images were test captures, so their apparent timestamp span is not used for workload normalization. The reviewed 241-frame, 15-second synthetic sequence is selected by path for Levels 1-4; no measured copy or conversion is performed at the handoff. Those synthetic arrays are 1000x750 pixels with NBIN1=NBIN2=2 (0.75 megapixel per measured frame; 2000x1500 is the unbinned detector equivalent). At the binned 9.6 arcsec/pixel scale the approximately 30 arcsec 80%-encircled-energy telescope PSF still spans about three pixels, so this default onboard binning is expected to preserve Level 4 front-tracking information while reducing pixel count by four; an eventual unbinned A/B test remains required to verify that expectation. Level 3 is a benchmark-only pass-through because no applicable geometric/dark-correction source data exist. Only the paired marginal CSIE image cost is scaled from the raw file's observed image pixels to the 241-frame synthetic pixel workload."
+    ]
+  },
+  "compatibility": {
+    "basis": "Exact phase-name set, normalized phase commands/environments/path assertions, per-phase descriptions/workload units, pre-staged input declarations, plan notes, paired-projection definitions, and telemetry sampling interval",
+    "status": "compatible"
+  },
+  "created_utc": "2026-09-25T18:23:03Z",
+  "input_measurements": [
+    "/srv/suncet/data/benchmarks/end_to_end_runs/20260925_trial_01_skip_full/measurement.json",
+    "/srv/suncet/data/benchmarks/end_to_end_runs/20260925_trial_02_full_skip/measurement.json",
+    "/srv/suncet/data/benchmarks/end_to_end_runs/20260925_trial_03_skip_full/measurement.json"
+  ],
+  "paired_projections": {
+    "hybrid_241_frame_pipeline": {
+      "definition": {
+        "additional_phases": [
+          "level0_5_duckdb",
+          "level1",
+          "level2",
+          "level3",
+          "level4"
+        ],
+        "baseline_phase": "level0_5_skip_images",
+        "description": "Keep exact-file fixed Level 0.5 work and scale only the marginal CSIE image assembly from 89,864,000 observed pixels to the 241-frame synthetic workload of 180,750,000 pixels; then add DuckDB and measured Levels 1-4.",
+        "full_phase": "level0_5_full",
+        "name": "hybrid_241_frame_pipeline",
+        "observed_units": 89864000.0,
+        "target_frame_count": 241.0,
+        "target_units": 180750000.0,
+        "type": "paired_delta_projection",
+        "unit": "image_pixels"
+      },
+      "exact_hybrid_phase_sum": {
+        "average_power_watts": {
+          "count": 3,
+          "maximum": 9.141572789191327,
+          "median": 9.136018693921809,
+          "minimum": 9.126950679560354,
+          "range": 0.014622109630973767
+        },
+        "duration_seconds": {
+          "count": 3,
+          "maximum": 462.65498851000007,
+          "median": 461.00139608,
+          "minimum": 460.625785918,
+          "range": 2.029202592000047
+        },
+        "duration_seconds_per_target_frame": {
+          "count": 3,
+          "maximum": 1.9197302427800833,
+          "median": 1.9128688634024897,
+          "minimum": 1.9113103150124482,
+          "range": 0.008419927767635116
+        },
+        "gross_energy_joules": {
+          "count": 3,
+          "maximum": 4229.394253746643,
+          "median": 4208.285791049273,
+          "minimum": 4207.537005230628,
+          "range": 21.857248516014806
+        },
+        "gross_energy_joules_per_target_frame": {
+          "count": 3,
+          "maximum": 17.549353749986068,
+          "median": 17.461766767839308,
+          "minimum": 17.458659772741196,
+          "range": 0.0906939772448716
+        },
+        "gross_energy_joules_per_target_megapixel": {
+          "count": 3,
+          "maximum": 23.39913833331476,
+          "median": 23.28235569045241,
+          "minimum": 23.27821303032159,
+          "range": 0.12092530299316806
+        }
+      },
+      "projected_total": {
+        "average_power_watts": {
+          "count": 3,
+          "maximum": 9.142494290345681,
+          "median": 9.13600215253809,
+          "minimum": 9.127098889088225,
+          "range": 0.015395401257455532
+        },
+        "duration_seconds": {
+          "count": 3,
+          "maximum": 477.75578531548456,
+          "median": 476.9109041748925,
+          "minimum": 476.3862257319978,
+          "range": 1.3695595834867618
+        },
+        "duration_seconds_per_target_frame": {
+          "count": 3,
+          "maximum": 1.982389150686658,
+          "median": 1.978883419812832,
+          "minimum": 1.9767063308381652,
+          "range": 0.005682819848492837
+        },
+        "gross_energy_joules": {
+          "count": 3,
+          "maximum": 4367.879539426434,
+          "median": 4357.059047110704,
+          "minimum": 4348.02419165545,
+          "range": 19.855347770984736
+        },
+        "gross_energy_joules_per_target_frame": {
+          "count": 3,
+          "maximum": 18.123981491395995,
+          "median": 18.07908318303197,
+          "minimum": 18.041594156246678,
+          "range": 0.08238733514931695
+        },
+        "gross_energy_joules_per_target_megapixel": {
+          "count": 3,
+          "maximum": 24.165308655194657,
+          "median": 24.105444244042623,
+          "minimum": 24.055458874995573,
+          "range": 0.10984978019908453
+        }
+      },
+      "quality_warnings": [
+        "The projection assumes variable image-processing cost is linear in image_pixels; repeat the pair in reversed order to bound cache and thermal-order bias."
+      ],
+      "scope": [
+        "Phase-only model; excludes paired diagnostic duplication, interphase gaps, substitution/staging, supervisor work, network transfer, boot, and shutdown."
+      ]
+    }
+  },
+  "phases": [
+    {
+      "description": "Exact 1.2 GB flight-like X-band playback; packet recovery and CTDB decode with CSIE image assembly disabled",
+      "duration_seconds": {
+        "count": 3,
+        "maximum": 127.796115796,
+        "median": 127.508830154,
+        "minimum": 126.31828119,
+        "range": 1.4778346060000018
+      },
+      "gross_energy_joules": {
+        "count": 3,
+        "maximum": 1126.3052669907668,
+        "median": 1110.9680219204301,
+        "minimum": 1098.9543328140435,
+        "range": 27.350934176723285
+      },
+      "gross_energy_joules_per_frame": {
+        "count": 0,
+        "maximum": null,
+        "median": null,
+        "minimum": null,
+        "range": null
+      },
+      "gross_energy_joules_per_megapixel": {
+        "count": 0,
+        "maximum": null,
+        "median": null,
+        "minimum": null,
+        "range": null
+      },
+      "maximum_observed_temperature_c": 47.687,
+      "name": "level0_5_skip_images",
+      "peak_temperature_c": {
+        "count": 3,
+        "maximum": 47.687,
+        "median": 47.343,
+        "minimum": 46.343,
+        "range": 1.343999999999994
+      },
+      "sampled_peak_power_watts": {
+        "count": 3,
+        "maximum": 10.013,
+        "median": 9.819,
+        "minimum": 9.817,
+        "range": 0.19599999999999973
+      },
+      "trial_count": 3,
+      "workload_units": {
+        "input_bytes": 1309312200.0,
+        "raw_written_images": 124.0
+      }
+    },
+    {
+      "description": "Exact same X-band playback with core CSIE FITS and metadata products; diagnostic PNG and JPEG2000 products excluded",
+      "duration_seconds": {
+        "count": 3,
+        "maximum": 142.727106313,
+        "median": 142.720659609,
+        "minimum": 142.420275634,
+        "range": 0.3068306790000008
+      },
+      "gross_energy_joules": {
+        "count": 3,
+        "maximum": 1263.2333055481774,
+        "median": 1249.8754501368783,
+        "minimum": 1246.0546550056295,
+        "range": 17.178650542547985
+      },
+      "gross_energy_joules_per_frame": {
+        "count": 0,
+        "maximum": null,
+        "median": null,
+        "minimum": null,
+        "range": null
+      },
+      "gross_energy_joules_per_megapixel": {
+        "count": 3,
+        "maximum": 14.057167559291567,
+        "median": 13.90852232414402,
+        "minimum": 13.866004796199027,
+        "range": 0.19116276309254054
+      },
+      "maximum_observed_temperature_c": 47.812,
+      "name": "level0_5_full",
+      "peak_temperature_c": {
+        "count": 3,
+        "maximum": 47.812,
+        "median": 47.593,
+        "minimum": 47.093,
+        "range": 0.7189999999999941
+      },
+      "sampled_peak_power_watts": {
+        "count": 3,
+        "maximum": 10.215,
+        "median": 9.817,
+        "minimum": 9.817,
+        "range": 0.3979999999999997
+      },
+      "trial_count": 3,
+      "workload_units": {
+        "image_pixels": 89864000.0,
+        "input_bytes": 1309312200.0,
+        "raw_written_images": 124.0
+      }
+    },
+    {
+      "description": "Ingest the full Level 0.5 decoded per-APID CSV products into a single DuckDB store",
+      "duration_seconds": {
+        "count": 3,
+        "maximum": 27.694103392,
+        "median": 27.456521312,
+        "minimum": 27.307699326,
+        "range": 0.3864040659999972
+      },
+      "gross_energy_joules": {
+        "count": 3,
+        "maximum": 246.8063632635702,
+        "median": 242.4790032137998,
+        "minimum": 241.45546176571546,
+        "range": 5.35090149785475
+      },
+      "gross_energy_joules_per_frame": {
+        "count": 0,
+        "maximum": null,
+        "median": null,
+        "minimum": null,
+        "range": null
+      },
+      "gross_energy_joules_per_megapixel": {
+        "count": 0,
+        "maximum": null,
+        "median": null,
+        "minimum": null,
+        "range": null
+      },
+      "maximum_observed_temperature_c": 47.937,
+      "name": "level0_5_duckdb",
+      "peak_temperature_c": {
+        "count": 3,
+        "maximum": 47.937,
+        "median": 47.687,
+        "minimum": 47.218,
+        "range": 0.7189999999999941
+      },
+      "sampled_peak_power_watts": {
+        "count": 3,
+        "maximum": 10.315,
+        "median": 10.312,
+        "minimum": 10.312,
+        "range": 0.0030000000000001137
+      },
+      "trial_count": 3,
+      "workload_units": {
+        "raw_written_images": 124.0
+      }
+    },
+    {
+      "description": "Create 241 provisional Level 1 DN/s products from the reviewed synthetic Level 0.5 sequence",
+      "duration_seconds": {
+        "count": 3,
+        "maximum": 63.766514772,
+        "median": 63.603049604,
+        "minimum": 63.594254586,
+        "range": 0.1722601860000026
+      },
+      "gross_energy_joules": {
+        "count": 3,
+        "maximum": 598.3373630399451,
+        "median": 596.828390278539,
+        "minimum": 593.9037334883135,
+        "range": 4.433629551631611
+      },
+      "gross_energy_joules_per_frame": {
+        "count": 3,
+        "maximum": 2.4827276474686517,
+        "median": 2.4764663497034816,
+        "minimum": 2.4643308443498486,
+        "range": 0.018396803118803096
+      },
+      "gross_energy_joules_per_megapixel": {
+        "count": 3,
+        "maximum": 3.3103035299582024,
+        "median": 3.3019551329379753,
+        "minimum": 3.2857744591331315,
+        "range": 0.024529070825070942
+      },
+      "maximum_observed_temperature_c": 47.687,
+      "name": "level1",
+      "peak_temperature_c": {
+        "count": 3,
+        "maximum": 47.687,
+        "median": 47.468,
+        "minimum": 47.218,
+        "range": 0.4689999999999941
+      },
+      "sampled_peak_power_watts": {
+        "count": 3,
+        "maximum": 9.812,
+        "median": 9.712,
+        "minimum": 9.517,
+        "range": 0.29499999999999993
+      },
+      "trial_count": 3,
+      "workload_units": {
+        "binning_columns": 2.0,
+        "binning_rows": 2.0,
+        "frames": 241.0,
+        "image_pixels": 180750000.0,
+        "unbinned_equivalent_pixels_per_frame": 3000000.0
+      }
+    },
+    {
+      "description": "GPU/CuPy PSF deconvolution of all 241 Level 1 products",
+      "duration_seconds": {
+        "count": 3,
+        "maximum": 117.738291255,
+        "median": 117.463292651,
+        "minimum": 117.331015941,
+        "range": 0.40727531399998895
+      },
+      "gross_energy_joules": {
+        "count": 3,
+        "maximum": 1126.7665823932823,
+        "median": 1122.0496081867343,
+        "minimum": 1121.5064290124558,
+        "range": 5.260153380826523
+      },
+      "gross_energy_joules_per_frame": {
+        "count": 3,
+        "maximum": 4.675380009930632,
+        "median": 4.65580750284952,
+        "minimum": 4.653553647354588,
+        "range": 0.021826362576043756
+      },
+      "gross_energy_joules_per_megapixel": {
+        "count": 3,
+        "maximum": 6.233840013240843,
+        "median": 6.207743337132693,
+        "minimum": 6.204738196472785,
+        "range": 0.02910181676805834
+      },
+      "maximum_observed_temperature_c": 48.0,
+      "name": "level2",
+      "peak_temperature_c": {
+        "count": 3,
+        "maximum": 48.0,
+        "median": 48.0,
+        "minimum": 47.375,
+        "range": 0.625
+      },
+      "sampled_peak_power_watts": {
+        "count": 3,
+        "maximum": 10.818,
+        "median": 10.815,
+        "minimum": 10.416,
+        "range": 0.40199999999999925
+      },
+      "trial_count": 3,
+      "workload_units": {
+        "binning_columns": 2.0,
+        "binning_rows": 2.0,
+        "frames": 241.0,
+        "image_pixels": 180750000.0,
+        "unbinned_equivalent_pixels_per_frame": 3000000.0
+      }
+    },
+    {
+      "description": "Benchmark-only Level 3 pass-through; no applicable rotation, geometry, or special dark correction is available for this source",
+      "duration_seconds": {
+        "count": 3,
+        "maximum": 51.500619806,
+        "median": 50.851136296,
+        "minimum": 50.843667806,
+        "range": 0.656952000000004
+      },
+      "gross_energy_joules": {
+        "count": 3,
+        "maximum": 474.56967002768545,
+        "median": 468.25155273997757,
+        "minimum": 465.66885493228466,
+        "range": 8.900815095400787
+      },
+      "gross_energy_joules_per_frame": {
+        "count": 3,
+        "maximum": 1.9691687553015993,
+        "median": 1.9429525009957576,
+        "minimum": 1.932235912582094,
+        "range": 0.036932842719505254
+      },
+      "gross_energy_joules_per_megapixel": {
+        "count": 3,
+        "maximum": 2.6255583404021325,
+        "median": 2.5906033346610102,
+        "minimum": 2.576314550109459,
+        "range": 0.04924379029267367
+      },
+      "maximum_observed_temperature_c": 48.0,
+      "name": "level3",
+      "peak_temperature_c": {
+        "count": 3,
+        "maximum": 48.0,
+        "median": 47.5,
+        "minimum": 47.312,
+        "range": 0.6880000000000024
+      },
+      "sampled_peak_power_watts": {
+        "count": 3,
+        "maximum": 10.117,
+        "median": 9.414,
+        "minimum": 9.414,
+        "range": 0.7030000000000012
+      },
+      "trial_count": 3,
+      "workload_units": {
+        "binning_columns": 2.0,
+        "binning_rows": 2.0,
+        "frames": 241.0,
+        "image_pixels": 180750000.0,
+        "unbinned_equivalent_pixels_per_frame": 3000000.0
+      }
+    },
+    {
+      "description": "Automatic CME-front detection and height/speed/acceleration product generation; diagnostic PNG plots, overlay, and movie excluded while ECSV science tables and JSON provenance remain enabled",
+      "duration_seconds": {
+        "count": 3,
+        "maximum": 59.503351576,
+        "median": 58.980050639,
+        "minimum": 58.78055999,
+        "range": 0.7227915859999996
+      },
+      "gross_energy_joules": {
+        "count": 3,
+        "maximum": 530.7160609682381,
+        "median": 529.7723003013894,
+        "minimum": 526.9422657239287,
+        "range": 3.77379524430944
+      },
+      "gross_energy_joules_per_frame": {
+        "count": 3,
+        "maximum": 2.2021413318184155,
+        "median": 2.1982253124538977,
+        "minimum": 2.1864824303897454,
+        "range": 0.015658901428670102
+      },
+      "gross_energy_joules_per_megapixel": {
+        "count": 3,
+        "maximum": 2.936188442424554,
+        "median": 2.9309670832718635,
+        "minimum": 2.9153099071863275,
+        "range": 0.02087853523822636
+      },
+      "maximum_observed_temperature_c": 47.937,
+      "name": "level4",
+      "peak_temperature_c": {
+        "count": 3,
+        "maximum": 47.937,
+        "median": 47.906,
+        "minimum": 47.468,
+        "range": 0.4689999999999941
+      },
+      "sampled_peak_power_watts": {
+        "count": 3,
+        "maximum": 10.517,
+        "median": 10.118,
+        "minimum": 10.118,
+        "range": 0.39899999999999913
+      },
+      "trial_count": 3,
+      "workload_units": {
+        "binning_columns": 2.0,
+        "binning_rows": 2.0,
+        "frames": 241.0,
+        "image_pixels": 180750000.0,
+        "unbinned_equivalent_pixels_per_frame": 3000000.0
+      }
+    }
+  ],
+  "plan_labels": [
+    "SunCET hybrid 241-frame all-level pipeline (skip then full)"
+  ],
+  "schema": "suncet.end_to_end_trial_summary",
+  "schema_version": 1,
+  "telemetry_interval_ms": 100.0,
+  "trial_count": 3
+}

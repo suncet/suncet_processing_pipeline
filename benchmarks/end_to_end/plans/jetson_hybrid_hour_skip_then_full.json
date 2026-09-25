@@ -1,0 +1,405 @@
+{
+  "schema": "suncet.end_to_end_plan",
+  "schema_version": 1,
+  "label": "SunCET hybrid 241-frame all-level pipeline (skip then full)",
+  "notes": "Real X-band telemetry is processed exactly once through Level 0.5. Its 124 images were test captures, so their apparent timestamp span is not used for workload normalization. The reviewed 241-frame, 15-second synthetic sequence is selected by path for Levels 1-4; no measured copy or conversion is performed at the handoff. Those synthetic arrays are 1000x750 pixels with NBIN1=NBIN2=2 (0.75 megapixel per measured frame; 2000x1500 is the unbinned detector equivalent). At the binned 9.6 arcsec/pixel scale the approximately 30 arcsec 80%-encircled-energy telescope PSF still spans about three pixels, so this default onboard binning is expected to preserve Level 4 front-tracking information while reducing pixel count by four; an eventual unbinned A/B test remains required to verify that expectation. Level 3 is a benchmark-only pass-through because no applicable geometric/dark-correction source data exist. Only the paired marginal CSIE image cost is scaled from the raw file's observed image pixels to the 241-frame synthetic pixel workload.",
+  "pre_staged_paths": [
+    {
+      "name": "xband_source",
+      "path": "/srv/suncet/data/benchmarks/end_to_end_inputs/xband/xbandDemod_2026_09_18_20_21_45_25Msymps_50Msampps_SunCET_bluefin3_BPSK_NRZM_ConvoOFF_FlightLikePlayback.dat",
+      "kind": "file"
+    },
+    {
+      "name": "synthetic_level0_5",
+      "path": "/srv/suncet/data/synthetic/level0/fits",
+      "kind": "directory"
+    },
+    {
+      "name": "simulator_config",
+      "path": "/srv/suncet/data/benchmarks/end_to_end_inputs/simulator/config_default_no_particle_filter.ini",
+      "kind": "file"
+    },
+    {
+      "name": "metadata_definition",
+      "path": "/srv/suncet/data/metadata/suncet_metadata_definition_v1.0.4dev-FITS.csv",
+      "kind": "file"
+    },
+    {
+      "name": "ctdb_root",
+      "path": "/srv/suncet/ctdb",
+      "kind": "directory"
+    },
+    {
+      "name": "diffraction_psf",
+      "path": "/srv/suncet/data/filter_mesh_diffraction/suncet_diffraction_patterns_2k.fits",
+      "kind": "file"
+    },
+    {
+      "name": "scatter_psf",
+      "path": "/srv/suncet/data/mirror_scatter/suncet_mirror_scatter_psf_baffled.fits",
+      "kind": "file"
+    },
+    {
+      "name": "sample_spectrum",
+      "path": "/srv/suncet/data/filter_mesh_diffraction/suncet_sample_spec.genx",
+      "kind": "file"
+    },
+    {
+      "name": "spectral_response",
+      "path": "/srv/suncet/data/calibration/suncet_spectral_resp.genx",
+      "kind": "file"
+    },
+    {
+      "name": "tracker_config",
+      "path": "${REPO_ROOT}/suncet_processing_pipeline/config_files/cme_tracking_config_default_no_particle_filter_20230114_autonomous_v1.json",
+      "kind": "file"
+    }
+  ],
+  "phases": [
+    {
+      "name": "level0_5_skip_images",
+      "description": "Exact 1.2 GB flight-like X-band playback; packet recovery and CTDB decode with CSIE image assembly disabled",
+      "command": [
+        "/srv/suncet/envs/suncet-level2-gpu-dev/bin/python",
+        "-m",
+        "suncet_processing_pipeline.make_level0_5",
+        "--config",
+        "${REPO_ROOT}/suncet_processing_pipeline/config_files/config_default.ini",
+        "--folder",
+        "${RUN_DIR}/level0_5_skip_images",
+        "--input-mode",
+        "xband",
+        "--prefix",
+        "xbandDemod_",
+        "--skip-csie-images"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "env": {
+        "suncet_data": "/srv/suncet/data",
+        "suncet_ctdb": "/srv/suncet/ctdb",
+        "PYTHONPATH": "${REPO_ROOT}",
+        "SUNPY_CONFIGDIR": "/srv/suncet/data/benchmarks/runtime_cache/sunpy",
+        "MPLCONFIGDIR": "/srv/suncet/data/benchmarks/runtime_cache/matplotlib",
+        "XDG_CACHE_HOME": "/srv/suncet/data/benchmarks/runtime_cache/xdg"
+      },
+      "required_paths": [
+        {
+          "path": "${RUN_DIR}/level0_5_skip_images/xbandDemod_2026_09_18_20_21_45_25Msymps_50Msampps_SunCET_bluefin3_BPSK_NRZM_ConvoOFF_FlightLikePlayback.dat",
+          "kind": "file"
+        }
+      ],
+      "expected_outputs": [
+        {
+          "path": "${RUN_DIR}/level0_5_skip_images/decoded_packets",
+          "kind": "directory"
+        }
+      ],
+      "workload_units": {
+        "input_bytes": 1309312200,
+        "raw_written_images": 124
+      }
+    },
+    {
+      "name": "level0_5_full",
+      "description": "Exact same X-band playback with core CSIE FITS and metadata products; diagnostic PNG and JPEG2000 products excluded",
+      "command": [
+        "/srv/suncet/envs/suncet-level2-gpu-dev/bin/python",
+        "-m",
+        "suncet_processing_pipeline.make_level0_5",
+        "--config",
+        "${REPO_ROOT}/suncet_processing_pipeline/config_files/config_default.ini",
+        "--folder",
+        "${RUN_DIR}/level0_5_full",
+        "--input-mode",
+        "xband",
+        "--prefix",
+        "xbandDemod_",
+        "--skip-csie-png",
+        "--skip-csie-jpeg2000"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "env": {
+        "suncet_data": "/srv/suncet/data",
+        "suncet_ctdb": "/srv/suncet/ctdb",
+        "PYTHONPATH": "${REPO_ROOT}",
+        "SUNPY_CONFIGDIR": "/srv/suncet/data/benchmarks/runtime_cache/sunpy",
+        "MPLCONFIGDIR": "/srv/suncet/data/benchmarks/runtime_cache/matplotlib",
+        "XDG_CACHE_HOME": "/srv/suncet/data/benchmarks/runtime_cache/xdg"
+      },
+      "required_paths": [
+        {
+          "path": "${RUN_DIR}/level0_5_full/xbandDemod_2026_09_18_20_21_45_25Msymps_50Msampps_SunCET_bluefin3_BPSK_NRZM_ConvoOFF_FlightLikePlayback.dat",
+          "kind": "file"
+        }
+      ],
+      "expected_outputs": [
+        {
+          "path": "${RUN_DIR}/level0_5_full/decoded_packets",
+          "kind": "directory"
+        },
+        {
+          "path": "${RUN_DIR}/level0_5_full/csie_images",
+          "kind": "directory"
+        }
+      ],
+      "workload_units": {
+        "input_bytes": 1309312200,
+        "image_pixels": 89864000,
+        "raw_written_images": 124
+      }
+    },
+    {
+      "name": "level0_5_duckdb",
+      "description": "Ingest the full Level 0.5 decoded per-APID CSV products into a single DuckDB store",
+      "command": [
+        "/srv/suncet/envs/suncet-level2-gpu-dev/bin/python",
+        "-m",
+        "suncet_processing_pipeline.make_telemetry_file",
+        "--database",
+        "${RUN_DIR}/level0_5_full/telemetry.duckdb",
+        "${RUN_DIR}/level0_5_full/decoded_packets"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "env": {
+        "suncet_data": "/srv/suncet/data",
+        "suncet_ctdb": "/srv/suncet/ctdb",
+        "PYTHONPATH": "${REPO_ROOT}"
+      },
+      "required_paths": [
+        {
+          "path": "${RUN_DIR}/level0_5_full/decoded_packets",
+          "kind": "directory"
+        }
+      ],
+      "expected_outputs": [
+        {
+          "path": "${RUN_DIR}/level0_5_full/telemetry.duckdb",
+          "kind": "file"
+        }
+      ],
+      "workload_units": {
+        "raw_written_images": 124
+      }
+    },
+    {
+      "name": "level1",
+      "description": "Create 241 provisional Level 1 DN/s products from the reviewed synthetic Level 0.5 sequence",
+      "command": [
+        "/srv/suncet/envs/suncet-level2-gpu-dev/bin/python",
+        "${REPO_ROOT}/benchmarks/level2/prepare_synthetic_level1.py",
+        "--input-directory",
+        "/srv/suncet/data/synthetic/level0/fits",
+        "--output-directory",
+        "${RUN_DIR}/level1",
+        "--pattern",
+        "config_default_no_particle_filter_OBS_*.fits",
+        "--simulator-config",
+        "/srv/suncet/data/benchmarks/end_to_end_inputs/simulator/config_default_no_particle_filter.ini",
+        "--metadata-definition",
+        "/srv/suncet/data/metadata/suncet_metadata_definition_v1.0.4dev-FITS.csv",
+        "--simulator-commit",
+        "generation-commit-unavailable_current-repo-23606a827fabd30a92be736b31d6dadbfa05e92c",
+        "--pipeline-version",
+        "2.0.0",
+        "--geometry-source",
+        "simulator-config-circle"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "env": {
+        "suncet_data": "/srv/suncet/data",
+        "suncet_ctdb": "/srv/suncet/ctdb",
+        "PYTHONPATH": "${REPO_ROOT}",
+        "SUNPY_CONFIGDIR": "/srv/suncet/data/benchmarks/runtime_cache/sunpy",
+        "MPLCONFIGDIR": "/srv/suncet/data/benchmarks/runtime_cache/matplotlib",
+        "XDG_CACHE_HOME": "/srv/suncet/data/benchmarks/runtime_cache/xdg"
+      },
+      "required_paths": [
+        {
+          "path": "/srv/suncet/data/synthetic/level0/fits",
+          "kind": "directory"
+        }
+      ],
+      "expected_outputs": [
+        {
+          "path": "${RUN_DIR}/level1",
+          "kind": "directory"
+        }
+      ],
+      "workload_units": {
+        "frames": 241,
+        "image_pixels": 180750000,
+        "binning_columns": 2,
+        "binning_rows": 2,
+        "unbinned_equivalent_pixels_per_frame": 3000000
+      }
+    },
+    {
+      "name": "level2",
+      "description": "GPU/CuPy PSF deconvolution of all 241 Level 1 products",
+      "command": [
+        "/srv/suncet/envs/suncet-level2-gpu-dev/bin/python",
+        "-m",
+        "suncet_processing_pipeline.make_level2",
+        "--input-path",
+        "${RUN_DIR}/level1",
+        "--output-path",
+        "${RUN_DIR}/level2",
+        "--config-file",
+        "${REPO_ROOT}/suncet_processing_pipeline/config_files/config_default.ini",
+        "--diffraction-psf-file",
+        "/srv/suncet/data/filter_mesh_diffraction/suncet_diffraction_patterns_2k.fits",
+        "--scatter-psf-file",
+        "/srv/suncet/data/mirror_scatter/suncet_mirror_scatter_psf_baffled.fits",
+        "--spec-file",
+        "/srv/suncet/data/filter_mesh_diffraction/suncet_sample_spec.genx",
+        "--resp-file",
+        "/srv/suncet/data/calibration/suncet_spectral_resp.genx",
+        "--correction-factor",
+        "0.4",
+        "--deconvolution-backend",
+        "cupy",
+        "--input-kind",
+        "level1",
+        "--product-status",
+        "PROVISIONAL",
+        "--metadata-definition-file",
+        "/srv/suncet/data/metadata/suncet_metadata_definition_v1.0.4dev-FITS.csv"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "env": {
+        "suncet_data": "/srv/suncet/data",
+        "suncet_ctdb": "/srv/suncet/ctdb",
+        "PYTHONPATH": "${REPO_ROOT}",
+        "SUNPY_CONFIGDIR": "/srv/suncet/data/benchmarks/runtime_cache/sunpy",
+        "MPLCONFIGDIR": "/srv/suncet/data/benchmarks/runtime_cache/matplotlib",
+        "XDG_CACHE_HOME": "/srv/suncet/data/benchmarks/runtime_cache/xdg"
+      },
+      "required_paths": [
+        {
+          "path": "${RUN_DIR}/level1",
+          "kind": "directory"
+        }
+      ],
+      "expected_outputs": [
+        {
+          "path": "${RUN_DIR}/level2",
+          "kind": "directory"
+        }
+      ],
+      "workload_units": {
+        "frames": 241,
+        "image_pixels": 180750000,
+        "binning_columns": 2,
+        "binning_rows": 2,
+        "unbinned_equivalent_pixels_per_frame": 3000000
+      }
+    },
+    {
+      "name": "level3",
+      "description": "Benchmark-only Level 3 pass-through; no applicable rotation, geometry, or special dark correction is available for this source",
+      "command": [
+        "/srv/suncet/envs/suncet-level2-gpu-dev/bin/python",
+        "${REPO_ROOT}/benchmarks/end_to_end/level3_passthrough.py",
+        "--input-directory",
+        "${RUN_DIR}/level2",
+        "--output-directory",
+        "${RUN_DIR}/level3",
+        "--metadata-definition-file",
+        "/srv/suncet/data/metadata/suncet_metadata_definition_v1.0.4dev-FITS.csv",
+        "--product-status",
+        "PROVISIONAL"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "env": {
+        "suncet_data": "/srv/suncet/data",
+        "suncet_ctdb": "/srv/suncet/ctdb",
+        "PYTHONPATH": "${REPO_ROOT}"
+      },
+      "required_paths": [
+        {
+          "path": "${RUN_DIR}/level2",
+          "kind": "directory"
+        }
+      ],
+      "expected_outputs": [
+        {
+          "path": "${RUN_DIR}/level3",
+          "kind": "directory"
+        }
+      ],
+      "workload_units": {
+        "frames": 241,
+        "image_pixels": 180750000,
+        "binning_columns": 2,
+        "binning_rows": 2,
+        "unbinned_equivalent_pixels_per_frame": 3000000
+      }
+    },
+    {
+      "name": "level4",
+      "description": "Automatic CME-front detection and height/speed/acceleration product generation; diagnostic PNG plots, overlay, and movie excluded while ECSV science tables and JSON provenance remain enabled",
+      "command": [
+        "/srv/suncet/envs/suncet-level2-gpu-dev/bin/python",
+        "${REPO_ROOT}/benchmarks/end_to_end/run_level4_benchmark.py",
+        "--input-directory",
+        "${RUN_DIR}/level3",
+        "--output-root",
+        "${RUN_DIR}/level4",
+        "--config",
+        "${REPO_ROOT}/suncet_processing_pipeline/config_files/cme_tracking_config_default_no_particle_filter_20230114_autonomous_v1.json",
+        "--scenario-id",
+        "config-default-no-particle-filter-e2e",
+        "--event-id",
+        "config-default-no-particle-filter-e2e-event-001"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "env": {
+        "suncet_data": "/srv/suncet/data",
+        "suncet_ctdb": "/srv/suncet/ctdb",
+        "PYTHONPATH": "${REPO_ROOT}",
+        "SUNPY_CONFIGDIR": "/srv/suncet/data/benchmarks/runtime_cache/sunpy",
+        "MPLCONFIGDIR": "/srv/suncet/data/benchmarks/runtime_cache/matplotlib",
+        "XDG_CACHE_HOME": "/srv/suncet/data/benchmarks/runtime_cache/xdg"
+      },
+      "required_paths": [
+        {
+          "path": "${RUN_DIR}/level3",
+          "kind": "directory"
+        }
+      ],
+      "expected_outputs": [
+        {
+          "path": "${RUN_DIR}/level4/config-default-no-particle-filter-e2e-event-001",
+          "kind": "directory"
+        }
+      ],
+      "workload_units": {
+        "frames": 241,
+        "image_pixels": 180750000,
+        "binning_columns": 2,
+        "binning_rows": 2,
+        "unbinned_equivalent_pixels_per_frame": 3000000
+      }
+    }
+  ],
+  "derived_metrics": [
+    {
+      "name": "hybrid_241_frame_pipeline",
+      "type": "paired_delta_projection",
+      "description": "Keep exact-file fixed Level 0.5 work and scale only the marginal CSIE image assembly from 89,864,000 observed pixels to the 241-frame synthetic workload of 180,750,000 pixels; then add DuckDB and measured Levels 1-4.",
+      "baseline_phase": "level0_5_skip_images",
+      "full_phase": "level0_5_full",
+      "unit": "image_pixels",
+      "observed_units": 89864000,
+      "target_units": 180750000,
+      "target_frame_count": 241,
+      "additional_phases": [
+        "level0_5_duckdb",
+        "level1",
+        "level2",
+        "level3",
+        "level4"
+      ]
+    }
+  ]
+}
