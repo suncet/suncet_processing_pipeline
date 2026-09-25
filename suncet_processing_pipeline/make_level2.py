@@ -295,6 +295,11 @@ class Level2:
                         "Use synthetic_level0_5_bypass only for an explicitly "
                         "provisional synthetic interface fixture."
                     )
+                if not self._is_rate_unit(header.get("BUNIT")):
+                    raise ValueError(
+                        "Level 2 production input must be normalized to a "
+                        f"DN/time rate; BUNIT={header.get('BUNIT')!r}"
+                    )
             else:
                 if level not in {"0.5", ".5"}:
                     raise ValueError(

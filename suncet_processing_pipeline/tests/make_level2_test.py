@@ -134,6 +134,15 @@ def test_level2_requires_declared_level1_by_default(tmp_path):
         processor.run(input_path, tmp_path / "output")
 
 
+def test_level2_requires_rate_units_for_level1(tmp_path):
+    input_path = tmp_path / "input.fits"
+    _write_input(input_path, level=1, bunit="DN")
+    processor = _level2(tmp_path)
+
+    with pytest.raises(ValueError, match="normalized to a DN/time rate"):
+        processor.run(input_path, tmp_path / "output")
+
+
 def test_synthetic_bypass_requires_rate_data(tmp_path):
     input_path = tmp_path / "input.fits"
     _write_input(input_path, level="0.5", bunit="DN")

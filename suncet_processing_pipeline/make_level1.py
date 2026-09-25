@@ -82,6 +82,57 @@ def create_exposure_time_mask(image_data, exposures, *, inner_mask=None):
     return np.where(mask, float(inner), float(outer))
 
 
+def create_circular_inner_mask(
+    image_shape,
+    *,
+    center_column,
+    center_row,
+    radius_pixels,
+):
+    """Return a circular composite mask in zero-based array coordinates.
+
+    The boundary is included in the inner region, matching the simulator and
+    flight-configuration convention.  Geometry must be supplied explicitly;
+    this helper deliberately does not substitute the solar WCS circle for
+    missing instrument-composite geometry.
+    """
+    if len(image_shape) != 2:
+        raise ValueError("image_shape must contain exactly two dimensions")
+    rows, columns = (int(value) for value in image_shape)
+    if rows <= 0 or columns <= 0:
+        raise ValueError("image_shape dimensions must be positive")
+
+    center_column = float(center_column)
+    center_row = float(center_row)
+    radius_pixels = float(radius_pixels)
+    if not np.all(np.isfinite((center_column, center_row, radius_pixels))):
+        raise ValueError("circle geometry must be finite")
+    if radius_pixels < 0:
+        raise ValueError("radius_pixels must be non-negative")
+
+    row_grid, column_grid = np.ogrid[:rows, :columns]
+    return (
+        (column_grid - center_column) ** 2
+        + (row_grid - center_row) ** 2
+        <= radius_pixels**2
+    )
+
+
+def normalize_to_dn_per_second(image_data, exposures, *, inner_mask=None):
+    """Normalize a Level 0.5 DN array by its pixelwise effective exposure."""
+    image = np.asanyarray(image_data, dtype=np.float64)
+    exposure_mask = create_exposure_time_mask(
+        image,
+        exposures,
+        inner_mask=inner_mask,
+    )
+    if not np.all(np.isfinite(exposure_mask)):
+        raise ValueError("effective exposure mask contains non-finite values")
+    if np.any(exposure_mask <= 0):
+        raise ValueError("effective exposure mask must be strictly positive")
+    return image / exposure_mask
+
+
 class Level1:
     def __init__(self, config):
         self.config = config

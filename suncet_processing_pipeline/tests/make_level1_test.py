@@ -34,6 +34,45 @@ def test_2d_composite_exposure_requires_and_uses_inner_mask():
     np.testing.assert_array_equal(mask, [[4, 1, 4], [1, 1, 4]])
 
 
+def test_circular_inner_mask_includes_boundary_and_uses_array_coordinates():
+    mask = make_level1.create_circular_inner_mask(
+        (5, 7),
+        center_column=3,
+        center_row=2,
+        radius_pixels=1,
+    )
+
+    expected = np.zeros((5, 7), dtype=bool)
+    expected[2, 3] = True
+    expected[1, 3] = True
+    expected[3, 3] = True
+    expected[2, 2] = True
+    expected[2, 4] = True
+    np.testing.assert_array_equal(mask, expected)
+
+
+def test_normalize_to_dn_per_second_uses_pixelwise_effective_exposure():
+    image = np.array([[8, 8, 8], [8, 8, 8]], dtype=np.uint16)
+    inner_mask = np.array([[False, True, False], [True, True, False]])
+
+    normalized = make_level1.normalize_to_dn_per_second(
+        image,
+        {"inner": 2.0, "outer": 4.0},
+        inner_mask=inner_mask,
+    )
+
+    np.testing.assert_array_equal(normalized, [[2, 4, 2], [4, 4, 2]])
+    assert normalized.dtype == np.float64
+
+
+def test_normalize_to_dn_per_second_rejects_nonpositive_exposure():
+    with pytest.raises(ValueError, match="strictly positive"):
+        make_level1.normalize_to_dn_per_second(
+            np.ones((2, 2)),
+            {"inner": 0.0},
+        )
+
+
 def test_Level1_object_instantiates(tmp_path, monkeypatch):
     data_root = tmp_path / 'data'
     ctdb_root = tmp_path / 'ctdb'
