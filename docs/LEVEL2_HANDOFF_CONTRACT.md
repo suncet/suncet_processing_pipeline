@@ -11,13 +11,21 @@ consume a Level 1 image after radiometric and detector corrections. Level 3
 will then apply fine geometric corrections such as precise Sun centering and
 rotation to put solar north up.
 
-The distributable fixture regenerated on 2026-08-31 uses a corrected-timestamp
-synthetic Level 0.5 image
-directly because the end-to-end Level 1 writer and mission-approved calibration
-set are not complete. The source array is already declared in `DN/s`, so it is
-not passed through the obsolete fixed-exposure development calibrator. The
-fixture is explicitly marked `SYNTHET = T`, `L1BYPASS = T`, and
+The distributable fixture regenerated on 2026-08-31 used a corrected-timestamp
+synthetic Level 0.5 image directly because the end-to-end Level 1 writer and
+mission-approved calibration set were not complete. That historical fixture is
+explicitly marked `SYNTHET = T`, `L1BYPASS = T`, and
 `PROCSTAT = 'PROVISIONAL'`.
+
+A stricter representative fixture was produced on 2026-09-23 from synthetic
+`config_default` frame 300. Its Level 0.5 array is correctly treated as stored
+DN, then divided pixelwise by the simulator-configured effective exposure:
+0.07 seconds inside the short-exposure circle and 11.25 seconds outside. The
+resulting checksum-valid Level 1 FITS declares `LEVEL = 1`, `BUNIT = 'DN/s'`,
+and satisfies metadata contract `v1.0.4dev`. Level 2 consumes it through the
+normal strict boundary and therefore records `L1BYPASS = F`. This is a better
+Level 3 interface fixture, but remains provisional because it applies exposure
+normalization only rather than the complete future Level 1 calibration chain.
 
 ## FITS interface
 
@@ -32,8 +40,9 @@ fixture is explicitly marked `SYNTHET = T`, `L1BYPASS = T`, and
   rotation, fine Sun centering, or resampling has been applied.
 - `LEVEL = 2`, `TITLE = 'SunCET Level 2 Image'`, `DECONV = T`, and
   `DECONVCF` identify the processing stage.
-- Every keyword introduced at metadata Minimum Level 0.5, 1, or 2 in
-  `suncet_metadata_definition_v1.0.2dev-FITS.csv` is required. The writer
+- Every keyword introduced at metadata Minimum Level 0.5, 1, or 2 in the
+  selected versioned metadata definition is required. The current normalized
+  fixture uses `suncet_metadata_definition_v1.0.4dev-FITS.csv`. The writer
   validates this cumulative contract, declared scalar types, and FITS checksums
   before atomically replacing an output product.
 - `DATE-BEG`, `DATE-OBS`, `DATE-END`, `TIMESYS`, `BUNIT`, the two-dimensional
@@ -50,8 +59,11 @@ fixture is explicitly marked `SYNTHET = T`, `L1BYPASS = T`, and
 - `DATASAT` and `DSATVAL` retain the upstream detector-saturation semantics.
   They describe saturation before PSF deconvolution and are not recomputed from
   deconvolution ringing or overshoot.
-- For this synthetic bypass only, `EXP_MASK` is
+- For the historical synthetic bypass only, `EXP_MASK` is
   `NOT_APPLIED_SYNTHETIC_BYPASS`; it does not name a nonexistent Level 1 mask.
+  The normalized frame-300 fixture instead records
+  `SIMULATOR_CONFIG_CIRCLE` and carries its circle geometry and effective
+  inner/outer exposures in the header and provenance sidecar.
 - FITS `CHECKSUM` and `DATASUM` are written and must validate before ingestion.
   The corresponding cards on the upstream FITS product must be present and
   valid before Level 2 processing begins.
@@ -98,6 +110,11 @@ correction factor. Level 1 detector corrections are not represented in this
 fixture. Consequently, the file is suitable for testing Level 3 I/O, WCS,
 metadata preservation, floating-point handling, and geometric corrections,
 but not for radiometry or quantitative science validation.
+
+The normalized frame-300 source also contains 3,883 pixels clipped at the
+simulator's 65,535-DN storage ceiling. Their true signal is unrecoverable;
+`DATASAT`, `DSATVAL`, and processing history preserve that limitation, and PSF
+deconvolution can spread their error spatially.
 
 The versioned development CSV and live development sheet were corrected on
 2026-08-31 so `TIMESYS` and all DATE descriptions specify UTC, `DATAMIN` and
