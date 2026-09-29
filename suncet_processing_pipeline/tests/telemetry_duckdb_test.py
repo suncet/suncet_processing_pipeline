@@ -1,7 +1,39 @@
 import pandas as pd
+import pytest
 
 from ..make_telemetry_file import TelemetryProcessor
 from ..readers import TelemetryReader
+
+
+def test_default_duckdb_is_versioned_at_top_of_test_data(tmp_path, monkeypatch):
+    monkeypatch.setenv("suncet_data", str(tmp_path))
+
+    processor = TelemetryProcessor("2.0.1")
+
+    assert processor.database_path == (
+        tmp_path / "test_data" / "suncet_telemetry_test_phase_v2.0.1.duckdb"
+    )
+
+
+def test_duckdb_rejects_ctdb_change_without_pipeline_version_bump(tmp_path):
+    decoded = tmp_path / "decoded"
+    decoded.mkdir()
+    pd.DataFrame({"time": [1.0]}).to_csv(
+        decoded / "decoded_apid_0001_beacon.csv", index=False
+    )
+    database = tmp_path / "test-phase.duckdb"
+    TelemetryProcessor(
+        "2.0.1",
+        database,
+        {"bus_ctdb_version": "2.0.5"},
+    ).process_files(path=decoded)
+
+    with pytest.raises(ValueError, match="Increment version_pipeline"):
+        TelemetryProcessor(
+            "2.0.1",
+            database,
+            {"bus_ctdb_version": "2.0.6"},
+        ).process_files(path=decoded)
 
 
 def test_duckdb_ingest_is_per_apid_and_idempotent(tmp_path):

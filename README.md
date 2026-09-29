@@ -266,8 +266,14 @@ The canonical Level 0.5 implementation is
 `suncet_processing_pipeline.make_level0_5`. It supports X-band, hardline CCSDS,
 UHF/Hydra, and combined-source ingest. Raw concatenation, transport cleanup, and
 packet recovery stay in memory; the durable outputs are decoded tables, packet
-manifests, image inventories/products, source summaries, and provenance. Each run
-reprocesses the authoritative raw inputs; legacy intermediate binaries are ignored.
+manifests, image inventories/products, source summaries, provenance, and a
+pipeline-versioned prelaunch DuckDB directly under `test_data`. Packet checksums
+and DuckDB ingest are enabled by default; decoded per-APID CSVs remain available
+during the test phase. Increment `version_pipeline` whenever a bus, CSIE, or DSPS
+CTDB/flight-software version changes so unlike telemetry definitions cannot share
+one database.
+Each run reprocesses the authoritative raw inputs; legacy intermediate binaries
+are ignored.
 For example:
 
 ```sh

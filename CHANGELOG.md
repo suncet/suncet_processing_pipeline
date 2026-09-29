@@ -13,7 +13,9 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
   CI installation checks.
 * Atomic processing provenance manifests with input/output hashes, environment
   identity, metadata-definition snapshots, and public/private privacy profiles.
-* Mission-length per-APID DuckDB telemetry storage and a high-level reader.
+* Pipeline-versioned prelaunch test-phase per-APID DuckDB telemetry storage and
+  a high-level reader. The database records CTDB versions and rejects mixing a
+  changed bus, CSIE, or DSPS definition under an unchanged pipeline version.
 * Auditable read-only AWS ingest, version-aware replication monitoring,
   checksum-verified LASP SFTP publication, guarded one-way rclone copies,
   storage preflight, CTDB snapshot verification, and a manual SOC runbook.

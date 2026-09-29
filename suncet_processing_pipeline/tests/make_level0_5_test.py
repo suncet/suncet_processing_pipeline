@@ -2,6 +2,7 @@
 
 from collections import Counter
 import json
+from types import SimpleNamespace
 
 import imagecodecs
 import numpy as np
@@ -52,6 +53,49 @@ from ..make_level0_5 import (
     unwrap_uhf_playback_stream,
     validate_transfer_frame_checksum_footer,
 )
+
+
+def test_level0_5_defaults_to_checksums_and_duckdb():
+    args = level0_5._build_argument_parser().parse_args([])
+
+    assert args.require_packet_checksums is True
+    assert args.skip_duckdb is False
+    assert args.telemetry_database is None
+
+
+def test_level0_5_checksum_bypass_is_explicit():
+    args = level0_5._build_argument_parser().parse_args(
+        ["--bypass-packet-checksums"]
+    )
+
+    assert args.require_packet_checksums is False
+
+
+def test_level0_5_ingests_decoded_csv_into_duckdb(tmp_path):
+    decoded = tmp_path / "decoded_packets"
+    decoded.mkdir()
+    (decoded / "decoded_apid_0001_beacon.csv").write_text(
+        "time,temperature\n1,10\n2,11\n"
+    )
+    database = tmp_path / "telemetry.duckdb"
+    config = SimpleNamespace(
+        version_pipeline="test",
+        version_bus="bus-test",
+        version_csie="csie-test",
+        version_dsps="dsps-test",
+    )
+    args = SimpleNamespace(skip_duckdb=False, telemetry_database=database)
+
+    summary = level0_5.ingest_decoded_telemetry_to_duckdb(
+        decoded, config, args
+    )
+
+    assert summary == {
+        "files_ingested": 1,
+        "files_skipped": 0,
+        "rows_ingested": 2,
+    }
+    assert database.is_file()
 
 
 def _csie_row_packet(
@@ -985,7 +1029,11 @@ def test_level0_5_source_processing_keeps_binary_stages_in_memory(tmp_path):
         prefix="ccsds",
     )
     args = level0_5._build_argument_parser().parse_args(
-        ["--skip-decode-csv", "--skip-csie-images"]
+        [
+            "--bypass-packet-checksums",
+            "--skip-decode-csv",
+            "--skip-csie-images",
+        ]
     )
 
     product = level0_5.process_source_product(
@@ -1021,7 +1069,13 @@ def test_single_source_run_writes_no_intermediate_binaries(tmp_path, monkeypatch
     )
 
     level0_5.run(
-        ["--input-mode", "ccsds", "--skip-decode-csv", "--skip-csie-images"],
+        [
+            "--input-mode",
+            "ccsds",
+            "--bypass-packet-checksums",
+            "--skip-decode-csv",
+            "--skip-csie-images",
+        ],
         _prepared=(object(), tmp_path),
     )
 
@@ -1048,7 +1102,13 @@ def test_combined_processing_writes_products_but_no_packet_binary(
         lambda _config: {1: len(packet)},
     )
     args = level0_5._build_argument_parser().parse_args(
-        ["--input-mode", "combined", "--skip-decode-csv", "--skip-csie-images"]
+        [
+            "--input-mode",
+            "combined",
+            "--bypass-packet-checksums",
+            "--skip-decode-csv",
+            "--skip-csie-images",
+        ]
     )
 
     level0_5.run_combined_pipeline(args, config=object(), folder=tmp_path)

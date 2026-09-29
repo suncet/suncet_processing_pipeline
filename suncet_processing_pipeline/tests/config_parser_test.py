@@ -30,6 +30,7 @@ def test_read_default_config(tmp_path, monkeypatch):
     assert hasattr(config, 'also_save_csie_meta_json')
     assert config.also_save_csie_meta_json is True
     assert config.data_root == str(data_root)
+    assert config.version_pipeline == '2.0.1'
     assert config.version_bus == '2.0.5'
     assert config.version_csie == '1.1.8'
     assert config.version_dsps == '6.09'

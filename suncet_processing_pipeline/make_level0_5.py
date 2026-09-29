@@ -5,11 +5,12 @@ The pipeline keeps transport cleanup and packet recovery in memory while it:
 1. discovers and merges X-band, hardline CCSDS, and UHF/Hydra inputs;
 2. removes transport wrappers and repairs supported stream artifacts;
 3. recovers CCSDS packets and decodes them with the configured CTDB versions;
-4. assembles CSIE image products and inventories; and
-5. optionally combines independently processed source streams in time order.
+4. writes decoded telemetry into a versioned prelaunch test-phase DuckDB store;
+5. assembles CSIE image products and inventories; and
+6. optionally combines independently processed source streams in time order.
 
-Packet checksum enforcement remains optional until the flight-software checksum
-contract is finalized.
+Packet checksums are enforced by default. A diagnostic bypass remains available
+for investigating damaged captures.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from pathlib import Path
 import numpy as np
 
 from suncet_processing_pipeline.config_parser import Config
+from suncet_processing_pipeline.make_telemetry_file import TelemetryProcessor
 from suncet_processing_pipeline.run_provenance import (
     ProcessingRunProvenance,
     resolved_config_snapshot,
@@ -5559,15 +5561,17 @@ def run_combined_pipeline(
     print(f"Wrote combined source summary: {source_summary_path}")
 
     if not args.skip_decode_csv:
+        decoded_dir = folder / COMBINED_DECODED_DIR_BASENAME
         decode_stats = decode_packet_records_to_csv(
             combined_records,
             config,
             apid_names,
-            folder / COMBINED_DECODED_DIR_BASENAME,
+            decoded_dir,
             manifest_path_override=folder / COMBINED_PACKET_MANIFEST_BASENAME,
             summary_path_override=folder / COMBINED_DECODE_SUMMARY_BASENAME,
         )
         print_decode_summary(decode_stats)
+        ingest_decoded_telemetry_to_duckdb(decoded_dir, config, args)
 
     if args.skip_csie_images:
         print("CSIE image assembly skipped for all source products.")
@@ -5634,13 +5638,21 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         default=DEFAULT_SPACECRAFT_ID,
         help=f"Expected outer transfer-frame spacecraft ID. Default: {DEFAULT_SPACECRAFT_ID}.",
     )
-    parser.add_argument(
+    checksum_group = parser.add_mutually_exclusive_group()
+    checksum_group.add_argument(
         "--require-packet-checksums",
+        dest="require_packet_checksums",
         action="store_true",
+        default=True,
+        help="Require inner packet checksum validation (default).",
+    )
+    checksum_group.add_argument(
+        "--bypass-packet-checksums",
+        dest="require_packet_checksums",
+        action="store_false",
         help=(
-            "Require inner packet checksum validation before accepting packet records. "
-            "Default is to bypass packet checksums while the FSW checksum contract is "
-            "being clarified."
+            "Diagnostic mode: accept structurally plausible packets without a valid "
+            "inner checksum."
         ),
     )
     parser.add_argument(
@@ -5654,7 +5666,24 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skip-decode-csv",
         action="store_true",
-        help="Skip CTDB decoder CSV export after in-memory packet recovery.",
+        help=(
+            "Skip CTDB decoder CSV export and the dependent DuckDB ingest after "
+            "in-memory packet recovery."
+        ),
+    )
+    parser.add_argument(
+        "--telemetry-database",
+        type=Path,
+        default=None,
+        help=(
+            "Override the test-phase DuckDB destination. By default Level 0.5 "
+            "writes a pipeline-versioned database directly under test_data."
+        ),
+    )
+    parser.add_argument(
+        "--skip-duckdb",
+        action="store_true",
+        help="Skip the standard DuckDB ingest while retaining decoded CSV products.",
     )
     parser.add_argument(
         "--csie-dir-name",
@@ -5696,6 +5725,39 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     return parser
+
+
+def ingest_decoded_telemetry_to_duckdb(
+    decoded_dir: Path,
+    config: Config,
+    args: argparse.Namespace,
+) -> dict[str, int] | None:
+    """Ingest a run's scalar telemetry CSVs into the standard DuckDB store."""
+    if args.skip_duckdb:
+        print("DuckDB telemetry ingest skipped by request.")
+        return None
+    telemetry_csvs = sorted(decoded_dir.glob("decoded_apid_*.csv"))
+    if not telemetry_csvs:
+        print("DuckDB telemetry store unchanged: no decoded APID telemetry CSVs.")
+        return None
+    processor = TelemetryProcessor(
+        version=config.version_pipeline,
+        database_path=args.telemetry_database,
+        software_versions={
+            "bus_ctdb_version": config.version_bus,
+            "csie_ctdb_version": config.version_csie,
+            "dsps_ctdb_version": config.version_dsps,
+        },
+    )
+    summary = processor.process_files(file_list=telemetry_csvs)
+    print(f"DuckDB telemetry store: {processor.database_path}")
+    print(
+        "DuckDB ingest: "
+        f"{summary['files_ingested']:,} file(s) ingested, "
+        f"{summary['files_skipped']:,} unchanged file(s) skipped, "
+        f"{summary['rows_ingested']:,} row(s) added"
+    )
+    return summary
 
 
 def run(
@@ -5863,6 +5925,7 @@ def run(
             decoded_dir,
         )
         print_decode_summary(decode_stats)
+        ingest_decoded_telemetry_to_duckdb(decoded_dir, config, args)
 
     if not args.skip_csie_images:
         csie_stats = write_csie_image_products(

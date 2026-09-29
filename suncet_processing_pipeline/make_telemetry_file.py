@@ -1,4 +1,4 @@
-"""Build the mission-length, per-APID DuckDB telemetry store.
+"""Build the prelaunch test-phase, per-APID DuckDB telemetry store.
 
 Level 0.5 already writes one decoded CSV stream per APID. This module ingests
 those products transactionally, preserving each APID's natural sampling cadence
@@ -113,9 +113,9 @@ class CTDBDocumenter:
 
 
 class TelemetryProcessor:
-    """Ingest decoded per-APID CSVs into one mission-length DuckDB database."""
+    """Ingest decoded per-APID CSVs into one versioned test-phase database."""
 
-    def __init__(self, version=None, database_path=None):
+    def __init__(self, version=None, database_path=None, software_versions=None):
         if version is None:
             config = configparser.ConfigParser()
             config.read(
@@ -123,8 +123,11 @@ class TelemetryProcessor:
             )
             version = config["structure"]["version_pipeline"]
         self.version = version
+        self.software_versions = {
+            str(key): str(value) for key, value in (software_versions or {}).items()
+        }
         self.database_path = Path(database_path) if database_path else data_path(
-            "telemetry", f"suncet_telemetry_mission_length_v{version}.duckdb"
+            "test_data", f"suncet_telemetry_test_phase_v{version}.duckdb"
         )
 
     @staticmethod
@@ -142,8 +145,7 @@ class TelemetryProcessor:
             raise ValueError("No decoded_apid_*.csv telemetry files were found")
         return unique
 
-    @staticmethod
-    def _initialize(connection) -> None:
+    def _initialize(self, connection) -> None:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS _apid_catalog (
@@ -160,8 +162,38 @@ class TelemetryProcessor:
                 rows_ingested BIGINT NOT NULL,
                 ingested_utc TIMESTAMPTZ NOT NULL DEFAULT current_timestamp
             );
+            CREATE TABLE IF NOT EXISTS _database_metadata (
+                key VARCHAR PRIMARY KEY,
+                value VARCHAR NOT NULL
+            );
             """
         )
+        expected = {"pipeline_version": str(self.version), **self.software_versions}
+        existing = dict(
+            connection.execute(
+                "SELECT key, value FROM _database_metadata"
+            ).fetchall()
+        )
+        mismatches = {
+            key: (existing[key], value)
+            for key, value in expected.items()
+            if key in existing and existing[key] != value
+        }
+        if mismatches:
+            details = ", ".join(
+                f"{key}: database={old!r}, current={new!r}"
+                for key, (old, new) in sorted(mismatches.items())
+            )
+            raise ValueError(
+                "DuckDB software-version mismatch. Increment version_pipeline "
+                f"to select a new test-phase database ({details})."
+            )
+        for key, value in expected.items():
+            connection.execute(
+                "INSERT INTO _database_metadata VALUES (?, ?) "
+                "ON CONFLICT (key) DO NOTHING",
+                [key, value],
+            )
 
     def process_files(self, path=None, file_list=None) -> dict[str, int]:
         files = self._discover(path, file_list)
