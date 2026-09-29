@@ -1,37 +1,35 @@
 """Strict, public-facing packet contract for the SunCET APID 1 beacon.
 
-This module intentionally stops at boundaries awaiting a revised beacon
-definition or RF confirmation. It validates the CCSDS packet and the mission
-Fletcher-32 checksum. The secondary time header is coarse seconds since
-2000-01-01T00:00:00Z plus an integer 0-999 milliseconds after the coarse
-second. It temporarily accepts both the CTDB-declared form and the current
-compiler-aligned flight-model form.
+This module implements the current CTDB 2.0.5 packet boundary. It validates the
+CCSDS packet and the mission Fletcher-32 checksum. The secondary time header is
+coarse seconds since 2000-01-01T00:00:00Z plus an integer 0-999 milliseconds
+after the coarse second. Only the current 252-byte packet is accepted.
 
 It contains no private CTDB definitions and can serve as an independent oracle
-for the future SatNOGS Kaitai decoder and RF validation fixtures.
+for the SatNOGS Kaitai decoder and RF validation fixtures.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Collection
 
 from suncet_processing_pipeline.spacecraft_time import (
     FINE_MILLISECONDS_MAX,
     combine_spacecraft_time_seconds,
+)
+from .public_schema import (
+    PUBLIC_BEACON_CHECKSUM_BYTES,
+    PUBLIC_BEACON_CTDB_VERSION,
+    PUBLIC_BEACON_PACKET_BYTES,
 )
 
 
 BEACON_APID = 1
 CCSDS_PRIMARY_HEADER_BYTES = 6
 CCSDS_SECONDARY_TIME_BYTES = 6
-FLETCHER32_BYTES = 4
+FLETCHER32_BYTES = PUBLIC_BEACON_CHECKSUM_BYTES
 
-# CTDB 2.0.1 declares 251 bytes. FSW confirmed that the current 252-byte
-# flight-model form contains one compiler-inserted alignment byte immediately
-# before Fletcher-32. Retain both until the planned beacon revision has an
-# authoritative export and flight-equivalent test packet.
-CURRENT_BEACON_PACKET_LENGTHS = frozenset({251, 252})
+CURRENT_BEACON_PACKET_LENGTHS = frozenset({PUBLIC_BEACON_PACKET_BYTES})
 
 
 class BeaconValidationError(ValueError):
@@ -88,27 +86,17 @@ def suncet_fletcher32(data: bytes) -> int:
     return (sum2 << 16) | sum1
 
 
-def parse_beacon_packet(
-    packet: bytes,
-    *,
-    accepted_lengths: Collection[int] = CURRENT_BEACON_PACKET_LENGTHS,
-) -> BeaconPacket:
+def parse_beacon_packet(packet: bytes) -> BeaconPacket:
     """Validate and expose the stable envelope fields of one APID 1 packet.
 
-    ``accepted_lengths`` is explicit so a flight-confirmed length can be used
-    immediately by a caller before the repository-wide default is updated.
     The function exposes combined epoch seconds but deliberately does not apply
     a leap-second policy or format a UTC string.
     """
 
-    minimum_length = (
-        CCSDS_PRIMARY_HEADER_BYTES
-        + CCSDS_SECONDARY_TIME_BYTES
-        + FLETCHER32_BYTES
-    )
-    if len(packet) < minimum_length:
+    if len(packet) != PUBLIC_BEACON_PACKET_BYTES:
         raise BeaconValidationError(
-            f"packet has {len(packet)} bytes; at least {minimum_length} are required"
+            f"APID 1 packet has {len(packet)} bytes; CTDB "
+            f"{PUBLIC_BEACON_CTDB_VERSION} requires {PUBLIC_BEACON_PACKET_BYTES}"
         )
 
     first_word = int.from_bytes(packet[0:2], "big")
@@ -130,13 +118,6 @@ def parse_beacon_packet(
     if declared_length != len(packet):
         raise BeaconValidationError(
             f"CCSDS header declares {declared_length} bytes, received {len(packet)}"
-        )
-
-    allowed = frozenset(accepted_lengths)
-    if len(packet) not in allowed:
-        expected = ", ".join(str(length) for length in sorted(allowed)) or "none"
-        raise BeaconValidationError(
-            f"APID 1 packet has {len(packet)} bytes; accepted lengths are {expected}"
         )
 
     stored_checksum = int.from_bytes(packet[-FLETCHER32_BYTES:], "big")

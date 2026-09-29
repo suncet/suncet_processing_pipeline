@@ -1,10 +1,9 @@
-"""Generate the provisional public SunCET APID 1 Kaitai definition.
+"""Generate the current CTDB 2.0.5 public SunCET APID 1 Kaitai definition.
 
 The reviewed CSV is the authoritative public-field list.  This generator keeps
 the Kaitai skeleton synchronized with that list while replacing every excluded
 region with anonymous padding.  Link-layer framing remains intentionally out of
-scope until the flight AX.25 construction and SatNOGS receiver output are
-confirmed.
+scope until the SatNOGS receiver output boundary is confirmed.
 """
 
 from __future__ import annotations
@@ -12,15 +11,21 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .public_schema import PublicBeaconField, load_public_beacon_schema
+from .public_schema import (
+    PUBLIC_BEACON_CHECKSUM_BYTES,
+    PUBLIC_BEACON_CTDB_VERSION,
+    PUBLIC_BEACON_PACKET_BYTES,
+    PublicBeaconField,
+    load_public_beacon_schema,
+)
 
 
 PUBLIC_SPEC_URL = (
     "https://github.com/suncet/suncet_processing_pipeline/blob/main/"
     "docs/SUNCET_PUBLIC_BEACON_SPEC.md"
 )
-CTDB_PACKET_BITS = 2008
-CHECKSUM_BITS = 32
+CTDB_PACKET_BITS = PUBLIC_BEACON_PACKET_BYTES * 8
+CHECKSUM_BITS = PUBLIC_BEACON_CHECKSUM_BYTES * 8
 PUBLIC_PAYLOAD_BITS = CTDB_PACKET_BITS - CHECKSUM_BITS
 
 _COEFFICIENT_PATTERN = re.compile(
@@ -108,20 +113,26 @@ def _opaque_entries(start_bit: int, bit_length: int, index: int) -> list[str]:
 
 
 def generate_kaitai() -> str:
-    """Return the generated ``suncet_apid1.ksy`` contents."""
+    """Return the generated ``suncet_apid1.ksy`` contents.
+
+    The KSY validates structural fields and the exact current packet size.
+    Fletcher-32 is enforced by the public ``decoder.decode_public_beacon``
+    entrypoint before it constructs this parser.
+    """
 
     fields = load_public_beacon_schema()
     lines = [
         "meta:",
         "  id: suncet_apid1",
-        "  title: SunCET public CCSDS APID 1 beacon (provisional)",
+        f"  title: SunCET public CCSDS APID 1 beacon (CTDB {PUBLIC_BEACON_CTDB_VERSION})",
         "  endian: be",
         "  bit-endian: be",
         "doc-ref: |",
         f"  {PUBLIC_SPEC_URL}",
         "doc: |",
-        "  Provisional bare-CCSDS decoder for the public SunCET APID 1 beacon.",
-        "  The AX.25 wrapper will be added after flight framing is confirmed.",
+        f"  Bare-CCSDS decoder for the CTDB {PUBLIC_BEACON_CTDB_VERSION} public SunCET APID 1 beacon.",
+        "  The AX.25 wrapper awaits validation of the SatNOGS receiver output boundary.",
+        "  Use decode_public_beacon for Fletcher-32 validation and public-only output.",
         "",
     ]
     for field in fields:
@@ -201,7 +212,7 @@ def generate_kaitai() -> str:
             lines.extend(
                 [
                     "    valid:",
-                    "      expr: _ == _io.size - 7",
+                    f"      expr: _ == {PUBLIC_BEACON_PACKET_BYTES - 7} and _io.size == {PUBLIC_BEACON_PACKET_BYTES}",
                 ]
             )
         elif field.public_name == "spacecraft_time_milliseconds":
@@ -233,15 +244,9 @@ def generate_kaitai() -> str:
 
     lines.extend(
         [
-            "  - id: provisional_extra_byte",
-            "    type: u1",
-            "    if: _io.size == 252",
-            "    doc: |",
-            "      Compiler-inserted alignment byte in the current 252-byte layout.",
-            "      It is not public telemetry; retain provisionally until the revised beacon export.",
             "  - id: opaque_fletcher32_checksum",
-            "    size: 4",
-            "    doc: Fletcher-32 bytes consumed for framing; not exposed as telemetry.",
+            f"    size: {PUBLIC_BEACON_CHECKSUM_BYTES}",
+            "    doc: Fletcher-32 is checked by decode_public_beacon; not exposed as telemetry.",
         ]
     )
 

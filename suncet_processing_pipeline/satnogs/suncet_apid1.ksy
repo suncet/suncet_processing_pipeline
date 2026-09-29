@@ -1,13 +1,14 @@
 meta:
   id: suncet_apid1
-  title: SunCET public CCSDS APID 1 beacon (provisional)
+  title: SunCET public CCSDS APID 1 beacon (CTDB 2.0.5)
   endian: be
   bit-endian: be
 doc-ref: |
   https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md
 doc: |
-  Provisional bare-CCSDS decoder for the public SunCET APID 1 beacon.
-  The AX.25 wrapper will be added after flight framing is confirmed.
+  Bare-CCSDS decoder for the CTDB 2.0.5 public SunCET APID 1 beacon.
+  The AX.25 wrapper awaits validation of the SatNOGS receiver output boundary.
+  Use decode_public_beacon for Fletcher-32 validation and public-only output.
 
   :field ccsds_version: ccsds_version
   :field ccsds_packet_type: ccsds_packet_type
@@ -28,7 +29,6 @@ doc: |
   :field partition_read_dsps: partition_read_dsps
   :field store_partition_write_log: store_partition_write_log
   :field csie_nand_sci_write_ptr: csie_nand_sci_write_ptr
-  :field csie_meta_nand_sci_write_ptr: csie_meta_nand_sci_write_ptr
   :field time_since_boot: time_since_boot
   :field time_alive: time_alive
   :field time_mission_elapsed_time: time_mission_elapsed_time
@@ -43,6 +43,9 @@ doc: |
   :field csie_img_hist_3: csie_img_hist_3
   :field csie_img_hist_4: csie_img_hist_4
   :field csie_img_hist_5: csie_img_hist_5
+  :field adcs_wheel_speed_1: adcs_wheel_speed_1
+  :field adcs_wheel_speed_2: adcs_wheel_speed_2
+  :field adcs_wheel_speed_3: adcs_wheel_speed_3
   :field xband_pa_temp: xband_pa_temp
   :field xband_pa_current: xband_pa_current
   :field rail_3v3_voltage: rail_3v3_voltage
@@ -83,15 +86,8 @@ doc: |
   :field dsps_x_ray_sps_sun_pos_y: dsps_x_ray_sps_sun_pos_y
   :field dsps_sensor_board_temp: dsps_sensor_board_temp
   :field adcs_ana_motor1_temp: adcs_ana_motor1_temp
-  :field adcs_wheel_speed_1: adcs_wheel_speed_1
-  :field adcs_wheel_speed_2: adcs_wheel_speed_2
-  :field adcs_wheel_speed_3: adcs_wheel_speed_3
   :field adcs_sun_point_angle_error: adcs_sun_point_angle_error
   :field num_sc_resets: num_sc_resets
-  :field clt_hours_until_reboot: clt_hours_until_reboot
-  :field mode_system_mode: mode_system_mode
-  :field uhf_temp: uhf_temp
-  :field fault_protection_task_state: fault_protection_task_state
   :field csie_capture_state: csie_capture_state
   :field fault_protection_watchpoint_6_state: fault_protection_watchpoint_6_state
   :field fault_protection_watchpoint_5_state: fault_protection_watchpoint_5_state
@@ -100,6 +96,10 @@ doc: |
   :field fault_protection_watchpoint_2_state: fault_protection_watchpoint_2_state
   :field fault_protection_watchpoint_1_state: fault_protection_watchpoint_1_state
   :field fault_protection_watchpoint_0_state: fault_protection_watchpoint_0_state
+  :field clt_hours_until_reboot: clt_hours_until_reboot
+  :field mode_system_mode: mode_system_mode
+  :field uhf_temp: uhf_temp
+  :field fault_protection_task_state: fault_protection_task_state
   :field dsps_flare_magnitude: dsps_flare_magnitude
   :field dsps_flare_phase: dsps_flare_phase
   :field battery_1_charging_state: battery_1_charging_state
@@ -135,7 +135,7 @@ seq:
   - id: ccsds_packet_length_field
     type: u2
     valid:
-      expr: _ == _io.size - 7
+      expr: _ == 245 and _io.size == 252
     doc: |
       CCSDS packet length field: bytes after the primary header minus one.
       Engineering units: bytes
@@ -200,11 +200,6 @@ seq:
     type: u4
     doc: |
       Current write pointer in the NAND CSIE science-image partition.
-      Engineering units: raw address
-  - id: csie_meta_nand_sci_write_ptr
-    type: u4
-    doc: |
-      Current write pointer in the NAND CSIE image-metadata partition.
       Engineering units: raw address
   - id: time_since_boot
     type: u4
@@ -279,15 +274,33 @@ seq:
     doc: |
       CSIE pixel count in histogram bin 5; configurable DN range [offset+5*width, offset+6*width-1], default 160-191; beacon truncates the full histogram after bin 5
       Engineering units: count
-  - id: opaque_1_bytes
-    size: 2
-    doc: Excluded public-beacon fields, consumed opaquely.
+  - id: adcs_wheel_speed_1_raw
+    type: s4
+    doc: |
+      ADCS Wheel Speed 1
+      Engineering units: rpm
+      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
+  - id: adcs_wheel_speed_2_raw
+    type: s4
+    doc: |
+      ADCS Wheel Speed 2
+      Engineering units: rpm
+      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
+  - id: adcs_wheel_speed_3_raw
+    type: s4
+    doc: |
+      ADCS Wheel Speed 3
+      Engineering units: rpm
+      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
   - id: xband_pa_temp_raw
-    type: u2
+    type: s4
     doc: |
       XBAND Power Amplifier Temp
       Engineering units: degC (inferred)
       Conversion/status map: C0=0.000000e+00 C1=9.765625e-04
+  - id: opaque_1_bytes
+    size: 4
+    doc: Excluded public-beacon fields, consumed opaquely.
   - id: xband_pa_current_raw
     type: u2
     doc: |
@@ -350,13 +363,13 @@ seq:
     doc: |
       Battery 1 Voltage
       Engineering units: V (inferred)
-      Conversion/status map: C0=0.000000e+00 C1=8.056641e-03
+      Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
   - id: battery_2_voltage_raw
     type: u2
     doc: |
       Battery 2 Voltage
       Engineering units: V (inferred)
-      Conversion/status map: C0=0.000000e+00 C1=8.056641e-03
+      Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
   - id: eps_temp_raw
     type: u2
     doc: |
@@ -510,7 +523,7 @@ seq:
       X-RAY DSPS Sun position y (arcsecs)
       Engineering units: arcsec
   - id: dsps_sensor_board_temp_raw
-    type: u2
+    type: s2
     doc: |
       Dual-SPS Sensor Board Temperature
       Engineering units: degC (inferred)
@@ -521,24 +534,6 @@ seq:
       Wheel 1 Temp
       Engineering units: degC (inferred)
       Conversion/status map: C0=0.000000e+00 C1=5.000000e-03
-  - id: adcs_wheel_speed_1_raw
-    type: s4
-    doc: |
-      ADCS Wheel Speed 1
-      Engineering units: rpm
-      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
-  - id: adcs_wheel_speed_2_raw
-    type: s4
-    doc: |
-      ADCS Wheel Speed 2
-      Engineering units: rpm
-      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
-  - id: adcs_wheel_speed_3_raw
-    type: s4
-    doc: |
-      ADCS Wheel Speed 3
-      Engineering units: rpm
-      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
   - id: adcs_sun_point_angle_error_raw
     type: u2
     doc: |
@@ -550,36 +545,6 @@ seq:
     doc: |
       Number of Spacecraft Reboots
       Engineering units: count
-  - id: opaque_3_bytes
-    size: 4
-    doc: Excluded public-beacon fields, consumed opaquely.
-  - id: clt_hours_until_reboot
-    type: u1
-    doc: |
-      Command Loss Timer time remaining until the spacecraft resets.
-      Engineering units: h
-  - id: mode_system_mode
-    type: u1
-    enum: mode_system_mode_values
-    doc: |
-      System mode
-      Engineering units: dimensionless
-      Conversion/status map: 0/PHOENIX 1/SAFE 2/SCIENCE 3/DOWNLINK
-  - id: uhf_temp
-    type: s1
-    doc: |
-      UHF Temperature
-      Engineering units: degC (inferred)
-  - id: opaque_4_bytes
-    size: 4
-    doc: Excluded public-beacon fields, consumed opaquely.
-  - id: fault_protection_task_state
-    type: u1
-    enum: fault_protection_task_state_values
-    doc: |
-      Fault-protection task state.
-      Engineering units: dimensionless
-      Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
   - id: csie_capture_state
     type: b2
     doc: |
@@ -634,19 +599,48 @@ seq:
       WP State wp0
       Engineering units: dimensionless
       Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
-  - id: dsps_flare_magnitude_raw
+  - id: opaque_3_bytes
+    size: 4
+    doc: Excluded public-beacon fields, consumed opaquely.
+  - id: clt_hours_until_reboot
+    type: u1
+    doc: |
+      Command Loss Timer time remaining until the spacecraft resets.
+      Engineering units: h
+  - id: mode_system_mode
+    type: u1
+    enum: mode_system_mode_values
+    doc: |
+      System mode
+      Engineering units: dimensionless
+      Conversion/status map: 0/PHOENIX 1/SAFE 2/SCIENCE 3/DOWNLINK
+  - id: uhf_temp
     type: s1
     doc: |
-      Dual-SPS estimate of GOES XRS-B flare magnitude
-      Engineering units: log10(XRS-B flux)
-      Conversion/status map: C0=0.000000e+00 C1=1.000000e-01
+      UHF Temperature
+      Engineering units: degC (inferred)
+  - id: opaque_4_bytes
+    size: 4
+    doc: Excluded public-beacon fields, consumed opaquely.
+  - id: fault_protection_task_state
+    type: u1
+    enum: fault_protection_task_state_values
+    doc: |
+      Fault-protection task state.
+      Engineering units: dimensionless
+      Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
+  - id: dsps_flare_magnitude
+    type: u1
+    doc: |
+      Dual-SPS flare magnitude as an unsigned raw value; CTDB 2.0.5 defines no engineering conversion.
+      Engineering units: raw
   - id: dsps_flare_phase
     type: u1
     enum: dsps_flare_phase_values
     doc: |
       Dual-SPS flare-state bit flags
       Engineering units: dimensionless
-      Conversion/status map: 0/NOT_IN_SUN 1/FILLING_HISTORY 2/NOT_IN_FLARE 4/FLARE_LIKELY 24/IN_FLARE_DECREASING 40/IN_FLARE_RISING
+      Conversion/status map: 0/NOT_IN_SUN 1/FILLING_HISTORY 2/NOT_IN_FLARE 4/FLARE_START 24/DECLINING_FLARE 40/RISING_FLARE
   - id: opaque_5_bytes
     size: 7
     doc: Excluded public-beacon fields, consumed opaquely.
@@ -784,15 +778,12 @@ seq:
       Selected X-band data source.
       Engineering units: dimensionless
       Conversion/status map: 0/TEST_PAT 1/CDH
-  - id: provisional_extra_byte
-    type: u1
-    if: _io.size == 252
-    doc: |
-      Compiler-inserted alignment byte in the current 252-byte layout.
-      It is not public telemetry; retain provisionally until the revised beacon export.
+  - id: opaque_6_bytes
+    size: 1
+    doc: Excluded public-beacon fields, consumed opaquely.
   - id: opaque_fletcher32_checksum
     size: 4
-    doc: Fletcher-32 bytes consumed for framing; not exposed as telemetry.
+    doc: Fletcher-32 is checked by decode_public_beacon; not exposed as telemetry.
 instances:
   ccsds_version:
     value: (ccsds_primary_word >> 13) & 7
@@ -842,6 +833,24 @@ instances:
       ADCS Body Frame Rate 3
       Engineering units: rad/s
       Conversion/status map: C0=0.000000e+00 C1=5.000000e-09
+  adcs_wheel_speed_1:
+    value: (0 + adcs_wheel_speed_1_raw * 0.002)
+    doc: |
+      ADCS Wheel Speed 1
+      Engineering units: rpm
+      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
+  adcs_wheel_speed_2:
+    value: (0 + adcs_wheel_speed_2_raw * 0.002)
+    doc: |
+      ADCS Wheel Speed 2
+      Engineering units: rpm
+      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
+  adcs_wheel_speed_3:
+    value: (0 + adcs_wheel_speed_3_raw * 0.002)
+    doc: |
+      ADCS Wheel Speed 3
+      Engineering units: rpm
+      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
   xband_pa_temp:
     value: (0 + xband_pa_temp_raw * 0.0009765625)
     doc: |
@@ -903,17 +912,17 @@ instances:
       Engineering units: A (inferred)
       Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
   battery_1_voltage:
-    value: (0 + battery_1_voltage_raw * 0.008056641)
+    value: (0 + battery_1_voltage_raw * 0.0088623)
     doc: |
       Battery 1 Voltage
       Engineering units: V (inferred)
-      Conversion/status map: C0=0.000000e+00 C1=8.056641e-03
+      Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
   battery_2_voltage:
-    value: (0 + battery_2_voltage_raw * 0.008056641)
+    value: (0 + battery_2_voltage_raw * 0.0088623)
     doc: |
       Battery 2 Voltage
       Engineering units: V (inferred)
-      Conversion/status map: C0=0.000000e+00 C1=8.056641e-03
+      Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
   eps_temp:
     value: (125.55 + eps_temp_raw * (-0.13622 + eps_temp_raw * (9.8611e-05 + eps_temp_raw * (-4.4176e-08 + eps_temp_raw * (1.0125e-11 + eps_temp_raw * -9.3905e-16)))))
     doc: |
@@ -1058,46 +1067,13 @@ instances:
       Wheel 1 Temp
       Engineering units: degC (inferred)
       Conversion/status map: C0=0.000000e+00 C1=5.000000e-03
-  adcs_wheel_speed_1:
-    value: (0 + adcs_wheel_speed_1_raw * 0.002)
-    doc: |
-      ADCS Wheel Speed 1
-      Engineering units: rpm
-      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
-  adcs_wheel_speed_2:
-    value: (0 + adcs_wheel_speed_2_raw * 0.002)
-    doc: |
-      ADCS Wheel Speed 2
-      Engineering units: rpm
-      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
-  adcs_wheel_speed_3:
-    value: (0 + adcs_wheel_speed_3_raw * 0.002)
-    doc: |
-      ADCS Wheel Speed 3
-      Engineering units: rpm
-      Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
   adcs_sun_point_angle_error:
     value: (0 + adcs_sun_point_angle_error_raw * 0.003)
     doc: |
       Angle between the estimated and commanded Sun vectors.
       Engineering units: deg
       Conversion/status map: C0=0.000000e+00 C1=3.000000e-03
-  dsps_flare_magnitude:
-    value: (0 + dsps_flare_magnitude_raw * 0.1)
-    doc: |
-      Dual-SPS estimate of GOES XRS-B flare magnitude
-      Engineering units: log10(XRS-B flux)
-      Conversion/status map: C0=0.000000e+00 C1=1.000000e-01
 enums:
-  mode_system_mode_values:
-    0: 'phoenix'
-    1: 'safe'
-    2: 'science'
-    3: 'downlink'
-  fault_protection_task_state_values:
-    0: 'disabled'
-    1: 'passive'
-    2: 'enabled'
   fault_protection_watchpoint_6_state_values:
     0: 'disabled'
     1: 'passive'
@@ -1126,13 +1102,22 @@ enums:
     0: 'disabled'
     1: 'passive'
     2: 'enabled'
+  mode_system_mode_values:
+    0: 'phoenix'
+    1: 'safe'
+    2: 'science'
+    3: 'downlink'
+  fault_protection_task_state_values:
+    0: 'disabled'
+    1: 'passive'
+    2: 'enabled'
   dsps_flare_phase_values:
     0: 'not_in_sun'
     1: 'filling_history'
     2: 'not_in_flare'
-    4: 'flare_likely'
-    24: 'in_flare_decreasing'
-    40: 'in_flare_rising'
+    4: 'flare_start'
+    24: 'declining_flare'
+    40: 'rising_flare'
   battery_1_charging_state_values:
     1: 'charging'
     0: 'discharging'

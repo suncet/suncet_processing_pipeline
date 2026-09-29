@@ -1,4 +1,4 @@
-"""Tests for the generated provisional Kaitai decoder and public fixture."""
+"""Tests for the generated CTDB 2.0.5 Kaitai definition and public fixture."""
 
 import json
 from pathlib import Path
@@ -24,29 +24,30 @@ def test_tracked_kaitai_definition_is_generated_from_public_schema():
     assert tracked == generate_kaitai()
     assert "https://github.com/suncet/suncet_processing_pipeline/" in tracked
     assert "bit-endian: be" in tracked
-    assert "if: _io.size == 252" in tracked
+    assert "_io.size == 252" in tracked
+    assert "if: _io.size" not in tracked
     assert "id: spacecraft_time_milliseconds" in tracked
     assert "max: 999" in tracked
     assert "source_field" not in tracked
-    assert CTDB_PACKET_BITS == 2008
+    assert CTDB_PACKET_BITS == 2016
     assert CHECKSUM_BITS == 32
-    assert PUBLIC_PAYLOAD_BITS == 1976
+    assert PUBLIC_PAYLOAD_BITS == 1984
 
 
 def test_synthetic_fixture_is_stable_and_contract_valid():
     packet, expected = build_synthetic_fixture()
-    stored_hex = (SATNOGS_DIR / "test_data/suncet_apid1_synthetic_251.hex").read_text(
+    stored_hex = (SATNOGS_DIR / "test_data/suncet_apid1_synthetic_252.hex").read_text(
         encoding="ascii"
     )
     stored_expected = json.loads(
-        (SATNOGS_DIR / "test_data/suncet_apid1_synthetic_251_expected.json").read_text(
+        (SATNOGS_DIR / "test_data/suncet_apid1_synthetic_252_expected.json").read_text(
             encoding="utf-8"
         )
     )
 
     assert bytes.fromhex(stored_hex) == packet
     assert stored_expected == expected
-    parsed = parse_beacon_packet(packet, accepted_lengths={251})
+    parsed = parse_beacon_packet(packet)
     assert parsed.sequence_count == 42
     assert parsed.coarse_seconds == 833_326_475
     assert parsed.fine_milliseconds == 234
@@ -56,8 +57,8 @@ def test_synthetic_fixture_is_stable_and_contract_valid():
 def test_fixture_is_explicitly_synthetic_not_flight_data():
     packet, expected = build_synthetic_fixture()
 
-    assert len(packet) == 251
+    assert len(packet) == 252
     assert expected["mode_system_mode"]["engineering"] == "SCIENCE"
-    assert expected["dsps_flare_phase"]["engineering"] == "IN_FLARE_RISING"
+    assert expected["dsps_flare_phase"]["engineering"] == "RISING_FLARE"
     assert expected["uhf_alive"]["engineering"] == "ALIVE"
     assert expected["adcs_sun_point_state"]["engineering"] == "ON_SUN"

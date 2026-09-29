@@ -8,7 +8,11 @@ import struct
 from pathlib import Path
 
 from .beacon_contract import parse_beacon_packet, suncet_fletcher32
-from .public_schema import PublicBeaconField, load_public_beacon_schema
+from .public_schema import (
+    PUBLIC_BEACON_PACKET_BYTES,
+    PublicBeaconField,
+    load_public_beacon_schema,
+)
 
 
 _COEFFICIENT_PATTERN = re.compile(
@@ -40,7 +44,7 @@ def _candidate_raw_value(field: PublicBeaconField, index: int) -> int | float:
         "ccsds_apid": 1,
         "ccsds_sequence_flags": 3,
         "ccsds_sequence_count": 42,
-        "ccsds_packet_length_field": 244,
+        "ccsds_packet_length_field": PUBLIC_BEACON_PACKET_BYTES - 7,
         "spacecraft_time_seconds_since_2000": 833_326_475,
         "spacecraft_time_milliseconds": 234,
         "mode_system_mode": 2,
@@ -96,9 +100,9 @@ def _engineering_value(field: PublicBeaconField, raw: int | float) -> object:
 
 
 def build_synthetic_fixture() -> tuple[bytes, dict[str, dict[str, object]]]:
-    """Return a 251-byte synthetic packet and independently expected values."""
+    """Return a current 252-byte packet and independently expected values."""
 
-    packet = bytearray(251)
+    packet = bytearray(PUBLIC_BEACON_PACKET_BYTES)
     expected: dict[str, dict[str, object]] = {}
     for index, field in enumerate(load_public_beacon_schema()):
         raw = _candidate_raw_value(field, index)
@@ -110,7 +114,7 @@ def build_synthetic_fixture() -> tuple[bytes, dict[str, dict[str, object]]]:
 
     checksum = suncet_fletcher32(bytes(packet[:-4]))
     packet[-4:] = checksum.to_bytes(4, "big")
-    parse_beacon_packet(bytes(packet), accepted_lengths={251})
+    parse_beacon_packet(bytes(packet))
     return bytes(packet), expected
 
 
@@ -118,10 +122,10 @@ def main() -> int:
     output_dir = Path(__file__).with_name("test_data")
     output_dir.mkdir(parents=True, exist_ok=True)
     packet, expected = build_synthetic_fixture()
-    (output_dir / "suncet_apid1_synthetic_251.hex").write_text(
+    (output_dir / "suncet_apid1_synthetic_252.hex").write_text(
         packet.hex() + "\n", encoding="ascii"
     )
-    (output_dir / "suncet_apid1_synthetic_251_expected.json").write_text(
+    (output_dir / "suncet_apid1_synthetic_252_expected.json").write_text(
         json.dumps(expected, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )

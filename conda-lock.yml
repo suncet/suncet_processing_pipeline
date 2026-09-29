@@ -13,10 +13,10 @@
 version: 1
 metadata:
   content_hash:
-    linux-aarch64: 102325d3eab9b6aa4ef0d3c70cb96f1b43b3c86264456b9634d0c75a3ebee586
-    linux-64: 4e145bd4428366f7780efac9f29b8529c1e14f6840713bf4fc9ae68a98c66819
-    osx-arm64: df2bf3069851f9d69b39f10c93376bcc372c4c5c6e93a14ca832be016865d35b
-    osx-64: e872b7d72711a49d50c72fa80aea5722dbb90a0bd2d339fc19a6596b0f87de4c
+    linux-aarch64: 8992b0d955d569517913498c606b8b3247a163c2e984d00107a8cc48555eb988
+    linux-64: 32c74d2cca0ab02bc2bf67a2054613003118085b9d1eb42a10858f3c74b5093a
+    osx-arm64: 6d8f34d7c097b2743cb3d52e8ce5449d13ab3da3324ae0c40f7e36bf60bf0f6c
+    osx-64: e3fb5add76ec0e543b7f800f5ae973a4ad45acb555f3e6f18bc74507392f970e
   channels:
   - url: conda-forge
     used_env_vars: []
@@ -23783,5 +23783,45 @@ package:
   hash:
     md5: 4ec2684c73812cc2c3d78379384a39cc
     sha256: da867f5092eb0cb746d353694f0098031fd9817a4ce7d5743121209ae0f406ca
+  category: main
+  optional: false
+- name: kaitaistruct
+  version: '0.11'
+  manager: pip
+  platform: linux-64
+  dependencies: {}
+  url: https://files.pythonhosted.org/packages/4a/4a/cf14bf3b1f5ffb13c69cf5f0ea78031247790558ee88984a8bdd22fae60d/kaitaistruct-0.11-py2.py3-none-any.whl
+  hash:
+    sha256: 5c6ce79177b4e193a577ecd359e26516d1d6d000a0bffd6e1010f2a46a62a561
+  category: main
+  optional: false
+- name: kaitaistruct
+  version: '0.11'
+  manager: pip
+  platform: linux-aarch64
+  dependencies: {}
+  url: https://files.pythonhosted.org/packages/4a/4a/cf14bf3b1f5ffb13c69cf5f0ea78031247790558ee88984a8bdd22fae60d/kaitaistruct-0.11-py2.py3-none-any.whl
+  hash:
+    sha256: 5c6ce79177b4e193a577ecd359e26516d1d6d000a0bffd6e1010f2a46a62a561
+  category: main
+  optional: false
+- name: kaitaistruct
+  version: '0.11'
+  manager: pip
+  platform: osx-64
+  dependencies: {}
+  url: https://files.pythonhosted.org/packages/4a/4a/cf14bf3b1f5ffb13c69cf5f0ea78031247790558ee88984a8bdd22fae60d/kaitaistruct-0.11-py2.py3-none-any.whl
+  hash:
+    sha256: 5c6ce79177b4e193a577ecd359e26516d1d6d000a0bffd6e1010f2a46a62a561
+  category: main
+  optional: false
+- name: kaitaistruct
+  version: '0.11'
+  manager: pip
+  platform: osx-arm64
+  dependencies: {}
+  url: https://files.pythonhosted.org/packages/4a/4a/cf14bf3b1f5ffb13c69cf5f0ea78031247790558ee88984a8bdd22fae60d/kaitaistruct-0.11-py2.py3-none-any.whl
+  hash:
+    sha256: 5c6ce79177b4e193a577ecd359e26516d1d6d000a0bffd6e1010f2a46a62a561
   category: main
   optional: false
