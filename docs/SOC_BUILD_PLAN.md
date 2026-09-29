@@ -1,6 +1,6 @@
 # SunCET SOC Jetson Build and Operations Plan
 
-Last updated: 2026-09-25
+Last updated: 2026-09-29
 
 ## Purpose
 
@@ -29,7 +29,7 @@ under its hostname.
 
 ## Cross-plan status snapshot
 
-| Workstream | Status on 2026-09-25 | Next completion gate |
+| Workstream | Latest documented status (SatNOGS updated 2026-09-29; other workstreams 2026-09-25) | Next completion gate |
 |---|---|---|
 | Jetson platform, SSH, NVMe, and portable environment | Release `3da31c5` deployed in a locked Python 3.14 runtime; 358 Jetson tests pass in stock 30 W mode | Use the release runtime for the next representative manual run while retaining `4fbd7b9` as rollback |
 | AWS X-band/UHF custody | Live and tested; AWS CLI and version-aware monitor deployed and healthy | Confirm the first lifecycle expirations and complete an independent archive inventory/restore drill |
@@ -39,7 +39,7 @@ under its hostname.
 | Level 2 PSF deconvolution | Strict Level 1 input, active `v1.0.4dev` contract, exact FP64 NumPy/CuPy paths, and a 241-frame Jetson end-to-end batch are validated | Approve the calibration set, replace provisional Level 1/3 fixtures, and measure the full external-input power cycle |
 | Level 4 CME tracking | Strong known-window engineering prototype; headless 241-frame Level 0.5–4 throughput/covered-rail baseline complete | Test Meng Jin's additional scenarios, compare binned/unbinned fidelity, then add held-out evaluation and broader event association |
 | LASP publication | SFTP transport validated; policy pending | Approve product mapping, naming/versioning, and release authority |
-| SatNOGS | Spacecraft record accepted and live; public-specification draft and decoder prototype substantially complete | Review the public citation and submit the inactive/unconfirmed nominal transmitter; track the revised APID 1 definition and finish RF receiver/decoder validation |
+| SatNOGS | Spacecraft record accepted; CTDB 2.0.5-only decoder covers 111 fields and compiled-parser checks pass locally; dashboard plan and transmitter draft prepared | Publish the citation and submit the inactive/unconfirmed nominal transmitter; validate recorded UHF packets and RF/IQ receiver path, complete upstream integration, and obtain dashboard access/ingestion |
 | Unattended operations | Deliberately deferred | Close monitoring, recovery, locking, and release-policy gates first |
 
 ## Decisions
@@ -778,20 +778,40 @@ The spacecraft record is now accepted and live as
 [`MNRC-9829-4319-5529-8975`](https://db.satnogs.org/satellite/MNRC-9829-4319-5529-8975).
 Verified on 2026-09-25, its history records approval of suggestion 11880 on
 2026-09-01. It has `Future` status and temporary NORAD ID `98244`, with no
-approved transmitters yet. The spacecraft acceptance gate has passed; review
-the public transmitter citation and submit the inactive/unconfirmed nominal
-9600-baud entry next.
+approved transmitters yet. The spacecraft acceptance gate has passed. The
+nominal 9600-baud transmitter metadata is prepared in the
+[submission draft](SATNOGS_DB_SUBMISSION_DRAFT.md); publish the reviewed
+[beacon specification at its canonical citation URL](https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md)
+and submit the inactive/unconfirmed entry next. Recorded UHF packets and RF/IQ
+data are not prerequisites for that registration.
 
-The APID 1 public-field review is complete: 112 fields are approved for public
-decoding and 24 remain opaque. The first generated bare-CCSDS Kaitai decoder
-pass and a synthetic public test vector now compile and validate successfully.
-Flight software has confirmed the literal AX.25 header, CCSDS encapsulation,
-CRC-16/X-25 coverage, FCS byte order, and the compiler-alignment byte that makes
-the current APID 1 packet 252 bytes. The planned revised beacon definition and
-RF receiver-path integration remain technical follow-ups before upstream
-decoder submission; they do not block the initial SatNOGS DB records.
-Fine time is empirically resolved as integer milliseconds and implemented in
-the pipeline and public decoder artifacts.
+Mission-owner approval selects CTDB 2.0.5 as the sole public decoder definition.
+The migrated public schema has 111 approved fields; the missing legacy
+`csie_meta_nand_sci_write_ptr` alias was removed, and excluded fields remain
+opaque. The bare-CCSDS parser enforces the exact 252-byte packet contract. Its
+validated entrypoint applies Fletcher-32/envelope checks before generated
+Kaitai decoding. There is no legacy-layout compatibility path. The official
+Kaitai compiler 0.11 and runtime 0.11 pass local generated-parser
+compilation/execution checks covering all public synthetic values, independent
+engineering expectations, malformed packets, checksum corruption, and boundary
+cases. CI now checks reproducible generation using the SHA-256-pinned official
+compiler ZIP, runs parser tests, and exercises fixture decoding from an
+installed wheel; a remote CI result is not claimed here.
+
+The requested recent UHF telemetry remains the recorded-data comparison gate.
+A separately requested IQ recording is pending for RF
+demodulation and the exact SatNOGS decoder-input boundary; flight software's
+literal AX.25 header, CCSDS encapsulation, CRC-16/X-25 coverage, and FCS byte
+order are already known. No new CTDB/FSW definition is required. Fine time is
+resolved as integer milliseconds; authoritative spacecraft UTC conversion
+remains a separate time-policy item.
+
+The [dashboard plan](SATNOGS_DASHBOARD_PLAN.md) is ready with approved-field
+panels, units/enums, gap/staleness behavior, time handling, and a confidential
+editor-access request template. It is a local design, not a live or
+recorded-telemetry-validated dashboard. Upstream decoder review, actual
+ingestion, editor permissions, and recorded-data/time-policy validation remain
+before operational acceptance.
 
 ## Immediate next action
 
@@ -804,11 +824,12 @@ expirations and perform an independent archive inventory/restore drill. When
 Meng Jin's additional simulations arrive, generate reviewed manifests, freeze
 development/validation cases, and run the same raw and temporal-median
 configurations before changing thresholds or adding GPU work. SunCET's
-spacecraft record is accepted and live; review the public citation and submit
-the inactive/unconfirmed nominal transmitter. The revised APID 1 definition
-and flight-equivalent RF package remain receiver/decoder
-gates. No unattended ingest or publication should begin before its separate
-operational gates pass.
+spacecraft record is accepted and live; publish the prepared public citation
+and submit the inactive/unconfirmed nominal transmitter. Compare the locally
+tested CTDB 2.0.5 decoder with the requested UHF packet sample when it arrives,
+and use the separate pending IQ sample for receiver validation.
+Request dashboard editor access using the prepared plan. No unattended ingest
+or publication should begin before its separate operational gates pass.
 
 ## Definition of an initial operational SOC
 

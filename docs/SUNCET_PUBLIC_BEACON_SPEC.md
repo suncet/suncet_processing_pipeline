@@ -1,48 +1,38 @@
 # SunCET Public Beacon Specification
 
-Status: **Pre-publication draft — not yet authoritative**
+Status: **Draft**
 
-Revision: draft-0.8
-Last updated: 2026-09-01
+Revision: draft-0.11
+Last updated: 2026-09-29
 
 Canonical URL:
 <https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md>
 
-The canonical URL is stable across revisions. The status and revision above
-determine whether the displayed document is an authoritative release or a
-working draft.
-
 ## Purpose and scope
 
-This document will provide the public information needed to receive and decode
-the globally broadcast SunCET UHF beacon. It covers only the CCSDS APID 1 beacon.
-It does not document commanding, private ground-system interfaces, stored-data
-playback, science-image transport, or any other spacecraft APID.
+This document provides the basic information to receive and decode the SunCET UHF beacons.
 
-Values marked **TBC** remain receiver/decoder validation work. They do not
-invalidate the confirmed fields or prevent a reviewed revision from serving as
-the citation for an inactive/unconfirmed SatNOGS transmitter record. Each
-citation must rely only on fields identified as confirmed.
+**TBC** indicates a parameter that has not yet been confirmed.
 
 ## Mission
 
-| Item | Value | Status/source |
-| --- | --- | --- |
-| Spacecraft | SunCET | Confirmed by APL and LASP public mission pages |
-| Expanded name | Sun Coronal Ejection Tracker | Confirmed by the mission PI; the LASP public page should eventually be corrected |
-| Form factor | 6U SmallSat/CubeSat | Public LASP mission page |
-| Mission status | Future | Public LASP mission page |
-| Mission purpose | Extreme-ultraviolet observations of coronal mass-ejection acceleration from the low corona into the extended corona | Public APL and LASP mission pages |
-| Lead institutions | Johns Hopkins Applied Physics Laboratory and University of Colorado Boulder Laboratory for Atmospheric and Space Physics | Public APL and LASP mission pages |
-| Funding program | NASA Heliophysics | Public LASP mission page |
-| Country | United States | Derived from the lead institutions; confirm SatNOGS entry convention |
-| Launch/deployment | No earlier than 2027-02-15 | Current mission planning date; update when manifested |
-| Expected orbit | 510 km circular, Sun-synchronous, 18:00 mean local time at ascending node | Current mission planning orbit |
-| Prime mission | 8 months | Confirmed by the mission PI |
-| Primary website | <https://suncet.jhuapl.edu/> | Confirmed by the mission PI |
-| Secondary website | <https://lasp.colorado.edu/missions/suncet/> | Use when SatNOGS provides an appropriate secondary-link field |
-| Public contact | `james.mason@jhuapl.edu` | Confirmed by the mission PI |
-| Public image | `Spacecraft.jpg`, showing the integrated spacecraft with deployed solar arrays | Mission image selected by the PI with permission for unrestricted public use; preserve mission/JHUAPL attribution |
+| Item | Value |
+| --- | --- |
+| Spacecraft | SunCET |
+| Expanded name | Sun Coronal Ejection Tracker |
+| Form factor | 6U SmallSat/CubeSat |
+| Mission status | Future |
+| Mission purpose | Extreme-ultraviolet observations of coronal mass-ejection acceleration from the low corona into the extended corona |
+| Lead institutions | Johns Hopkins Applied Physics Laboratory and University of Colorado Boulder Laboratory for Atmospheric and Space Physics |
+| Funding program | NASA Heliophysics |
+| Country | United States |
+| Launch/deployment | No earlier than 2027-03-15; manifested on SpaceX Falcon 9 launch |
+| Expected orbit | 510 km circular, Sun-synchronous, 18:00 mean local time at ascending node |
+| Prime mission | 8 months |
+| Primary website | <https://suncet.jhuapl.edu/> |
+| Secondary website | <https://lasp.colorado.edu/missions/suncet/> |
+| Public contact | `james.mason@jhuapl.edu` — Mission PI |
+| Public image | [SunCET spacecraft with deployed solar arrays](assets/suncet_spacecraft.jpg); unrestricted public use with mission/JHUAPL attribution |
 
 Proposed short SatNOGS description:
 
@@ -60,42 +50,17 @@ Proposed short SatNOGS description:
 | Authorized frequency range | 401.1904-401.2096 MHz |
 | Frequency tolerance | 0.0001% (1 ppm, or approximately +/-401.2 Hz at the assigned center frequency) |
 | Emission designator | `19K2F1D` |
-| Modulation | GFSK; use the current SatNOGS `GFSK` mode and retain `Unconfirmed` until RF validation |
+| Modulation | GFSK |
 | Symbol/baud rate | 9600 baud nominal; 19200 baud contingency mode if UHF science playback is required |
-| Frequency deviation | **TBC** |
 | Authorized/declared occupied bandwidth | 19.2 kHz (`19K2`) |
-| Pulse shaping/filter | **TBC** |
-| Forward-error correction | None in the FCC technical submission; verify against the final programmed flight configuration |
-| Interleaving | **TBC** |
-| Whitening/scrambling | **TBC** |
+| Forward-error correction | **TBC** |
 | Polarization | RHCP |
 | Flight radio and antenna | SpaceQuest TRX-U with GomSpace NanoCom ANT-6F |
 | Radio output / licensed ERP | 2.0 W transmitter output; 1.53 W authorized ERP for the space station |
 | Beacon cadence | Mode dependent, of order 10 seconds |
-| Spectrum service | FCC Experimental Radio Service; map this to the closest current SatNOGS service vocabulary at submission time |
+| Spectrum service | FCC Experimental Radio Service |
+| SatNOGS service category | Space Operation (spacecraft health telemetry) |
 | Coordination/authorization | FCC call sign `WP2XUX`, file `0244-EX-CN-2025`; effective 2025-09-17 and expiring 2027-10-01 |
-
-The values must describe the programmed flight configuration, not merely the
-capabilities or defaults of the SpaceQuest TRX-U radio.
-
-The proposed initial SatNOGS DB transmitter suggestion records the published
-center frequency, a placeholder initial drift frequency equal to that center,
-mode, nominal baud rate, service selection, status, and citation. Frequency
-deviation, pulse shaping, whitening, FEC, interleaving, detailed framing,
-the final beacon revision, and an RF recording are not part of the project
-submission gate for entering it as inactive and unconfirmed.
-
-The FCC filing describes the spacecraft UHF link at 19200 bit/s, while current
-mission planning calls for 9600 baud as the normal beacon rate with 19200 baud
-available as a contingency. Both supported configurations must be validated
-from flight-equivalent RF recordings before receiver validation or activation;
-the filing's maximum/configured value does not override the current operational
-default or prevent an unconfirmed nominal record.
-
-The current no-earlier-than launch date and eight-month prime mission extend
-past the authorization's 2027-10-01 expiration. The mission therefore needs a
-renewed or modified authorization before operations continue beyond that date,
-and likely before launch if the schedule slips materially.
 
 ## Link framing
 
@@ -133,133 +98,62 @@ the selected SatNOGS receiver path must establish whether that ground-side path
 removes flags, the AX.25 header, or FCS before passing bytes to the telemetry
 decoder.
 
-The APID 1 beacon is carried directly in the AX.25 information field. The FSW
-2.0.4 user's guide states that only UHF packets larger than the 256-byte AX.25
-payload limit are segmented. The APID 72/73 stored-playback segmentation used
-elsewhere in SunCET is therefore not part of the ordinary public beacon
-protocol. The complete on-air framing must still be verified with an RF capture
-from the flight-equivalent transmitter.
-
 ## CCSDS APID 1 packet
 
-All multi-byte APID 1 fields are currently decoded in big-endian byte order. The
+All multi-byte APID 1 fields are decoded in big-endian byte order. The
 packet begins with a standard six-byte CCSDS Space Packet primary header with
 the secondary-header flag set and APID equal to 1.
 
-The current telemetry definition contains 136 logical rows, including CCSDS
-header fields and packed bit fields. The public decoder will expose a reviewed
-subset of spacecraft time, power, thermal, mode, ADCS, payload, storage, radio,
-and fault/status telemetry. It will not expose command opcode names, command
-counters, command status, command arm states, other uplink-related values, or
-unrelated APID definitions. Bytes occupied by excluded fields will be consumed
-opaquely so later public fields retain their correct offsets.
+### Current packet length
 
-### Current packet length and compiler padding
-
-- The SunCET Bus CTDB 2.0.1 summary declares 2008 bits, or 251 bytes total.
-- Current flight-model UHF test data contains consecutive, checksum-valid APID 1
-  packets whose CCSDS length field declares 252 bytes total.
-- Flight software has confirmed that the current C++ compiler inserts one
-  alignment byte so the packet structure is a multiple of four bytes. In the
-  current compiled layout, the last CTDB-defined telemetry byte is at absolute
-  packet offset 246, the compiler padding is at offset 247, and Fletcher-32 is
-  stored at offsets 248 through 251.
-- The alignment byte is absent from CTDB 2.0.1 because it has not yet been
-  explicitly defined in the export.
-
-The 252-byte form is therefore the confirmed current compiled layout, not an
-unexplained telemetry field. Flight software also expects the beacon to change
-for unrelated reasons. Until a revised authoritative definition and test
-packet are available, the provisional decoder retains both the CTDB-generated
-251-byte form and the observed 252-byte form and treats the alignment byte as
-opaque.
+CTDB 2.0.5 defines a 252-byte APID 1 packet (2016 bits). The CCSDS length
+field is 245, following the standard total-length-minus-seven convention.
+Fletcher-32 occupies offsets 248 through 251 and covers bytes 0 through 247.
+Byte 247 is consumed opaquely, as are other regions outside the public table.
+It participates in checksum validation regardless of its value.
 
 ### Secondary time header
 
 | Offset after CCSDS primary header | Size | Meaning |
 | --- | --- | --- |
-| 0 | 4 bytes | J2000 coarse seconds, big endian |
+| 0 | 4 bytes | Coarse seconds since `2000-01-01T00:00:00Z`, big endian |
 | 4 | 2 bytes | Integer milliseconds after the coarse whole second, big endian; valid range 0-999 |
-
-The FSW 2.0.4 user's guide defines the epoch as `2000-01-01T00:00:00` and
-describes the secondary header as seconds and microseconds elapsed from that
-epoch. Flight software has now confirmed the intended interpretation as coarse
-seconds since `2000-01-01T00:00:00Z` plus microseconds after that whole second.
-The transmitted resolution is one millisecond, so the conceptual microsecond
-value is `fine_milliseconds * 1000`. The combined timestamp is therefore
-`coarse_seconds + fine_milliseconds / 1000` seconds after the epoch.
-
-This wire interpretation was resolved empirically against processed SunCET
-test data. Across 338,152 structurally valid APID 1 candidates from 23 packet
-captures, all 336,763 packets that passed the public Fletcher-32 contract had a
-fine value between 27 and 974 milliseconds. Every candidate with a value above
-999 failed Fletcher-32. The 26 distinct valid fine values were distributed
-throughout the second, which rules out the pipeline's former binary-fraction
-interpretation (`fine / 65536`).
-
-The fine-time result does not by itself determine whether a post-J2000 leap-
-second adjustment belongs in UTC display conversion. That separate epoch/time-
-scale policy remains under review; this revision changes only the transmitted
-fine-field unit and scaling.
 
 ### Packet checksum
 
-Observed APID 1 test packets validate using the pipeline's Fletcher-32 variant:
+Beacon packets use the following Fletcher-32 variant:
 
 - Compute over every packet byte before the final four checksum bytes.
 - Interpret successive input words little endian.
 - Initialize both Fletcher accumulators to `0xffff` and reduce modulo `0xffff`.
 - Store the resulting 32-bit value big endian.
 
-The FSW 2.0.4 user's guide confirms the checksum coverage but does not document
-the word order, accumulator seed, or stored byte order. Repeated successful APID
-1 decoding and checksum validation make the observed packets and current
-pipeline implementation the working authority for these implementation
-details. A sanitized published test vector remains desirable as a regression
-and interoperability artifact, but flight-software confirmation is no longer a
-blocker for the algorithm itself.
-
 ### Public field table
 
-Mission-owner review approved 112 of the 136 logical APID 1 fields for public
-decoding. The remaining 24 fields are consumed opaquely and are not exposed:
-command opcodes, command counters/status, command arm states, subsystem command
-statistics, internal sequence state, the fault-protection response count, and
-the stored packet checksum value. The checksum is still validated internally.
-
-The reviewed machine-readable table is
+The machine-readable table is
 [`public_beacon_schema.csv`](../suncet_processing_pipeline/satnogs/public_beacon_schema.csv).
-It is ordered by authoritative CTDB bit offset and includes public names,
-descriptions, types, units, conversions, and status maps. NAND read/write
-pointers are intentionally public because their progression provides useful
-evidence that recording and stored-data playback are functioning.
+It is ordered by CTDB bit offset and includes public names, descriptions,
+types, units, conversions, and status maps.
 
-The public field `spacecraft_time_milliseconds` exposes the 16-bit wire value in
-milliseconds and constrains it to 0 through 999.
-
-### Provisional decoder and synthetic vector
+### Decoder and synthetic vector
 
 The generated
 [`suncet_apid1.ksy`](../suncet_processing_pipeline/satnogs/suncet_apid1.ksy)
-is a provisional Kaitai decoder for a bare CCSDS APID 1 packet. It exposes all
-112 approved fields, consumes the 24 excluded fields as anonymous gaps,
-validates fine time as 0-999 milliseconds, rejects a non-APID-1 CCSDS primary
-word, and accepts either the 251- or 252-byte packet form. It deliberately does
-not yet wrap the packet in AX.25 because laboratory validation must first
+does not yet wrap the packet in AX.25 because laboratory validation must first
 establish the actual SatNOGS decoder-input boundary.
 
 The repository also contains a fully synthetic, non-flight
-[`251-byte packet`](../suncet_processing_pipeline/satnogs/test_data/suncet_apid1_synthetic_251.hex)
+[`252-byte packet`](../suncet_processing_pipeline/satnogs/test_data/suncet_apid1_synthetic_252.hex)
 and its
-[`expected public values`](../suncet_processing_pipeline/satnogs/test_data/suncet_apid1_synthetic_251_expected.json).
-They provide a safe regression and interoperability fixture, but they do not
-replace validation against a flight-equivalent AX.25 frame and RF recording.
+[`expected public values`](../suncet_processing_pipeline/satnogs/test_data/suncet_apid1_synthetic_252_expected.json).
 
 ### CSIE image histogram fields
 
-The CSIE firmware calculates histogram bins after subtracting the configurable
-`ICM_HIST_OFFSET` from each pixel value. For bin index `i`, offset `O`, and bin
-width `W`, the corresponding original pixel-DN range is:
+CSIE (Compact Spectral Imager Electronics) serves SunCET's primary instrument,
+the extreme-ultraviolet (EUV) imager. Its firmware calculates histogram bins
+after subtracting the configurable `ICM_HIST_OFFSET` from each pixel value.
+For bin index `i`, offset `O`, and bin width `W`, the corresponding original
+pixel-DN range is:
 
 `O + i*W` through `O + (i+1)*W - 1`, inclusive.
 
@@ -280,42 +174,20 @@ firmware setting; the beacon values remain counts and still represent bins 0-5.
 
 ### Dual-SPS flare fields
 
-The Dual-SPS telemetry handbook v1.11 and flight source establish these public
-interpretations:
+Dual-SPS (Dual Sun Position Sensor) is SunCET's secondary instrument.
+The public decoder follows CTDB 2.0.5 for these fields:
 
 - `dsps_flare_level` is the flare-trigger threshold in log10 of estimated GOES
   XRS-B flux. The default is -5 (M1); the documented range is -6 (C1) through
   -2 (X100).
-- `dsps_flare_magnitude` is a signed 8-bit value. Multiplying the raw value by
-  0.1 yields the log10 XRS-B flux estimate; equivalently, the estimated linear
-  intensity is `10 ** (raw / 10)` in the calibration's XRS-B flux units.
+- `dsps_flare_magnitude` is an unsigned 8-bit raw value with no engineering
+  conversion specified.
 - `dsps_flare_phase` is a bit-flag state: 0 not in Sun, 1 filling history, 2 not
-  in flare, 4 flare likely, 24 in-flare decreasing, and 40 in-flare rising.
-
-These findings corrected the private CTDB's flare-magnitude signedness and
-scaling. The in-flight GOES conversion coefficients still require calibration,
-so the value is an estimate rather than an independently calibrated radiometer
-measurement.
-
-## Receiver and decoder validation artifacts
-
-Before treating the receive path and telemetry decoder as operationally
-validated, retain the following non-sensitive flight-equivalent artifacts with
-this specification or in the SatNOGS decoder test data. These artifacts are not
-prerequisites for the initial satellite or inactive/unconfirmed transmitter DB
-suggestions:
-
-1. A raw AX.25 frame captured from the flight-equivalent RF path.
-2. The extracted APID 1 bytes.
-3. Independently verified expected raw and engineering values.
-4. A checksum calculation with the expected result.
-5. Receiver settings and a short representative IQ or audio recording when
-   licensing and size permit.
+  in flare, 4 flare start, 24 declining flare, and 40 rising flare. These are
+  exposed using the current CTDB state labels.
 
 ## Public sources
 
 - [APL SunCET mission page](https://www.jhuapl.edu/destinations/missions/suncet)
 - [LASP SunCET mission page](https://lasp.colorado.edu/missions/suncet/)
 - [NASA SunCET selection announcement](https://www.nasa.gov/science-research/heliophysics/nasa-selects-4-cubesats-for-space-weather-tech-development/)
-- SunCET FSW User's Guide, prerelease for FSW 2.0.4 (mission-controlled source;
-  stable public URL **TBC**)

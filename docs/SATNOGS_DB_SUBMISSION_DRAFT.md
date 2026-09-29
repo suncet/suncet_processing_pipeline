@@ -1,6 +1,6 @@
 # SunCET SatNOGS DB Submission Draft
 
-Last updated: 2026-09-25
+Last updated: 2026-09-29
 
 ## Purpose
 
@@ -59,7 +59,7 @@ next DB task after the public-citation review below.
 | Downlink drift frequency | `401200000` Hz initially, representing zero observed correction; update from measured on-orbit drift rather than using licensed tolerance as drift |
 | Downlink mode | `GFSK`; this is present in the current SatNOGS vocabulary, while the record remains `Unconfirmed` pending RF validation |
 | Baud | `9600` |
-| Service | Prefer `Space Research`; confirm with SatNOGS reviewers because the FCC Experimental Radio Service authorization category is not itself a SatNOGS service choice |
+| Service | `Space Operation` for spacecraft health telemetry; this SatNOGS category is separate from the FCC Experimental Radio Service authorization |
 | IARU coordination | `N/A` because the link is outside the amateur bands |
 | IARU coordination URL | Leave blank |
 | ITU notification URLs | Leave blank until a public applicable entry is identified |
@@ -71,6 +71,25 @@ Do not publish uplink frequency, uplink mode, commanding details, or command
 telemetry through this record. Selecting `Transmitter` accurately describes the
 public SatNOGS integration boundary even though the physical spacecraft radio
 may support private mission uplink functions.
+
+The public citation to paste into the form is:
+<https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md#uhf-transmitter>
+
+Publish the reviewed specification revision there before submitting. Citation
+means a public source for the entered radio parameters, not an attached IQ file.
+The [official transmitter form guide](https://wiki.satnogs.org/Transmitter_Suggestions#Form_fields)
+lists metadata and citation fields; it does not require an IQ upload. The
+requested IQ recording supports the separate RF receiver test. The requested
+recent UHF packet capture supports the decoder's real-data comparison.
+
+The live [SatNOGS API schema](https://db.satnogs.org/api/schema/?format=json)
+was checked on 2026-09-29: both `Space Operation` and `Space Research` are
+supported, while `Experimental` is not. `Space Operation` is the proposed
+classification for this operational health-beacon transmission. As a relevant
+precedent, [COSMO's accepted entry](https://db.satnogs.org/satellite/68460/)
+uses `Space Operation` for its TRX-U at 401.200 MHz and 9600 baud. This does not
+establish SunCET's legal service classification or imply that COSMO's modulation
+and other radio settings apply to SunCET.
 
 ## Contingency 19200-baud mode
 
