@@ -287,25 +287,25 @@ Unresolved receiver and decoder parameters may remain explicitly `TBC`.
 **Gate passed:** The accepted spacecraft record is live; spacecraft review no
 longer blocks the transmitter suggestion.
 
-### 3. Add the UHF transmitter record — pending
+### 3. Add the UHF transmitter record — submitted, awaiting review
 
-- The live spacecraft page showed no approved transmitters on 2026-09-25.
+- Submitted [suggestion 13013](https://db.satnogs.org/transmitter-suggestions/13013)
+  as `jmason86` on 2026-09-29 at 16:51 UTC. SatNOGS confirmed successful
+  storage and pending moderator review. Transmitter UUID:
+  `8m9cMNe8eaHd9WAqXucTVa`. Review-email notifications are enabled.
 - The live SatNOGS API vocabulary was checked on 2026-09-29. Use `Space
   Operation` for the APID 1 health-beacon submission; `Experimental` is not a
   supported choice. This is the proposed SatNOGS transmission category, separate
   from the FCC authorization. The [submission draft](SATNOGS_DB_SUBMISSION_DRAFT.md)
   records the source and rationale.
-- The [submission draft](SATNOGS_DB_SUBMISSION_DRAFT.md) contains the nominal
-  transmitter metadata. Publish the reviewed citation at the canonical
+- The [submission record](SATNOGS_DB_SUBMISSION_DRAFT.md) contains the saved
+  nominal transmitter metadata. The reviewed citation is published at the canonical
   [public beacon specification URL](https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md),
-  then submit it against the accepted SunCET DB record. RF/IQ data and recorded
-  UHF packet comparison are not prerequisites for this submission.
-- Enter the cited DB-facing frequency, mode, nominal baud rate, placeholder
-  drift, service, coordination references, and source citation.
-- Mark pre-launch or unverified facts appropriately; do not mark the transmitter
-  active merely because it is planned.
-- Check that `GFSK` and the selected service match the current SatNOGS form
-  vocabulary. Retain `Unconfirmed` until laboratory or on-orbit validation.
+  and was verified before submission. The saved entry uses 401.200 MHz, GFSK,
+  9600 baud, Space Operation, inactive/unconfirmed status, and zero initial
+  drift correction. No uplink parameters were submitted.
+- Respond to moderator feedback; submission does not establish acceptance.
+  Retain `Unconfirmed` until the relevant parameters are validated.
 
 **Gate:** The accepted inactive/unconfirmed record contains the project-approved
 DB-facing values and public citations. Complete receiver configuration is a
@@ -469,9 +469,8 @@ beacon without consulting raw bytes.
 
 ## Immediate next action
 
-Publish the reviewed beacon specification at its canonical citation URL, then
-submit the prepared nominal 9600-baud transmitter as inactive and unconfirmed
-against the accepted spacecraft record. Compare the locally tested CTDB 2.0.5
+The public specification is published and transmitter suggestion 13013 awaits
+moderator review. Respond to review feedback. Compare the tested CTDB 2.0.5
 decoder with the already-requested UHF packets when they arrive. Use the
 separately requested IQ sample for demodulation and
 receiver-boundary validation before upstream integration. Sign in to the

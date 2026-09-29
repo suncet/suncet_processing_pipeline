@@ -5,8 +5,8 @@ Last updated: 2026-09-29
 ## Purpose
 
 This is the offline copy deck for the SunCET spacecraft and nominal UHF
-transmitter suggestions. It records the submitted spacecraft values and the
-planned transmitter values, but SatNOGS DB remains authoritative for review
+transmitter suggestions. It records the submitted spacecraft and transmitter
+values, but SatNOGS DB remains authoritative for review
 status. Recheck the live SatNOGS form vocabulary before any later entry. The
 satellite suggestion may cite existing public mission pages; it does not depend
 on completion of the receiver or telemetry-decoder specification.
@@ -44,13 +44,16 @@ preserves the originally submitted values.
 Stable image URL after this file is merged to `main`:
 <https://raw.githubusercontent.com/suncet/suncet_processing_pipeline/main/docs/assets/suncet_spacecraft.jpg>
 
-## Nominal UHF transmitter suggestion
+## Nominal UHF transmitter suggestion — submitted, awaiting review
 
-The spacecraft acceptance prerequisite is complete. No approved transmitters
-were listed on its live page on 2026-09-25; the nominal suggestion remains the
-next DB task after the public-citation review below.
+Submitted by `jmason86` on 2026-09-29 at 16:51 UTC as
+[suggestion 13013](https://db.satnogs.org/transmitter-suggestions/13013),
+transmitter UUID `8m9cMNe8eaHd9WAqXucTVa`. SatNOGS confirmed successful storage
+and pending moderator review. The saved details match the table below;
+review-email notifications are enabled. Submission is complete; acceptance is
+not yet recorded.
 
-| SatNOGS field | Proposed entry |
+| SatNOGS field | Submitted entry |
 | --- | --- |
 | Description | SunCET nominal global health beacon: 401.200 MHz GFSK at 9600 baud, carrying an AX.25 UI frame whose information field contains a CCSDS APID 1 packet. Beacon cadence is spacecraft-mode dependent and is typically of order 10 seconds. |
 | Type | `Transmitter`—the public entry intentionally describes only the downlink beacon and publishes no uplink parameters |
@@ -75,7 +78,7 @@ may support private mission uplink functions.
 The public citation to paste into the form is:
 <https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md#uhf-transmitter>
 
-Publish the reviewed specification revision there before submitting. Citation
+The reviewed specification revision was published at that URL before submission. Citation
 means a public source for the entered radio parameters, not an attached IQ file.
 The [official transmitter form guide](https://wiki.satnogs.org/Transmitter_Suggestions#Form_fields)
 lists metadata and citation fields; it does not require an IQ upload. The
@@ -103,14 +106,11 @@ that requires a different receiver configuration is represented separately.
 ## Submission gates
 
 The satellite suggestion has passed both submission and acceptance gates.
-Keep the accepted record's launch date synchronized with reviewed mission
-planning. Before submitting the nominal transmitter suggestion:
-
-1. Approve a public DB-facing citation for 401.200 MHz, `GFSK`, and the nominal
-   9600-baud beacon configuration.
-2. Recheck the current form choices for mode and service.
-3. Submit it as `Inactive` and `Unconfirmed`, with the initial drift frequency
-   equal to the center frequency until an observed correction exists.
+The transmitter submission gate passed on 2026-09-29: the citation was
+published, live form choices checked, and the inactive/unconfirmed entry
+submitted with initial drift frequency equal to the center frequency.
+Respond to moderator review before treating the transmitter as accepted.
+Keep the accepted spacecraft record's launch date synchronized with mission planning.
 
 Frequency deviation, pulse shaping, whitening, FEC, interleaving, a complete
 RF frame, the planned APID 1 beacon revision, and the ground-side decoder

@@ -39,7 +39,7 @@ under its hostname.
 | Level 2 PSF deconvolution | Strict Level 1 input, active `v1.0.4dev` contract, exact FP64 NumPy/CuPy paths, and a 241-frame Jetson end-to-end batch are validated | Approve the calibration set, replace provisional Level 1/3 fixtures, and measure the full external-input power cycle |
 | Level 4 CME tracking | Strong known-window engineering prototype; headless 241-frame Level 0.5–4 throughput/covered-rail baseline complete | Test Meng Jin's additional scenarios, compare binned/unbinned fidelity, then add held-out evaluation and broader event association |
 | LASP publication | SFTP transport validated; policy pending | Approve product mapping, naming/versioning, and release authority |
-| SatNOGS | Spacecraft record accepted; CTDB 2.0.5-only decoder covers 111 fields and compiled-parser checks pass locally; dashboard plan and transmitter draft prepared | Publish the citation and submit the inactive/unconfirmed nominal transmitter; validate recorded UHF packets and RF/IQ receiver path, complete upstream integration, and obtain dashboard access/ingestion |
+| SatNOGS | Spacecraft accepted; transmitter suggestion 13013 submitted and awaiting review; CTDB 2.0.5 decoder and public citation published, CI passes | Respond to transmitter review; validate recorded UHF packets and RF/IQ receiver path, complete upstream integration, and obtain dashboard access/ingestion |
 | Unattended operations | Deliberately deferred | Close monitoring, recovery, locking, and release-policy gates first |
 
 ## Decisions
@@ -779,11 +779,12 @@ The spacecraft record is now accepted and live as
 Verified on 2026-09-25, its history records approval of suggestion 11880 on
 2026-09-01. It has `Future` status and temporary NORAD ID `98244`, with no
 approved transmitters yet. The spacecraft acceptance gate has passed. The
-nominal 9600-baud transmitter metadata is prepared in the
-[submission draft](SATNOGS_DB_SUBMISSION_DRAFT.md); publish the reviewed
+nominal 9600-baud transmitter was submitted on 2026-09-29 as
+[suggestion 13013](https://db.satnogs.org/transmitter-suggestions/13013), with
+inactive/unconfirmed status and review-email notifications enabled. Its
 [beacon specification at its canonical citation URL](https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md)
-and submit the inactive/unconfirmed entry next. Recorded UHF packets and RF/IQ
-data are not prerequisites for that registration.
+was published and verified before submission. The saved entry awaits moderator
+review. See the [submission record](SATNOGS_DB_SUBMISSION_DRAFT.md).
 
 Mission-owner approval selects CTDB 2.0.5 as the sole public decoder definition.
 The migrated public schema has 111 approved fields; the missing legacy
@@ -796,7 +797,8 @@ compilation/execution checks covering all public synthetic values, independent
 engineering expectations, malformed packets, checksum corruption, and boundary
 cases. CI now checks reproducible generation using the SHA-256-pinned official
 compiler ZIP, runs parser tests, and exercises fixture decoding from an
-installed wheel; a remote CI result is not claimed here.
+installed wheel. [Remote CI passed](https://github.com/suncet/suncet_processing_pipeline/actions/runs/36600186531)
+for published commit `78049a4` on 2026-09-29.
 
 The requested recent UHF telemetry remains the recorded-data comparison gate.
 A separately requested IQ recording is pending for RF
@@ -824,8 +826,8 @@ expirations and perform an independent archive inventory/restore drill. When
 Meng Jin's additional simulations arrive, generate reviewed manifests, freeze
 development/validation cases, and run the same raw and temporal-median
 configurations before changing thresholds or adding GPU work. SunCET's
-spacecraft record is accepted and live; publish the prepared public citation
-and submit the inactive/unconfirmed nominal transmitter. Compare the locally
+spacecraft record is accepted and live; the public citation is published and
+transmitter suggestion 13013 awaits review. Compare the locally
 tested CTDB 2.0.5 decoder with the requested UHF packet sample when it arrives,
 and use the separate pending IQ sample for receiver validation.
 Request dashboard editor access using the prepared plan. No unattended ingest
