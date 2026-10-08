@@ -245,6 +245,18 @@ DASHBOARD_HTML = r"""<!doctype html>
     .metric.good .value { color: var(--green); }
     .metric.warn .value { color: var(--amber); }
     .metric.bad .value { color: var(--red); }
+    .time-summary {
+      grid-column: span 2;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .time-summary .value {
+      font-size: 16px;
+      font-variant-numeric: tabular-nums;
+    }
+    .time-summary .onboard-time.good .value { color: var(--green); }
+    .time-summary .onboard-time.warn .value { color: var(--amber); }
     .power-summary {
       grid-column: span 2;
     }
@@ -490,6 +502,32 @@ DASHBOARD_HTML = r"""<!doctype html>
       return `<div class="metric ${cls || ""}"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div></div>`;
     }
 
+    function formatClockUtc(value) {
+      return String(value).replace(/\.\d+Z$/, "Z");
+    }
+
+    function timeSummary(onboardUtc) {
+      const currentUtc = new Date().toISOString();
+      return `<div class="metric time-summary">
+        <div>
+          <div class="label">Current UTC</div>
+          <div class="value"><time id="current-utc" datetime="${currentUtc}">${formatClockUtc(currentUtc)}</time></div>
+        </div>
+        <div class="onboard-time ${onboardUtc ? "good" : "warn"}">
+          <div class="label">Onboard UTC</div>
+          <div class="value">${escapeHtml(formatClockUtc(onboardUtc || "-"))}</div>
+        </div>
+      </div>`;
+    }
+
+    function updateCurrentUtc() {
+      const clock = document.getElementById("current-utc");
+      if (!clock) return;
+      const currentUtc = new Date().toISOString();
+      clock.textContent = formatClockUtc(currentUtc);
+      clock.dateTime = currentUtc;
+    }
+
     function powerSummary(summary) {
       const states = (summary && summary.states) || [];
       if (!states.length) {
@@ -531,7 +569,7 @@ DASHBOARD_HTML = r"""<!doctype html>
       const age = stats.last_update_wall_time ? snapshot.now - stats.last_update_wall_time : null;
       const linkCls = age === null ? "warn" : age > 10 ? "bad" : "good";
       statusEl.innerHTML = [
-        metric("Onboard UTC", onboardUtc || "-", onboardUtc ? "good" : "warn"),
+        timeSummary(onboardUtc),
         powerSummary(powerStates),
         metric("Stream", age === null ? "waiting" : `${age.toFixed(1)} s`, linkCls),
         metric("Packets", String(stats.packets_seen || 0), ""),
@@ -1129,6 +1167,8 @@ DASHBOARD_HTML = r"""<!doctype html>
       return String(value).replace(/["\\]/g, "\\$&");
     }
 
+    statusEl.innerHTML = timeSummary("");
+    setInterval(updateCurrentUtc, 250);
     fetch("/api/snapshot").then(r => r.json()).then(render);
     const events = new EventSource("/events");
     events.addEventListener("snapshot", event => {
