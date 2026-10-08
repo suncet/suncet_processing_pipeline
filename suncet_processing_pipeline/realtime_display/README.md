@@ -30,6 +30,46 @@ Drag horizontally across any sparkline to zoom all plots to the selected onboard
 time range. Double-click a plot, or use **Reset Zoom**, to return to the full
 rolling history.
 
+## UHF Ground Station Through SSH
+
+The checked-in TCP endpoint is `127.0.0.1:15400`, forwarded through SSH to
+Hydra on the Ubuntu UHF mobile ground station (`10.247.15.71:54000`). Start the
+tunnel in a separate terminal and leave it running:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:15400:127.0.0.1:54000 gs-dev@10.247.15.71
+```
+
+Enter the ground station account password when prompted. A quiet terminal after
+authentication is normal. Start the plotter in another terminal; it reconnects
+automatically if the tunnel becomes available after the plotter starts.
+
+The `[tcp]` section of `config.ini` also preserves commented host/port pairs for
+direct UHF access (`10.247.15.71:54000`) and the debug Hydra computer
+(`10.247.13.32:54000`). Keep exactly one pair uncommented and restart the plotter
+after switching. Press Ctrl+C in the corresponding terminal to stop the plotter
+or tunnel.
+
+### Windows PowerShell
+
+Run the SSH command above in one PowerShell window. In a second window, from your
+repository checkout:
+
+```powershell
+cd "C:\path\to\suncet_processing_pipeline"
+git pull --ff-only
+# First-time setup only, if the suncet environment does not already exist:
+conda env create -f environment.yml
+$env:suncet_ctdb = "C:\path\to\suncet_ctdb"
+conda run --no-capture-output -n suncet python -u -m suncet_processing_pipeline.realtime_display.main
+```
+
+The private CTDB files must be copied separately. The current default processing
+config selects bus `2.0.5`, CSIE `1.1.8`, and DSPS `6.09`, using folders
+`suncet_v2-0-5`, `suncet_csie_v1-1-8`, and `suncet_dsps_v6-09` below
+`$env:suncet_ctdb`. The environment variable above applies to that PowerShell
+session. Open `http://127.0.0.1:8050/` in a browser after starting the plotter.
+
 ## Onboard Time
 
 The top-left **Onboard UTC** value and plot x-axis times combine the first
