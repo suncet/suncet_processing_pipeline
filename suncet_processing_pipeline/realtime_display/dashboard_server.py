@@ -334,6 +334,11 @@ DASHBOARD_HTML = r"""<!doctype html>
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 10px;
     }
+    .fields.nand .top {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
     .telemetry-section {
       display: grid;
       gap: 10px;
@@ -610,7 +615,9 @@ DASHBOARD_HTML = r"""<!doctype html>
 
     function fieldHtml(item) {
       const value = Number(item.value);
-      const formattedValue = Number.isFinite(value) ? formatTelemetryValue(value) : String(item.value);
+      const formattedValue = Number.isFinite(value)
+        ? (item.group === "nand" ? value.toFixed(0) : formatTelemetryValue(value))
+        : String(item.value);
       const valueText = `${formattedValue}${item.unit || ""}`;
       const age = Number(item.age_seconds || 0);
       const packetTime = Number(item.packet_time);
@@ -670,20 +677,24 @@ DASHBOARD_HTML = r"""<!doctype html>
     function groupFields(fields) {
       const temperatures = [];
       const power = [];
+      const nand = [];
       const other = [];
       fields.forEach(item => {
         const name = item.field.toLowerCase();
-        if (isTemperatureField(name)) temperatures.push(item);
+        if (item.group === "nand") nand.push(item);
+        else if (isTemperatureField(name)) temperatures.push(item);
         else if (isPowerField(name)) power.push(item);
         else other.push(item);
       });
       temperatures.sort(temperatureCompare);
       power.sort(powerCompare);
+      nand.sort((a, b) => a.display_name.localeCompare(b.display_name));
       other.sort((a, b) => a.field.localeCompare(b.field));
       const powerPairs = pairPowerFields(power);
       return [
         {label: "Temperatures", className: "temperatures", items: temperatures},
         {label: "Power", className: "power", pairs: powerPairs, items: powerPairs.flatMap(pair => pair.items)},
+        {label: "NAND Pointers", className: "nand", items: nand},
         {label: "Other", className: "other", items: other},
       ].filter(group => group.items.length > 0);
     }
@@ -913,8 +924,8 @@ DASHBOARD_HTML = r"""<!doctype html>
       const plotTimes = plotHistory.map(p => Number(p.packet_time));
       const minTime = usePacketTime ? Math.min(...plotTimes) : 0;
       const maxTime = usePacketTime ? Math.max(...plotTimes) : plotHistory.length - 1;
-      const maxLabel = formatAxisValue(dataMax);
-      const minLabel = formatAxisValue(dataMin);
+      const maxLabel = item.group === "nand" ? dataMax.toFixed(0) : formatAxisValue(dataMax);
+      const minLabel = item.group === "nand" ? dataMin.toFixed(0) : formatAxisValue(dataMin);
       ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
       ctx.fillStyle = "#a9afa5";
       const labelWidth = Math.max(ctx.measureText(maxLabel).width, ctx.measureText(minLabel).width);

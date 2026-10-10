@@ -30,6 +30,12 @@ Drag horizontally across any sparkline to zoom all plots to the selected onboard
 time range. Double-click a plot, or use **Reset Zoom**, to return to the full
 rolling history.
 
+The **NAND Pointers** section plots the beacon's ADCS, housekeeping, science,
+and DSPS read/write addresses, along with the log and CSIE science write
+pointers. Values and y-axis labels are integers. These address pointers bypass
+the optional sensor-value sigma filter so legitimate jumps and wraps remain
+visible; packet-time validation still applies.
+
 ## UHF Ground Station Through SSH
 
 The checked-in TCP endpoint is `127.0.0.1:15400`, forwarded through SSH to

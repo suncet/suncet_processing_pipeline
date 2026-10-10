@@ -20,6 +20,18 @@ from .packet_decoder import DecodedPacket
 
 
 DEFAULT_J2000_UTC_EPOCH = datetime(2000, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+BEACON_NAND_POINTER_LABELS = {
+    "sw_store_partition_read_adcs_beac": "ADCS Read Pointer",
+    "sw_store_partition_write_adcs_beac": "ADCS Write Pointer",
+    "sw_store_partition_read_hk_beac": "Housekeeping Read Pointer",
+    "sw_store_partition_write_hk_beac": "Housekeeping Write Pointer",
+    "sw_store_partition_read_sci_beac": "Science Read Pointer",
+    "sw_store_partition_write_sci_beac": "Science Write Pointer",
+    "sw_store_partition_read_dsps_beac": "DSPS Read Pointer",
+    "sw_store_partition_write_dsps_beac": "DSPS Write Pointer",
+    "beac_store_partition_write_log": "Log Write Pointer",
+    "beac_csie_nand_sci_write_ptr": "CSIE Science Write Pointer",
+}
 BEACON_SYSTEM_STATUS_FIELDS = (
     ("CDH", "beac_mode_system_mode", "mode"),
     ("ADCS", "beac_eps_pwr_state_adcs", "power"),
@@ -79,6 +91,7 @@ class TelemetrySelector:
                     "*curr*",
                     "*current*",
                     "*_i",
+                    *BEACON_NAND_POINTER_LABELS,
                 ]
             )
         ]
@@ -218,6 +231,9 @@ class TelemetryStore:
                         "apid": packet.apid,
                         "limit_status": self.color_limits.evaluate(field_name, numeric),
                     }
+                    pointer_label = BEACON_NAND_POINTER_LABELS.get(field_name.lower())
+                    if pointer_label:
+                        point.update(display_name=pointer_label, group="nand")
                     self.latest[field_name] = point
                     self.history.setdefault(
                         field_name, deque(maxlen=self.history_points)
@@ -385,6 +401,9 @@ class TelemetryStore:
         field_name: str,
         value: float,
     ) -> str | None:
+        # Address pointers legitimately jump or wrap; they are not sensor outliers.
+        if field_name.lower() in BEACON_NAND_POINTER_LABELS:
+            return None
         if not self.value_filter_enabled:
             return None
         threshold = self.value_filter_sigma_threshold

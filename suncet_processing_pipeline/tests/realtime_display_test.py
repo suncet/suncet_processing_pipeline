@@ -15,6 +15,7 @@ from suncet_processing_pipeline.realtime_display.packet_decoder import (
     RealtimePacketDecoder,
 )
 from suncet_processing_pipeline.realtime_display.telemetry_state import (
+    BEACON_NAND_POINTER_LABELS,
     TelemetrySelector,
     TelemetryStore,
 )
@@ -271,6 +272,45 @@ def test_color_limits_xml_marks_numeric_ranges():
     assert limits.evaluate("beac_ana_bat1_v", 15.0)["state"] == "green"
     assert limits.evaluate("beac_ana_bat1_v", 13.5)["state"] == "yellow"
     assert limits.evaluate("beac_ana_bat1_v", 12.5)["state"] == "red"
+
+
+def test_beacon_nand_pointers_are_selected_and_keep_jumps_and_wraps():
+    config = load_config(
+        Path(__file__).resolve().parents[1] / "realtime_display" / "config.ini"
+    )
+    for selector in (
+        TelemetrySelector(),
+        TelemetrySelector(
+            field_patterns=config.telemetry.field_patterns,
+            excluded_field_patterns=config.telemetry.excluded_field_patterns,
+        ),
+    ):
+        assert not selector.field_matches("sw_store_partition_read_adcs")
+        store = TelemetryStore(selector=selector, value_filter_enabled=True)
+        for index, value in enumerate([1000] * 12 + [4294967295, 0]):
+            store.add_packet(
+                DecodedPacket(
+                    apid=1,
+                    packet_name="beacon",
+                    fields={
+                        "ccsdsSecHeader2_sec_beacon": 833470713 + index,
+                        **dict.fromkeys(BEACON_NAND_POINTER_LABELS, value),
+                    },
+                    header={"apid": 1},
+                    decode_status="decoded",
+                )
+            )
+        snapshot = store.snapshot()
+        assert snapshot["stats"]["value_filter_rejections"] == 0
+        assert {item["field"] for item in snapshot["fields"]} == set(
+            BEACON_NAND_POINTER_LABELS
+        )
+        for item in snapshot["fields"]:
+            assert item["group"] == "nand"
+            assert item["display_name"] == BEACON_NAND_POINTER_LABELS[item["field"]]
+            assert item["value"] == 0
+            assert len(item["history"]) == 14
+            assert item["history"][-2]["value"] == 4294967295
 
 
 def test_telemetry_store_attaches_limit_status():
