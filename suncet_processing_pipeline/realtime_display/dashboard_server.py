@@ -383,10 +383,17 @@ DASHBOARD_HTML = r"""<!doctype html>
       align-items: baseline;
     }
     .field .reading {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
       font-size: 24px;
       font-weight: 750;
       color: var(--cyan);
       white-space: nowrap;
+    }
+    .field .reading-unit {
+      font-size: 14px;
+      font-weight: 500;
     }
     .field.stale .reading { color: var(--amber); }
     .field.status-green .reading { color: var(--green); }
@@ -618,7 +625,8 @@ DASHBOARD_HTML = r"""<!doctype html>
       const formattedValue = Number.isFinite(value)
         ? (item.group === "nand" ? value.toFixed(0) : formatTelemetryValue(value))
         : String(item.value);
-      const valueText = `${formattedValue}${item.unit || ""}`;
+      const unit = telemetryUnit(item);
+      const unitHtml = unit ? `<span class="reading-unit">${escapeHtml(unit)}</span>` : "";
       const age = Number(item.age_seconds || 0);
       const packetTime = Number(item.packet_time);
       const timeText = item.packet_utc
@@ -629,7 +637,7 @@ DASHBOARD_HTML = r"""<!doctype html>
       return `<article class="field ${item.stale ? "stale" : ""} status-${escapeAttr(state)}" data-field="${escapeAttr(item.field)}">
         <div class="top">
           <div class="name">${escapeHtml(item.display_name || item.field)}</div>
-          <div class="reading">${escapeHtml(valueText)}</div>
+          <div class="reading">${escapeHtml(formattedValue)}${unitHtml}</div>
         </div>
         <canvas width="420" height="80"></canvas>
         <div class="meta"><span>${escapeHtml(item.packet_name)}</span><span>${escapeHtml(timeText)}</span><span>${age.toFixed(1)} s old</span></div>
@@ -701,6 +709,16 @@ DASHBOARD_HTML = r"""<!doctype html>
 
     function isTemperatureField(name) {
       return name.includes("temp") || name.includes("therm");
+    }
+
+    function telemetryUnit(item) {
+      if (item.group === "nand") return "";
+      if (item.unit) return String(item.unit).trim();
+      const name = item.field.toLowerCase();
+      if (isTemperatureField(name)) return "\u00b0C";
+      if (isVoltageFieldName(name)) return "V";
+      if (isCurrentFieldName(name)) return "A";
+      return "";
     }
 
     function temperatureCompare(a, b) {
