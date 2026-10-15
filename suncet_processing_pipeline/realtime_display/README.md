@@ -26,6 +26,21 @@ The TCP endpoint is configured in `config.ini`. The dashboard defaults to:
 http://127.0.0.1:8050/
 ```
 
+With no `--config` argument, the display loads `config.ini` and then applies
+overrides from `config.local.ini` in the same directory, if present. That local
+file is ignored by Git. Keep actual endpoint addresses, account names, and
+machine-specific connection notes there. A local override needs only the
+settings being changed, for example:
+
+```ini
+[tcp]
+host = 127.0.0.1
+port = 15400
+```
+
+An explicit `--config PATH` loads only that file, without the automatic local
+overrides. Copy local settings separately when setting up another computer.
+
 Drag horizontally across any sparkline to zoom all plots to the selected onboard
 time range. Double-click a plot, or use **Reset Zoom**, to return to the full
 rolling history.
@@ -36,25 +51,29 @@ pointers. Values and y-axis labels are integers. These address pointers bypass
 the optional sensor-value sigma filter so legitimate jumps and wraps remain
 visible; packet-time validation still applies.
 
-## UHF Ground Station Through SSH
+## Telemetry Through SSH
 
-The checked-in TCP endpoint is `127.0.0.1:15400`, forwarded through SSH to
-Hydra on the Ubuntu UHF mobile ground station (`10.247.15.71:54000`). Start the
-tunnel in a separate terminal and leave it running:
+For a telemetry source accessed through SSH, forward a local port to the
+source's TCP service. Obtain the connection details from your system
+administrator. Replace `REMOTE_PORT`, `SSH_USER`, and `SSH_HOST` in this example
+before running it in a separate terminal:
 
 ```bash
-ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:15400:127.0.0.1:54000 gs-dev@10.247.15.71
+ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:15400:127.0.0.1:REMOTE_PORT SSH_USER@SSH_HOST
 ```
 
-Enter the ground station account password when prompted. A quiet terminal after
+This example assumes the TCP service is on the SSH host itself. The default
+local TCP endpoint is `127.0.0.1:15400`; the browser dashboard uses a separate
+local port, `8050`.
+
+Authenticate using your approved SSH credentials. A quiet terminal after
 authentication is normal. Start the plotter in another terminal; it reconnects
 automatically if the tunnel becomes available after the plotter starts.
 
-The `[tcp]` section of `config.ini` also preserves commented host/port pairs for
-direct UHF access (`10.247.15.71:54000`) and the debug Hydra computer
-(`10.247.13.32:54000`). Keep exactly one pair uncommented and restart the plotter
-after switching. Press Ctrl+C in the corresponding terminal to stop the plotter
-or tunnel.
+To connect directly or switch sources, update the `[tcp]` host and port in
+`config.local.ini`, keeping exactly one pair active, then restart the plotter.
+Keep alternative endpoints and tunnel commands only in that local file.
+Press Ctrl+C in the corresponding terminal to stop the plotter or tunnel.
 
 ### Windows PowerShell
 

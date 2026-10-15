@@ -10,6 +10,7 @@ from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = PACKAGE_DIR / "config.ini"
+LOCAL_CONFIG_PATH = PACKAGE_DIR / "config.local.ini"
 
 
 def _bool(parser: configparser.ConfigParser, section: str, option: str, fallback: bool) -> bool:
@@ -176,6 +177,8 @@ def load_config(path: str | Path | None = None) -> RealtimeDisplayConfig:
     read = parser.read(config_path)
     if not read:
         raise FileNotFoundError(f"Realtime display config not found: {config_path}")
+    if path is None and LOCAL_CONFIG_PATH.is_file():
+        parser.read(LOCAL_CONFIG_PATH)
 
     processing_config = Path(
         parser.get(

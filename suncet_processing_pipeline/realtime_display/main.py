@@ -13,7 +13,7 @@ import traceback
 from pathlib import Path
 
 from .color_limits import ColorLimitEvaluator
-from .config import DEFAULT_CONFIG_PATH, DecodeConfig, load_config
+from .config import DecodeConfig, load_config
 from .dashboard_server import DashboardServer
 from .packet_decoder import DecodedPacket, RealtimePacketDecoder
 from .telemetry_state import TelemetrySelector, TelemetryStore
@@ -109,8 +109,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--config",
-        default=str(DEFAULT_CONFIG_PATH),
-        help="Realtime display config.ini path.",
+        default=None,
+        help="Config path; defaults to config.ini with optional config.local.ini overrides.",
     )
     parser.add_argument(
         "--replay",

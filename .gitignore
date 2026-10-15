@@ -140,3 +140,6 @@ suncet_processing_pipeline/packet_definitions/
 satnogs_*_private_review.csv
 .vscode/launch.json
 /.vscode
+
+# Machine-specific realtime display settings
+/suncet_processing_pipeline/realtime_display/config.local.ini

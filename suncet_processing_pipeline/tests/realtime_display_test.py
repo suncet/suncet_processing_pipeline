@@ -3,13 +3,14 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+from suncet_processing_pipeline.realtime_display import config as realtime_config
 from suncet_processing_pipeline.realtime_display.color_limits import ColorLimitEvaluator
 from suncet_processing_pipeline.realtime_display.config import (
     DecodeConfig,
     FramingConfig,
     load_config,
 )
-from suncet_processing_pipeline.realtime_display.main import _packet_ignored
+from suncet_processing_pipeline.realtime_display.main import _packet_ignored, _parse_args
 from suncet_processing_pipeline.realtime_display.packet_decoder import (
     DecodedPacket,
     RealtimePacketDecoder,
@@ -656,6 +657,27 @@ def test_beacon_power_states_are_exposed_for_status_summary():
     }
     assert modes["CDH"] == "SCIENCE MODE"
     assert snapshot["beacon_power_states"]["age_seconds"] is not None
+
+
+def test_local_config_overrides_only_apply_to_default_launch(tmp_path, monkeypatch):
+    shared = tmp_path / "config.ini"
+    local = tmp_path / "config.local.ini"
+    shared.write_text("[tcp]\nhost = 127.0.0.1\nport = 15400\n", encoding="utf-8")
+    monkeypatch.setattr(realtime_config, "DEFAULT_CONFIG_PATH", shared)
+    monkeypatch.setattr(realtime_config, "LOCAL_CONFIG_PATH", local)
+
+    assert _parse_args([]).config is None
+    assert load_config().tcp.host == "127.0.0.1"
+    local.write_text(
+        "[tcp]\nhost = telemetry.example.invalid\nport = 12345\n", encoding="utf-8"
+    )
+    default = load_config(_parse_args([]).config)
+    assert default.tcp.host == "telemetry.example.invalid"
+    assert default.tcp.port == 12345
+    assert default.display.port == 8050
+    explicit = load_config(_parse_args(["--config", str(shared)]).config)
+    assert explicit.tcp.host == "127.0.0.1"
+    assert explicit.tcp.port == 15400
 
 
 def test_realtime_config_loads_time_conversion_settings():
