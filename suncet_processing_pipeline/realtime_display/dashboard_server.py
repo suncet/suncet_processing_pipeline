@@ -899,6 +899,16 @@ DASHBOARD_HTML = r"""<!doctype html>
       }).join(" ");
     }
 
+    function numericExtent(values) {
+      let min = Infinity;
+      let max = -Infinity;
+      for (const value of values) {
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+      return {min, max};
+    }
+
     function drawSparkline(item, options) {
       const bind = !options || options.bind !== false;
       const article = fieldsEl.querySelector(`[data-field="${cssEscape(item.field)}"]`);
@@ -918,7 +928,8 @@ DASHBOARD_HTML = r"""<!doctype html>
       }
       const finiteTimeHistory = history.filter(p => Number.isFinite(Number(p.packet_time)) && Number.isFinite(Number(p.value)));
       const times = finiteTimeHistory.map(p => Number(p.packet_time));
-      const usePacketTime = times.length >= 2 && Math.min(...times) !== Math.max(...times);
+      const timeExtent = numericExtent(times);
+      const usePacketTime = times.length >= 2 && timeExtent.min !== timeExtent.max;
       let plotHistory = usePacketTime
         ? finiteTimeHistory.slice().sort((a, b) => Number(a.packet_time) - Number(b.packet_time))
         : history.filter(p => Number.isFinite(Number(p.value)));
@@ -934,14 +945,14 @@ DASHBOARD_HTML = r"""<!doctype html>
         if (bind) bindZoomCanvas(canvas, item, null);
         return;
       }
-      const dataMin = Math.min(...values);
-      const dataMax = Math.max(...values);
+      const {min: dataMin, max: dataMax} = numericExtent(values);
       let min = dataMin;
       let max = dataMax;
       if (min === max) { min -= 1; max += 1; }
       const plotTimes = plotHistory.map(p => Number(p.packet_time));
-      const minTime = usePacketTime ? Math.min(...plotTimes) : 0;
-      const maxTime = usePacketTime ? Math.max(...plotTimes) : plotHistory.length - 1;
+      const plotTimeExtent = numericExtent(plotTimes);
+      const minTime = usePacketTime ? plotTimeExtent.min : 0;
+      const maxTime = usePacketTime ? plotTimeExtent.max : plotHistory.length - 1;
       const maxLabel = item.group === "nand" ? dataMax.toFixed(0) : formatAxisValue(dataMax);
       const minLabel = item.group === "nand" ? dataMin.toFixed(0) : formatAxisValue(dataMin);
       ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
