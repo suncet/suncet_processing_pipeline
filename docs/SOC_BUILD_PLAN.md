@@ -29,7 +29,7 @@ under its hostname.
 
 ## Cross-plan status snapshot
 
-| Workstream | Latest documented status (SatNOGS updated 2026-09-29; other workstreams 2026-09-25) | Next completion gate |
+| Workstream | Latest documented status (SatNOGS updated 2026-10-05; other workstreams 2026-09-25) | Next completion gate |
 |---|---|---|
 | Jetson platform, SSH, NVMe, and portable environment | Release `3da31c5` deployed in a locked Python 3.14 runtime; 358 Jetson tests pass in stock 30 W mode | Use the release runtime for the next representative manual run while retaining `4fbd7b9` as rollback |
 | AWS X-band/UHF custody | Live and tested; AWS CLI and version-aware monitor deployed and healthy | Confirm the first lifecycle expirations and complete an independent archive inventory/restore drill |
@@ -39,7 +39,7 @@ under its hostname.
 | Level 2 PSF deconvolution | Strict Level 1 input, active `v1.0.4dev` contract, exact FP64 NumPy/CuPy paths, and a 241-frame Jetson end-to-end batch are validated | Approve the calibration set, replace provisional Level 1/3 fixtures, and measure the full external-input power cycle |
 | Level 4 CME tracking | Strong known-window engineering prototype; headless 241-frame Level 0.5–4 throughput/covered-rail baseline complete | Test Meng Jin's additional scenarios, compare binned/unbinned fidelity, then add held-out evaluation and broader event association |
 | LASP publication | SFTP transport validated; policy pending | Approve product mapping, naming/versioning, and release authority |
-| SatNOGS | Spacecraft accepted; transmitter suggestion 13013 submitted and awaiting review; CTDB 2.0.5 decoder and public citation published, CI passes | Respond to transmitter review; validate recorded UHF packets and RF/IQ receiver path, complete upstream integration, and obtain dashboard access/ingestion |
+| SatNOGS | Spacecraft accepted; transmitter suggestion 13013 awaits review; decoder MR !542 submitted after review/DCO approval; receiver replay and local upstream decoder/DB-function integration pass; suncet-dev visuals published in Scratchpad | Respond to upstream review, obtain deployment/DB association, and verify hosted ingestion before enabling queries |
 | Unattended operations | Deliberately deferred | Close monitoring, recovery, locking, and release-policy gates first |
 
 ## Decisions
@@ -48,17 +48,19 @@ under its hostname.
 - Use Git `main` for the small development team; record the Git revision for
   every processing run.
 - Use Miniforge/Mamba and the repository environment definitions.
-- Support both ARM and Intel hosts. Python 3.12 and the current Python 3.14
-  release are tested; the environment is not tied to the Mac's ARM architecture.
+- Support both ARM and Intel hosts. Python 3.11–3.14 are required CI lanes, with
+  Python 3.14 as the production baseline. Python 3.15 support is deferred until
+  the complete scientific stack resolves there. The environment is not tied to
+  the Mac's ARM architecture.
 - Keep CUDA and JetPack components at the operating-system level rather than in
   the portable Python environment.
 - Use `imagecodecs` for JPEG-LS decompression.
 - Store mission-length telemetry in DuckDB, with one table per APID so each
   packet stream retains its own sampling cadence. Images remain separate FITS
   products; use ASOF joins for ad hoc cross-APID trending.
-- Continue producing inspectable per-APID decoded CSVs during the iterative test
-  phase. Once those test workflows stabilize, write Level 0.5 telemetry directly
-  to DuckDB and remove routine decoded CSVs from the operational path.
+- Write Level 0.5 telemetry directly to DuckDB. Per-APID decoded CSVs and the
+  packet-by-packet manifest are now explicit diagnostics rather than routine
+  processing outputs.
 - Treat versioned CSV exports below `$suncet_data/metadata` as immutable,
   reviewed definition candidates. Code and configuration explicitly pin the
   active version, and each named processing run receives a checksum-guarded
@@ -136,7 +138,8 @@ user-space environment work.
 ### 0. Put development under reproducible version control — complete
 
 - Important local pipeline work was committed and pushed to `main`.
-- GitHub Actions passes on Python 3.12 and Python 3.14.
+- GitHub Actions requires Python 3.11–3.14. Add Python 3.15 only after the
+  scientific stack resolves and the full pipeline passes there.
 - Release checkpoint `4fbd7b9aeda539ffd7a057d3a49d063a4f503edb` was pushed
   on 2026-08-31; GitHub Actions run 87 completed successfully.
 - Portable environment modernization is in commit `95b56bc`.
@@ -174,7 +177,8 @@ Completed in the repository:
 - `conda-lock.yml` locks tested packages for `linux-aarch64`, `linux-64`,
   `osx-arm64`, and `osx-64`.
 - Lock solves succeeded for all four target platforms.
-- The test suite passes under Python 3.12 and 3.14.
+- A release requires the test suite to pass under every supported Python
+  3.11–3.14 branch; Python 3.15 is promoted when its dependencies solve.
 - Lossless 16-bit JPEG-LS round-trip behavior was validated with `imagecodecs`.
 - Managed paths now use one required absolute `suncet_data` root; workstation
   paths and repository-relative processing storage have been removed from code.
@@ -800,25 +804,54 @@ compiler ZIP, runs parser tests, and exercises fixture decoding from an
 installed wheel. [Remote CI passed](https://github.com/suncet/suncet_processing_pipeline/actions/runs/36600186531)
 for published commit `78049a4` on 2026-09-29.
 
-The requested recent UHF telemetry remains the recorded-data comparison gate.
-A separately requested IQ recording is pending for RF
-demodulation and the exact SatNOGS decoder-input boundary; flight software's
-literal AX.25 header, CCSDS encapsulation, CRC-16/X-25 coverage, and FCS byte
-order are already known. No new CTDB/FSW definition is required. Fine time is
+The [2026-09-23 Hydra capture comparison](SATNOGS_UHF_VALIDATION_20260923.md)
+passes for all 111 public fields across 7,352 distinct valid beacons
+(14,270 recorded occurrences). Thirty-four valid version packets report FSW
+2.0.5. The mission accepted the captured AX.25 header layout; a local adapter
+passes all 544 valid header-bearing beacons and rejects the 278 invalid ones.
+All 126 local SatNOGS tests pass. No FCS was established in this capture;
+the explicit full-FCS adapter mode has synthetic coverage. Early spacecraft
+timestamps appear unset. Upstream preparation can proceed now, preserving
+Fletcher-32 validation and checking the upstream Kaitai 0.10 toolchain and
+state-value interface.
+The [September 30 flight-unit IQ audit](SATNOGS_IQ_VALIDATION_20260930.md),
+completed October 5, recovers ten public beacons passing both CRC-16/X-25 and
+Fletcher-32, and excludes ten other CRC-valid frames. It verifies nominal
+9600-baud reception, G3RUH descrambling, NRZI, HDLC flags/bit stuffing, and the
+full-FCS adapter. Measured deviation is approximately ±2.4 kHz. All 144 local
+SatNOGS tests pass. The original mixed IQ and all raw packet bytes stay private.
+The released SatNOGS GFSK/AX.25 receiver also passes the
+[local replay](../benchmarks/satnogs_receiver_replay/README.md) with standard
+settings: all ten beacons match byte-for-byte, and the 268-byte output retains
+the header while removing flags/FCS. The
+[upstream decoder contribution](SATNOGS_DECODER_INTEGRATION_20261005.md) now
+passes local Kaitai 0.10 Python/JS, static, packaging, and DB-function checks:
+293 upstream tests pass, and ten flight beacons yield all 111 matching public
+values while ten other frames are rejected. Following mission-maintainer review
+and DCO approval, [merge request !542](https://gitlab.com/librespacefoundation/satnogs/satnogs-decoders/-/merge_requests/542)
+was submitted on 2026-10-06; published commit `f31782b6` exactly matches the
+reviewed local contribution tree. Follow-up `6248b1c6` fixes a test-only pylint
+reference, and remote CI now passes. Upstream acceptance,
+deployment/DB association, live Network reception, Gaussian BT/configuration confirmation, and 19200-baud
+validation remain open. No new CTDB/FSW definition is required. Fine time is
 resolved as integer milliseconds; authoritative spacecraft UTC conversion
 remains a separate time-policy item.
 
-The [dashboard plan](SATNOGS_DASHBOARD_PLAN.md) is ready with approved-field
-panels, units/enums, gap/staleness behavior, time handling, and a confidential
-editor-access request template. It is a local design, not a live or
-recorded-telemetry-validated dashboard. Upstream decoder review, actual
-ingestion, editor permissions, and recorded-data/time-policy validation remain
-before operational acceptance.
+The [dashboard plan](SATNOGS_DASHBOARD_PLAN.md) now has a saved Scratchpad draft,
+[suncet-dev](https://dashboard.satnogs.org/d/ffzqpb9arppfkb/suncet-dev), updated
+to 38 telemetry panels covering 82 approved fields. The mission owner reports editor
+access and SunCET team membership; Scratchpad creation/editing was verified.
+AEPEX supplied a read-only layout reference. The generator and saved export
+are in `suncet_processing_pipeline/satnogs/dashboard/`. All queries are disabled
+because no fields were returned for proposed SunCET measurement `98244`.
+All 82 aliases and numeric Canvas state mappings now match locally constructed
+DB points. Upstream decoder review, actual hosted ingestion, reception-age implementation, and
+end-to-end display/time-policy validation remain before operational acceptance.
 
 ## Immediate next action
 
 Refresh and verify the authoritative private CTDB snapshot covering the active
-bus `2.0.5`, CSIE `1.1.8`, and DSPS `6.09` versions before the next decode.
+bus `2.0.5`, CSIE `1.1.9`, and DSPS `6.09` versions before the next decode.
 Validate a separately approved manifest-gated Dropbox product push, then share
 the explicitly provisional Level 2 bundle with the Level 3 developer together
 with its contract and checksum list. Confirm the first 30-day source lifecycle
@@ -827,10 +860,14 @@ Meng Jin's additional simulations arrive, generate reviewed manifests, freeze
 development/validation cases, and run the same raw and temporal-median
 configurations before changing thresholds or adding GPU work. SunCET's
 spacecraft record is accepted and live; the public citation is published and
-transmitter suggestion 13013 awaits review. Compare the locally
-tested CTDB 2.0.5 decoder with the requested UHF packet sample when it arrives,
-and use the separate pending IQ sample for receiver validation.
-Request dashboard editor access using the prepared plan. No unattended ingest
+transmitter suggestion 13013 awaits review. The local CTDB 2.0.5 decoder
+comparison against the supplied Hydra packets and the flight-unit 9600-baud
+offline IQ audit pass. Released SatNOGS receiver replay and local upstream
+decoder/DB-function integration also pass. Decoder merge request !542 is open
+with the approved DCO sign-off. Respond to upstream review, then obtain
+release/deployment and DB association.
+Verify hosted ingestion and displayed values for the saved Scratchpad dashboard before
+enabling its queries. No unattended ingest
 or publication should begin before its separate operational gates pass.
 
 ## Definition of an initial operational SOC

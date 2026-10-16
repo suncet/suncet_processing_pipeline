@@ -90,8 +90,8 @@ conda run --no-capture-output -n suncet python -u -m suncet_processing_pipeline.
 ```
 
 The private CTDB files must be copied separately. The current default processing
-config selects bus `2.0.5`, CSIE `1.1.8`, and DSPS `6.09`, using folders
-`suncet_v2-0-5`, `suncet_csie_v1-1-8`, and `suncet_dsps_v6-09` below
+config selects bus `2.0.5`, CSIE `1.1.9`, and DSPS `6.09`, using folders
+`suncet_v2-0-5`, `suncet_csie_v1-1-9`, and `suncet_dsps_v6-09` below
 `$env:suncet_ctdb`. The environment variable above applies to that PowerShell
 session. Open `http://127.0.0.1:8050/` in a browser after starting the plotter.
 

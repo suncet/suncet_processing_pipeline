@@ -1,0 +1,1561 @@
+---
+meta:
+  id: suncet
+  title: SunCET public APID 1 beacon (CTDB 2.0.5)
+  endian: be
+  bit-endian: be
+  ks-version: '0.10'
+doc: |
+  SunCET public APID 1 beacon, CTDB 2.0.5.
+  Input retains the literal AX.25 header; the receiver has removed flags and FCS.
+  Fletcher-32 and the complete packet envelope are validated on construction.
+
+  :field ccsds_version: beacon.ccsds_version
+  :field ccsds_packet_type: beacon.ccsds_packet_type
+  :field ccsds_secondary_header_flag: beacon.ccsds_secondary_header_flag
+  :field ccsds_apid: beacon.ccsds_apid
+  :field ccsds_sequence_flags: beacon.ccsds_sequence_flags
+  :field ccsds_sequence_count: beacon.ccsds_sequence_count
+  :field ccsds_packet_length_field: beacon.ccsds_packet_length_field
+  :field spacecraft_time_seconds_since_2000: beacon.spacecraft_time_seconds_since_2000
+  :field spacecraft_time_milliseconds: beacon.spacecraft_time_milliseconds
+  :field partition_write_adcs: beacon.partition_write_adcs
+  :field partition_read_adcs: beacon.partition_read_adcs
+  :field partition_write_hk: beacon.partition_write_hk
+  :field partition_read_hk: beacon.partition_read_hk
+  :field partition_write_sci: beacon.partition_write_sci
+  :field partition_read_sci: beacon.partition_read_sci
+  :field partition_write_dsps: beacon.partition_write_dsps
+  :field partition_read_dsps: beacon.partition_read_dsps
+  :field store_partition_write_log: beacon.store_partition_write_log
+  :field csie_nand_sci_write_ptr: beacon.csie_nand_sci_write_ptr
+  :field time_since_boot: beacon.time_since_boot
+  :field time_alive: beacon.time_alive
+  :field time_mission_elapsed_time: beacon.time_mission_elapsed_time
+  :field mode_seconds_since_mode_change: beacon.mode_seconds_since_mode_change
+  :field dsps_flare_level: beacon.dsps_flare_level
+  :field adcs_body_rate_1: beacon.adcs_body_rate_1
+  :field adcs_body_rate_2: beacon.adcs_body_rate_2
+  :field adcs_body_rate_3: beacon.adcs_body_rate_3
+  :field csie_img_hist_0: beacon.csie_img_hist_0
+  :field csie_img_hist_1: beacon.csie_img_hist_1
+  :field csie_img_hist_2: beacon.csie_img_hist_2
+  :field csie_img_hist_3: beacon.csie_img_hist_3
+  :field csie_img_hist_4: beacon.csie_img_hist_4
+  :field csie_img_hist_5: beacon.csie_img_hist_5
+  :field adcs_wheel_speed_1: beacon.adcs_wheel_speed_1
+  :field adcs_wheel_speed_2: beacon.adcs_wheel_speed_2
+  :field adcs_wheel_speed_3: beacon.adcs_wheel_speed_3
+  :field xband_pa_temp: beacon.xband_pa_temp
+  :field xband_pa_current: beacon.xband_pa_current
+  :field rail_3v3_voltage: beacon.rail_3v3_voltage
+  :field rail_3v3_current: beacon.rail_3v3_current
+  :field cdh_temp: beacon.cdh_temp
+  :field cdh_3v3_reference_voltage: beacon.cdh_3v3_reference_voltage
+  :field solar_array_8_cell_string_voltage: beacon.solar_array_8_cell_string_voltage
+  :field solar_array_8_cell_string_current: beacon.solar_array_8_cell_string_current
+  :field solar_array_9_cell_string_voltage: beacon.solar_array_9_cell_string_voltage
+  :field solar_array_9_cell_string_current: beacon.solar_array_9_cell_string_current
+  :field battery_1_voltage: beacon.battery_1_voltage
+  :field battery_2_voltage: beacon.battery_2_voltage
+  :field eps_temp: beacon.eps_temp
+  :field eps_3v3_reference_voltage: beacon.eps_3v3_reference_voltage
+  :field eps_bus_voltage: beacon.eps_bus_voltage
+  :field eps_bus_current: beacon.eps_bus_current
+  :field xact_voltage: beacon.xact_voltage
+  :field xact_current: beacon.xact_current
+  :field uhf_voltage: beacon.uhf_voltage
+  :field uhf_current: beacon.uhf_current
+  :field xband_voltage: beacon.xband_voltage
+  :field xband_current: beacon.xband_current
+  :field csie_voltage: beacon.csie_voltage
+  :field csie_current: beacon.csie_current
+  :field dsps_voltage: beacon.dsps_voltage
+  :field dsps_current: beacon.dsps_current
+  :field ifb_therm1: beacon.ifb_therm1
+  :field sa_minus_y_temp: beacon.sa_minus_y_temp
+  :field sa_plus_y_temp: beacon.sa_plus_y_temp
+  :field csie_temp: beacon.csie_temp
+  :field battery_1_temp: beacon.battery_1_temp
+  :field batt_board_temp: beacon.batt_board_temp
+  :field battery_1_charge_current: beacon.battery_1_charge_current
+  :field battery_2_charge_current: beacon.battery_2_charge_current
+  :field dsps_visible_sps_sun_pos_x: beacon.dsps_visible_sps_sun_pos_x
+  :field dsps_visible_sps_sun_pos_y: beacon.dsps_visible_sps_sun_pos_y
+  :field dsps_x_ray_sps_sun_pos_x: beacon.dsps_x_ray_sps_sun_pos_x
+  :field dsps_x_ray_sps_sun_pos_y: beacon.dsps_x_ray_sps_sun_pos_y
+  :field dsps_sensor_board_temp: beacon.dsps_sensor_board_temp
+  :field adcs_ana_motor1_temp: beacon.adcs_ana_motor1_temp
+  :field adcs_sun_point_angle_error: beacon.adcs_sun_point_angle_error
+  :field num_sc_resets: beacon.num_sc_resets
+  :field csie_capture_state: beacon.csie_capture_state
+  :field fault_protection_watchpoint_6_state: beacon.fault_protection_watchpoint_6_state
+  :field fault_protection_watchpoint_5_state: beacon.fault_protection_watchpoint_5_state
+  :field fault_protection_watchpoint_4_state: beacon.fault_protection_watchpoint_4_state
+  :field fault_protection_watchpoint_3_state: beacon.fault_protection_watchpoint_3_state
+  :field fault_protection_watchpoint_2_state: beacon.fault_protection_watchpoint_2_state
+  :field fault_protection_watchpoint_1_state: beacon.fault_protection_watchpoint_1_state
+  :field fault_protection_watchpoint_0_state: beacon.fault_protection_watchpoint_0_state
+  :field clt_hours_until_reboot: beacon.clt_hours_until_reboot
+  :field mode_system_mode: beacon.mode_system_mode
+  :field uhf_temp: beacon.uhf_temp
+  :field fault_protection_task_state: beacon.fault_protection_task_state
+  :field dsps_flare_magnitude: beacon.dsps_flare_magnitude
+  :field dsps_flare_phase: beacon.dsps_flare_phase
+  :field battery_1_charging_state: beacon.battery_1_charging_state
+  :field eps_pwr_state_dsps: beacon.eps_pwr_state_dsps
+  :field eps_pwr_state_csie: beacon.eps_pwr_state_csie
+  :field eps_pwr_state_xband: beacon.eps_pwr_state_xband
+  :field eps_pwr_state_uhf: beacon.eps_pwr_state_uhf
+  :field eps_pwr_state_adcs: beacon.eps_pwr_state_adcs
+  :field telescope_door_pin_pulled: beacon.telescope_door_pin_pulled
+  :field csie_heater_enable: beacon.csie_heater_enable
+  :field battery2_heater_enable: beacon.battery2_heater_enable
+  :field battery1_heater_enable: beacon.battery1_heater_enable
+  :field uhf_alive: beacon.uhf_alive
+  :field adcs_alive: beacon.adcs_alive
+  :field adcs_att_valid: beacon.adcs_att_valid
+  :field adcs_ref_valid: beacon.adcs_ref_valid
+  :field adcs_time_valid: beacon.adcs_time_valid
+  :field adcs_mode: beacon.adcs_mode
+  :field battery_2_charging_state: beacon.battery_2_charging_state
+  :field adcs_sun_point_state: beacon.adcs_sun_point_state
+  :field xband_data_source: beacon.xband_data_source
+
+  State fields retain integer codes, including unknown values.
+  Nonfinite floating-point readings become NaN for omission by SatNOGS DB.
+doc-ref: https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md
+seq:
+  - size: 0
+    valid:
+      expr: _io.size == 268
+  - contents:
+      - 152
+      - 130
+      - 166
+      - 160
+      - 64
+      - 64
+      - 65
+      - 166
+      - 170
+      - 156
+      - 98
+      - 64
+      - 64
+      - 65
+      - 3
+      - 240
+  - type: fletcher_check
+  - size: 0
+    valid:
+      expr: beacon.ccsds_apid == 1
+instances:
+  beacon:
+    pos: 16
+    size: 252
+    type: public_beacon
+types:
+  public_beacon:
+    seq:
+      - id: ccsds_primary_word
+        type: u2
+        valid: 2049
+        doc: 'Packed CCSDS version/type/secondary-header/APID word.
+
+          The only accepted value describes telemetry APID 1 with
+
+          the SunCET secondary header present.
+
+          '
+      - id: ccsds_sequence_word
+        type: u2
+        doc: Packed CCSDS sequence flags and sequence counter.
+      - id: ccsds_packet_length_field
+        type: u2
+        valid:
+          expr: _ == 245 and _io.size == 252
+        doc: 'CCSDS packet length field: bytes after the primary header minus one.
+
+          Engineering units: bytes
+
+          '
+      - id: spacecraft_time_seconds_since_2000
+        type: u4
+        doc: 'Whole seconds elapsed since 2000-01-01T00:00:00Z.
+
+          Engineering units: s
+
+          '
+      - id: spacecraft_time_milliseconds
+        type: u2
+        valid:
+          max: 999
+        doc: 'Integer milliseconds after the coarse whole second; valid values are 0 through 999.
+
+          Engineering units: ms
+
+          '
+      - id: partition_write_adcs
+        type: u4
+        doc: 'Current write pointer in the NAND ADCS partition.
+
+          Engineering units: raw address
+
+          '
+      - id: partition_read_adcs
+        type: u4
+        doc: 'Current read pointer in the NAND ADCS partition.
+
+          Engineering units: raw address
+
+          '
+      - id: partition_write_hk
+        type: u4
+        doc: 'Current write pointer in the NAND housekeeping partition.
+
+          Engineering units: raw address
+
+          '
+      - id: partition_read_hk
+        type: u4
+        doc: 'Current read pointer in the NAND housekeeping partition.
+
+          Engineering units: raw address
+
+          '
+      - id: partition_write_sci
+        type: u4
+        doc: 'Current write pointer in the NAND science partition.
+
+          Engineering units: raw address
+
+          '
+      - id: partition_read_sci
+        type: u4
+        doc: 'Current read pointer in the NAND science partition.
+
+          Engineering units: raw address
+
+          '
+      - id: partition_write_dsps
+        type: u4
+        doc: 'Current write pointer in the NAND Dual-SPS partition.
+
+          Engineering units: raw address
+
+          '
+      - id: partition_read_dsps
+        type: u4
+        doc: 'Current read pointer in the NAND Dual-SPS partition.
+
+          Engineering units: raw address
+
+          '
+      - id: store_partition_write_log
+        type: u4
+        doc: 'Current write pointer in the NAND log partition.
+
+          Engineering units: raw address
+
+          '
+      - id: csie_nand_sci_write_ptr
+        type: u4
+        doc: 'Current write pointer in the NAND CSIE science-image partition.
+
+          Engineering units: raw address
+
+          '
+      - id: time_since_boot
+        type: u4
+        doc: 'Seconds since most recent boot
+
+          Engineering units: s
+
+          '
+      - id: time_alive
+        type: u4
+        doc: 'Number of seconds spent powered on and processing (i.e Alive)
+
+          Engineering units: s
+
+          '
+      - id: time_mission_elapsed_time
+        type: u4
+        doc: 'Time since Mission start
+
+          Engineering units: s
+
+          '
+      - id: mode_seconds_since_mode_change
+        type: u4
+        doc: 'Second since mode switch
+
+          Engineering units: s
+
+          '
+      - id: dsps_flare_level_raw
+        type: f4
+        doc: 'Dual-SPS flare trigger threshold in log10 of estimated GOES XRS-B flux
+
+          Engineering units: log10(XRS-B flux)
+
+          '
+      - id: adcs_body_rate_1_raw
+        type: s4
+        doc: 'ADCS Body Frame Rate 1
+
+          Engineering units: rad/s
+
+          Conversion/status map: C0=0.000000e+00 C1=5.000000e-09
+
+          '
+      - id: adcs_body_rate_2_raw
+        type: s4
+        doc: 'ADCS Body Frame Rate 2
+
+          Engineering units: rad/s
+
+          Conversion/status map: C0=0.000000e+00 C1=5.000000e-09
+
+          '
+      - id: adcs_body_rate_3_raw
+        type: s4
+        doc: 'ADCS Body Frame Rate 3
+
+          Engineering units: rad/s
+
+          Conversion/status map: C0=0.000000e+00 C1=5.000000e-09
+
+          '
+      - id: csie_img_hist_0
+        type: u4
+        doc: 'CSIE pixel count in histogram bin 0; configurable DN range [offset, offset+width-1], default 0-31
+
+          Engineering units: count
+
+          '
+      - id: csie_img_hist_1
+        type: u4
+        doc: 'CSIE pixel count in histogram bin 1; configurable DN range [offset+width, offset+2*width-1], default 32-63
+
+          Engineering units: count
+
+          '
+      - id: csie_img_hist_2
+        type: u4
+        doc: 'CSIE pixel count in histogram bin 2; configurable DN range [offset+2*width, offset+3*width-1], default 64-95
+
+          Engineering units: count
+
+          '
+      - id: csie_img_hist_3
+        type: u4
+        doc: 'CSIE pixel count in histogram bin 3; configurable DN range [offset+3*width, offset+4*width-1], default 96-127
+
+          Engineering units: count
+
+          '
+      - id: csie_img_hist_4
+        type: u4
+        doc: 'CSIE pixel count in histogram bin 4; configurable DN range [offset+4*width, offset+5*width-1], default 128-159
+
+          Engineering units: count
+
+          '
+      - id: csie_img_hist_5
+        type: u4
+        doc: 'CSIE pixel count in histogram bin 5; configurable DN range [offset+5*width, offset+6*width-1], default 160-191; beacon truncates the full histogram after bin
+          5
+
+          Engineering units: count
+
+          '
+      - id: adcs_wheel_speed_1_raw
+        type: s4
+        doc: 'ADCS Wheel Speed 1
+
+          Engineering units: rpm
+
+          Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
+
+          '
+      - id: adcs_wheel_speed_2_raw
+        type: s4
+        doc: 'ADCS Wheel Speed 2
+
+          Engineering units: rpm
+
+          Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
+
+          '
+      - id: adcs_wheel_speed_3_raw
+        type: s4
+        doc: 'ADCS Wheel Speed 3
+
+          Engineering units: rpm
+
+          Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
+
+          '
+      - id: xband_pa_temp_raw
+        type: s4
+        doc: 'XBAND Power Amplifier Temp
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=9.765625e-04
+
+          '
+      - size: 4
+        doc: Excluded public-beacon fields, consumed opaquely.
+      - id: xband_pa_current_raw
+        type: u2
+        doc: 'XBAND Power Amplifier current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.654473e-03
+
+          '
+      - size: 10
+        doc: Excluded public-beacon fields, consumed opaquely.
+      - id: rail_3v3_voltage_raw
+        type: u2
+        doc: '3p3 Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.611300e-03
+
+          '
+      - id: rail_3v3_current_raw
+        type: u2
+        doc: '3p3 Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.056600e-05
+
+          '
+      - id: cdh_temp_raw
+        type: u2
+        doc: 'CDH Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      - id: cdh_3v3_reference_voltage_raw
+        type: u2
+        doc: 'CDH 3.3 V reference measurement.
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.611300e-03
+
+          '
+      - id: solar_array_8_cell_string_voltage_raw
+        type: u2
+        doc: 'Solar Array 8-Cell String Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=9.659200e-03
+
+          '
+      - id: solar_array_8_cell_string_current_raw
+        type: u2
+        doc: 'Solar Array 8-Cell String Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
+
+          '
+      - id: solar_array_9_cell_string_voltage_raw
+        type: u2
+        doc: '9-Cell String Solar Array Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=9.659200e-03
+
+          '
+      - id: solar_array_9_cell_string_current_raw
+        type: u2
+        doc: '9-Cell String Solar Array Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
+
+          '
+      - id: battery_1_voltage_raw
+        type: u2
+        doc: 'Battery 1 Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      - id: battery_2_voltage_raw
+        type: u2
+        doc: 'Battery 2 Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      - id: eps_temp_raw
+        type: u2
+        doc: 'EPS Board Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      - id: eps_3v3_reference_voltage_raw
+        type: u2
+        doc: 'EPS 3.3 V reference measurement.
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.611330e-03
+
+          '
+      - id: eps_bus_voltage_raw
+        type: u2
+        doc: 'EPS Bus Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      - id: eps_bus_current_raw
+        type: u2
+        doc: 'EPS Bus Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.220700e-03
+
+          '
+      - id: xact_voltage_raw
+        type: u2
+        doc: 'XACT Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      - id: xact_current_raw
+        type: u2
+        doc: 'XACT Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
+
+          '
+      - id: uhf_voltage_raw
+        type: u2
+        doc: 'UHF Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      - id: uhf_current_raw
+        type: u2
+        doc: 'UHF Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
+
+          '
+      - id: xband_voltage_raw
+        type: u2
+        doc: 'XBAND Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      - id: xband_current_raw
+        type: u2
+        doc: 'XBAND Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
+
+          '
+      - id: csie_voltage_raw
+        type: u2
+        doc: 'CSIE Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=3.963900e-03
+
+          '
+      - id: csie_current_raw
+        type: u2
+        doc: 'CSIE Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.220700e-03
+
+          '
+      - id: dsps_voltage_raw
+        type: u2
+        doc: 'DSPS Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=3.963900e-03
+
+          '
+      - id: dsps_current_raw
+        type: u2
+        doc: 'DSPS Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.220700e-03
+
+          '
+      - id: ifb_therm1_raw
+        type: u2
+        doc: 'Interface Board Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      - id: sa_minus_y_temp_raw
+        type: u2
+        doc: 'Solar Array 1 Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      - id: sa_plus_y_temp_raw
+        type: u2
+        doc: 'Solar Array 2 Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      - id: csie_temp_raw
+        type: u2
+        doc: 'CSIE Detector Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      - id: battery_1_temp_raw
+        type: u2
+        doc: 'Battery 1 Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      - id: batt_board_temp_raw
+        type: u2
+        doc: 'Battery Board Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      - id: battery_1_charge_current_raw
+        type: u2
+        doc: 'Battery 1 Charge Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.366954e-04
+
+          '
+      - id: battery_2_charge_current_raw
+        type: u2
+        doc: 'Battery 2 Charge Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.366954e-04
+
+          '
+      - id: dsps_visible_sps_sun_pos_x
+        type: s2
+        doc: 'Visible DSPS Sun position x (arcsecs)
+
+          Engineering units: arcsec
+
+          '
+      - id: dsps_visible_sps_sun_pos_y
+        type: s2
+        doc: 'Visible DSPS Sun position y (arcsecs)
+
+          Engineering units: arcsec
+
+          '
+      - id: dsps_x_ray_sps_sun_pos_x
+        type: s2
+        doc: 'X-RAY DSPS Sun position x (arcsecs)
+
+          Engineering units: arcsec
+
+          '
+      - id: dsps_x_ray_sps_sun_pos_y
+        type: s2
+        doc: 'X-RAY DSPS Sun position y (arcsecs)
+
+          Engineering units: arcsec
+
+          '
+      - id: dsps_sensor_board_temp_raw
+        type: s2
+        doc: 'Dual-SPS Sensor Board Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.000000e-02
+
+          '
+      - id: adcs_ana_motor1_temp_raw
+        type: s2
+        doc: 'Wheel 1 Temp
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=5.000000e-03
+
+          '
+      - id: adcs_sun_point_angle_error_raw
+        type: u2
+        doc: 'Angle between the estimated and commanded Sun vectors.
+
+          Engineering units: deg
+
+          Conversion/status map: C0=0.000000e+00 C1=3.000000e-03
+
+          '
+      - id: num_sc_resets
+        type: u2
+        doc: 'Number of Spacecraft Reboots
+
+          Engineering units: count
+
+          '
+      - id: csie_capture_state
+        type: b2
+        doc: 'CSIE image-capture state.
+
+          Engineering units: dimensionless
+
+          '
+      - id: fault_protection_watchpoint_6_state
+        type: b2
+        doc: 'WP State wp6
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
+
+          '
+      - id: fault_protection_watchpoint_5_state
+        type: b2
+        doc: 'WP State wp5
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
+
+          '
+      - id: fault_protection_watchpoint_4_state
+        type: b2
+        doc: 'WP State wp4
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
+
+          '
+      - id: fault_protection_watchpoint_3_state
+        type: b2
+        doc: 'WP State wp3
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
+
+          '
+      - id: fault_protection_watchpoint_2_state
+        type: b2
+        doc: 'WP State wp2
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
+
+          '
+      - id: fault_protection_watchpoint_1_state
+        type: b2
+        doc: 'WP State wp1
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
+
+          '
+      - id: fault_protection_watchpoint_0_state
+        type: b2
+        doc: 'WP State wp0
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
+
+          '
+      - size: 4
+        doc: Excluded public-beacon fields, consumed opaquely.
+      - id: clt_hours_until_reboot
+        type: u1
+        doc: 'Command Loss Timer time remaining until the spacecraft resets.
+
+          Engineering units: h
+
+          '
+      - id: mode_system_mode
+        type: u1
+        doc: 'System mode
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/PHOENIX 1/SAFE 2/SCIENCE 3/DOWNLINK
+
+          '
+      - id: uhf_temp
+        type: s1
+        doc: 'UHF Temperature
+
+          Engineering units: degC (inferred)
+
+          '
+      - size: 4
+        doc: Excluded public-beacon fields, consumed opaquely.
+      - id: fault_protection_task_state
+        type: u1
+        doc: 'Fault-protection task state.
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/DISABLED 1/PASSIVE 2/ENABLED
+
+          '
+      - id: dsps_flare_magnitude
+        type: u1
+        doc: 'Dual-SPS flare magnitude as an unsigned raw value; CTDB 2.0.5 defines no engineering conversion.
+
+          Engineering units: raw
+
+          '
+      - id: dsps_flare_phase
+        type: u1
+        doc: 'Dual-SPS flare-state bit flags
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/NOT_IN_SUN 1/FILLING_HISTORY 2/NOT_IN_FLARE 4/FLARE_START 24/DECLINING_FLARE 40/RISING_FLARE
+
+          '
+      - size: 7
+        doc: Excluded public-beacon fields, consumed opaquely.
+      - type: b2
+        doc: Excluded public-beacon bits, consumed opaquely.
+      - id: battery_1_charging_state_raw
+        type: b1
+        doc: 'Charging State of the Battery
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 1/CHARGING 0/DISCHARGING
+
+          '
+      - id: eps_pwr_state_dsps_raw
+        type: b1
+        doc: 'EPS Power state for Dual-SPS
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/OFF 1/ON
+
+          '
+      - id: eps_pwr_state_csie_raw
+        type: b1
+        doc: 'EPS Power state for CSIE
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/OFF 1/ON
+
+          '
+      - id: eps_pwr_state_xband_raw
+        type: b1
+        doc: 'EPS Power state for X-Band radio
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/OFF 1/ON
+
+          '
+      - id: eps_pwr_state_uhf_raw
+        type: b1
+        doc: 'EPS Power state for UHF radio
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/OFF 1/ON
+
+          '
+      - id: eps_pwr_state_adcs_raw
+        type: b1
+        doc: 'EPS Power state for ADCS/XACT
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/OFF 1/ON
+
+          '
+      - id: telescope_door_pin_pulled_raw
+        type: b1
+        doc: 'Telescope Door Release Pin feedback
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 1/ENGAGED 0/PULLED
+
+          '
+      - id: csie_heater_enable_raw
+        type: b1
+        doc: 'CSIE Heater enable flag
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/NO 1/YES
+
+          '
+      - id: battery2_heater_enable_raw
+        type: b1
+        doc: 'Battery 2 heater enable flag
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/NO 1/YES
+
+          '
+      - id: battery1_heater_enable_raw
+        type: b1
+        doc: 'Battery 1 heater enable flag
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/NO 1/YES
+
+          '
+      - id: uhf_alive
+        type: b2
+        doc: 'UHF Aliveness flag
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/OFF 1/ALIVE 2/DEAD
+
+          '
+      - id: adcs_alive
+        type: b2
+        doc: 'ADCS Aliveness flag
+
+          Engineering units: dimensionless
+
+          '
+      - id: adcs_att_valid_raw
+        type: b1
+        doc: 'Attitude Valid
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/NO 1/YES
+
+          '
+      - id: adcs_ref_valid_raw
+        type: b1
+        doc: 'Refs Valid
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/NO 1/YES
+
+          '
+      - id: adcs_time_valid_raw
+        type: b1
+        doc: 'Time Valid
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 1/YES 0/NO
+
+          '
+      - id: adcs_mode_raw
+        type: b1
+        doc: 'ADCS Mode
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/SUN_POINT 1/FINE_REF_POINT
+
+          '
+      - id: battery_2_charging_state_raw
+        type: b1
+        doc: 'Charging State of the Battery
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 1/CHARGING 0/DISCHARGING
+
+          '
+      - id: adcs_sun_point_state
+        type: b3
+        doc: 'Sun Point State
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/SUN_POINT 1/FINE_REF_POINT 2/SEARCH_INIT 3/SEARCHING 4/WAITING 5/CONVERGING 6/ON_SUN 7/NOT_ACTV
+
+          '
+      - id: xband_data_source
+        type: u1
+        doc: 'Selected X-band data source.
+
+          Engineering units: dimensionless
+
+          Conversion/status map: 0/TEST_PAT 1/CDH
+
+          '
+      - size: 1
+        doc: Excluded public-beacon fields, consumed opaquely.
+      - size: 4
+        doc: Already validated by the outer frame's Fletcher-32 check.
+    instances:
+      ccsds_version:
+        value: (ccsds_primary_word >> 13) & 7
+        doc: 'CCSDS Space Packet version number.
+
+          Engineering units: dimensionless
+
+          '
+      ccsds_packet_type:
+        value: (ccsds_primary_word >> 12) & 1
+        doc: 'CCSDS packet type; telemetry is expected for the beacon.
+
+          Engineering units: dimensionless
+
+          '
+      ccsds_secondary_header_flag:
+        value: (ccsds_primary_word >> 11) & 1
+        doc: 'Indicates presence of the SunCET secondary time header.
+
+          Engineering units: dimensionless
+
+          '
+      ccsds_apid:
+        value: ccsds_primary_word & 2047
+        doc: 'CCSDS application process identifier; expected value is 1.
+
+          Engineering units: dimensionless
+
+          '
+      ccsds_sequence_flags:
+        value: (ccsds_sequence_word >> 14) & 3
+        doc: 'CCSDS packet sequence flags.
+
+          Engineering units: dimensionless
+
+          '
+      ccsds_sequence_count:
+        value: ccsds_sequence_word & 16383
+        doc: 'CCSDS packet sequence counter.
+
+          Engineering units: count
+
+          '
+      adcs_body_rate_1:
+        value: (0 + adcs_body_rate_1_raw * 5e-09)
+        doc: 'ADCS Body Frame Rate 1
+
+          Engineering units: rad/s
+
+          Conversion/status map: C0=0.000000e+00 C1=5.000000e-09
+
+          '
+      adcs_body_rate_2:
+        value: (0 + adcs_body_rate_2_raw * 5e-09)
+        doc: 'ADCS Body Frame Rate 2
+
+          Engineering units: rad/s
+
+          Conversion/status map: C0=0.000000e+00 C1=5.000000e-09
+
+          '
+      adcs_body_rate_3:
+        value: (0 + adcs_body_rate_3_raw * 5e-09)
+        doc: 'ADCS Body Frame Rate 3
+
+          Engineering units: rad/s
+
+          Conversion/status map: C0=0.000000e+00 C1=5.000000e-09
+
+          '
+      adcs_wheel_speed_1:
+        value: (0 + adcs_wheel_speed_1_raw * 0.002)
+        doc: 'ADCS Wheel Speed 1
+
+          Engineering units: rpm
+
+          Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
+
+          '
+      adcs_wheel_speed_2:
+        value: (0 + adcs_wheel_speed_2_raw * 0.002)
+        doc: 'ADCS Wheel Speed 2
+
+          Engineering units: rpm
+
+          Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
+
+          '
+      adcs_wheel_speed_3:
+        value: (0 + adcs_wheel_speed_3_raw * 0.002)
+        doc: 'ADCS Wheel Speed 3
+
+          Engineering units: rpm
+
+          Conversion/status map: C0=0.000000e+00 C1=2.000000e-03
+
+          '
+      xband_pa_temp:
+        value: (0 + xband_pa_temp_raw * 0.0009765625)
+        doc: 'XBAND Power Amplifier Temp
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=9.765625e-04
+
+          '
+      xband_pa_current:
+        value: (0 + xband_pa_current_raw * 0.001654473)
+        doc: 'XBAND Power Amplifier current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.654473e-03
+
+          '
+      rail_3v3_voltage:
+        value: (0 + rail_3v3_voltage_raw * 0.0016113)
+        doc: '3p3 Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.611300e-03
+
+          '
+      rail_3v3_current:
+        value: (0 + rail_3v3_current_raw * 8.0566e-05)
+        doc: '3p3 Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.056600e-05
+
+          '
+      cdh_temp:
+        value: (125.55 + cdh_temp_raw * (-0.13622 + cdh_temp_raw * (9.8611e-05 + cdh_temp_raw * (-4.4176e-08 + cdh_temp_raw * (1.0125e-11 + cdh_temp_raw * -9.3905e-16)))))
+        doc: 'CDH Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      cdh_3v3_reference_voltage:
+        value: (0 + cdh_3v3_reference_voltage_raw * 0.0016113)
+        doc: 'CDH 3.3 V reference measurement.
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.611300e-03
+
+          '
+      solar_array_8_cell_string_voltage:
+        value: (0 + solar_array_8_cell_string_voltage_raw * 0.0096592)
+        doc: 'Solar Array 8-Cell String Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=9.659200e-03
+
+          '
+      solar_array_8_cell_string_current:
+        value: (0 + solar_array_8_cell_string_current_raw * 0.0020142)
+        doc: 'Solar Array 8-Cell String Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
+
+          '
+      solar_array_9_cell_string_voltage:
+        value: (0 + solar_array_9_cell_string_voltage_raw * 0.0096592)
+        doc: '9-Cell String Solar Array Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=9.659200e-03
+
+          '
+      solar_array_9_cell_string_current:
+        value: (0 + solar_array_9_cell_string_current_raw * 0.0020142)
+        doc: '9-Cell String Solar Array Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
+
+          '
+      battery_1_voltage:
+        value: (0 + battery_1_voltage_raw * 0.0088623)
+        doc: 'Battery 1 Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      battery_2_voltage:
+        value: (0 + battery_2_voltage_raw * 0.0088623)
+        doc: 'Battery 2 Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      eps_temp:
+        value: (125.55 + eps_temp_raw * (-0.13622 + eps_temp_raw * (9.8611e-05 + eps_temp_raw * (-4.4176e-08 + eps_temp_raw * (1.0125e-11 + eps_temp_raw * -9.3905e-16)))))
+        doc: 'EPS Board Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      eps_3v3_reference_voltage:
+        value: (0 + eps_3v3_reference_voltage_raw * 0.00161133)
+        doc: 'EPS 3.3 V reference measurement.
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.611330e-03
+
+          '
+      eps_bus_voltage:
+        value: (0 + eps_bus_voltage_raw * 0.0088623)
+        doc: 'EPS Bus Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      eps_bus_current:
+        value: (0 + eps_bus_current_raw * 0.0012207)
+        doc: 'EPS Bus Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.220700e-03
+
+          '
+      xact_voltage:
+        value: (0 + xact_voltage_raw * 0.0088623)
+        doc: 'XACT Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      xact_current:
+        value: (0 + xact_current_raw * 0.0020142)
+        doc: 'XACT Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
+
+          '
+      uhf_voltage:
+        value: (0 + uhf_voltage_raw * 0.0088623)
+        doc: 'UHF Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      uhf_current:
+        value: (0 + uhf_current_raw * 0.0020142)
+        doc: 'UHF Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
+
+          '
+      xband_voltage:
+        value: (0 + xband_voltage_raw * 0.0088623)
+        doc: 'XBAND Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=8.862300e-03
+
+          '
+      xband_current:
+        value: (0 + xband_current_raw * 0.0020142)
+        doc: 'XBAND Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.014200e-03
+
+          '
+      csie_voltage:
+        value: (0 + csie_voltage_raw * 0.0039639)
+        doc: 'CSIE Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=3.963900e-03
+
+          '
+      csie_current:
+        value: (0 + csie_current_raw * 0.0012207)
+        doc: 'CSIE Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.220700e-03
+
+          '
+      dsps_voltage:
+        value: (0 + dsps_voltage_raw * 0.0039639)
+        doc: 'DSPS Voltage
+
+          Engineering units: V (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=3.963900e-03
+
+          '
+      dsps_current:
+        value: (0 + dsps_current_raw * 0.0012207)
+        doc: 'DSPS Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.220700e-03
+
+          '
+      ifb_therm1:
+        value: (125.55 + ifb_therm1_raw * (-0.13622 + ifb_therm1_raw * (9.8611e-05 + ifb_therm1_raw * (-4.4176e-08 + ifb_therm1_raw * (1.0125e-11 + ifb_therm1_raw * -9.3905e-16)))))
+        doc: 'Interface Board Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      sa_minus_y_temp:
+        value: (125.55 + sa_minus_y_temp_raw * (-0.13622 + sa_minus_y_temp_raw * (9.8611e-05 + sa_minus_y_temp_raw * (-4.4176e-08 + sa_minus_y_temp_raw * (1.0125e-11 + sa_minus_y_temp_raw
+          * -9.3905e-16)))))
+        doc: 'Solar Array 1 Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      sa_plus_y_temp:
+        value: (125.55 + sa_plus_y_temp_raw * (-0.13622 + sa_plus_y_temp_raw * (9.8611e-05 + sa_plus_y_temp_raw * (-4.4176e-08 + sa_plus_y_temp_raw * (1.0125e-11 + sa_plus_y_temp_raw
+          * -9.3905e-16)))))
+        doc: 'Solar Array 2 Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      csie_temp:
+        value: (125.55 + csie_temp_raw * (-0.13622 + csie_temp_raw * (9.8611e-05 + csie_temp_raw * (-4.4176e-08 + csie_temp_raw * (1.0125e-11 + csie_temp_raw * -9.3905e-16)))))
+        doc: 'CSIE Detector Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      battery_1_temp:
+        value: (125.55 + battery_1_temp_raw * (-0.13622 + battery_1_temp_raw * (9.8611e-05 + battery_1_temp_raw * (-4.4176e-08 + battery_1_temp_raw * (1.0125e-11 + battery_1_temp_raw
+          * -9.3905e-16)))))
+        doc: 'Battery 1 Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      batt_board_temp:
+        value: (125.55 + batt_board_temp_raw * (-0.13622 + batt_board_temp_raw * (9.8611e-05 + batt_board_temp_raw * (-4.4176e-08 + batt_board_temp_raw * (1.0125e-11 + batt_board_temp_raw
+          * -9.3905e-16)))))
+        doc: 'Battery Board Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=1.255500e+02 C1=-1.362200e-01 C2=9.861100e-05 C3=-4.417600e-08 C4=1.012500e-11 C5=-9.390500e-16
+
+          '
+      battery_1_charge_current:
+        value: (0 + battery_1_charge_current_raw * 0.0002366954)
+        doc: 'Battery 1 Charge Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.366954e-04
+
+          '
+      battery_2_charge_current:
+        value: (0 + battery_2_charge_current_raw * 0.0002366954)
+        doc: 'Battery 2 Charge Current
+
+          Engineering units: A (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=2.366954e-04
+
+          '
+      dsps_sensor_board_temp:
+        value: (0 + dsps_sensor_board_temp_raw * 0.01)
+        doc: 'Dual-SPS Sensor Board Temperature
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=1.000000e-02
+
+          '
+      adcs_ana_motor1_temp:
+        value: (0 + adcs_ana_motor1_temp_raw * 0.005)
+        doc: 'Wheel 1 Temp
+
+          Engineering units: degC (inferred)
+
+          Conversion/status map: C0=0.000000e+00 C1=5.000000e-03
+
+          '
+      adcs_sun_point_angle_error:
+        value: (0 + adcs_sun_point_angle_error_raw * 0.003)
+        doc: 'Angle between the estimated and commanded Sun vectors.
+
+          Engineering units: deg
+
+          Conversion/status map: C0=0.000000e+00 C1=3.000000e-03
+
+          '
+      dsps_flare_level:
+        value: 'dsps_flare_level_raw >= -3.4028234663852886e38 and dsps_flare_level_raw <= 3.4028234663852886e38 ? dsps_flare_level_raw : dsps_flare_level_raw - dsps_flare_level_raw'
+      battery_1_charging_state:
+        value: 'battery_1_charging_state_raw ? 1 : 0'
+      eps_pwr_state_dsps:
+        value: 'eps_pwr_state_dsps_raw ? 1 : 0'
+      eps_pwr_state_csie:
+        value: 'eps_pwr_state_csie_raw ? 1 : 0'
+      eps_pwr_state_xband:
+        value: 'eps_pwr_state_xband_raw ? 1 : 0'
+      eps_pwr_state_uhf:
+        value: 'eps_pwr_state_uhf_raw ? 1 : 0'
+      eps_pwr_state_adcs:
+        value: 'eps_pwr_state_adcs_raw ? 1 : 0'
+      telescope_door_pin_pulled:
+        value: 'telescope_door_pin_pulled_raw ? 1 : 0'
+      csie_heater_enable:
+        value: 'csie_heater_enable_raw ? 1 : 0'
+      battery2_heater_enable:
+        value: 'battery2_heater_enable_raw ? 1 : 0'
+      battery1_heater_enable:
+        value: 'battery1_heater_enable_raw ? 1 : 0'
+      adcs_att_valid:
+        value: 'adcs_att_valid_raw ? 1 : 0'
+      adcs_ref_valid:
+        value: 'adcs_ref_valid_raw ? 1 : 0'
+      adcs_time_valid:
+        value: 'adcs_time_valid_raw ? 1 : 0'
+      adcs_mode:
+        value: 'adcs_mode_raw ? 1 : 0'
+      battery_2_charging_state:
+        value: 'battery_2_charging_state_raw ? 1 : 0'
+  fletcher_check:
+    doc: Little-endian input words, accumulators seeded 65535, big-endian stored checksum.
+    seq:
+      - id: words
+        type: 'fletcher_word(_index == 0 ? 65535 : words[_index - 1].sum1, _index == 0 ? 65535 : words[_index - 1].sum2)'
+        repeat: expr
+        repeat-expr: 124
+      - type: u4
+        valid:
+          expr: _ == words[123].sum2 * 65536 + words[123].sum1
+  fletcher_word:
+    params:
+      - id: previous_sum1
+        type: u4
+      - id: previous_sum2
+        type: u4
+    seq:
+      - id: word
+        type: u2le
+    instances:
+      sum1:
+        value: (previous_sum1 + word) % 65535
+      sum2:
+        value: (previous_sum2 + sum1) % 65535

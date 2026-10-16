@@ -1,9 +1,59 @@
 # SunCET SatNOGS dashboard preparation
 
-Last updated: 2026-09-29
+Last updated: 2026-10-05
 
-Status: **Local design only. No live dashboard has been created. This plan has
-not been validated against recorded telemetry or SatNOGS ingestion.**
+Status: **Development dashboard created in Scratchpad as
+[suncet-dev](https://dashboard.satnogs.org/d/ffzqpb9arppfkb/suncet-dev).
+Queries remain disabled pending verified ingestion and an end-to-end display check.**
+
+The mission owner confirmed editor access and SunCET team membership on
+2026-09-29. Scratchpad creation and editing were verified. The dashboard uses
+AEPEX's section layout as a reference; AEPEX and all other existing dashboards
+were left unchanged. The reviewed visual update contains 38 telemetry panels
+covering 82 approved aliases, 3 text/image panels, and 9 section rows. This adds
+`eps_pwr_state_adcs` to the initial 81-alias mapping below. The
+[generator, import template, and saved export](../suncet_processing_pipeline/satnogs/dashboard/README.md)
+are retained in the repository.
+
+The production InfluxDB datasource is `SatNOGS DB` (UID `000000001`). A
+`SHOW FIELD KEYS FROM "98244"` query returned success with no frames. The
+temporary NORAD ID is therefore only a proposed measurement name, and the
+public aliases remain unverified in the hosted measurement. Every telemetry query
+is disabled; reception timestamp/age is explicitly unavailable. There is no
+synthetic data, automatic refresh, or operational acceptance claim.
+
+The [October 5 local integration check](SATNOGS_DECODER_INTEGRATION_20261005.md)
+now verifies all 82 saved query aliases against ten decoded flight beacons and
+the actual DB point-construction functions. Fields are flat engineering values;
+state fields consistently use integer codes, which the existing mappings
+support. DB uses the satellite NORAD number as measurement and reception time
+formatted to whole UTC seconds. These checks use in-memory database substitutes;
+live field presence, queries, and displayed values remain unverified.
+
+The [2026-09-23 Hydra capture](SATNOGS_UHF_VALIDATION_20260923.md) now passes
+local comparison of all 111 public fields against CTDB 2.0.5. This supplies
+real recorded values for validation, but has not passed through SatNOGS
+ingestion. It also contains 4,043 valid beacon occurrences with coarse time
+below one day, apparently before clock setting. Spacecraft time must remain
+separate from verified reception time; checksum validity does not establish
+a usable observation timestamp.
+
+A separate local Grafana 11.6.0 preview now displays 5,241 distinct, valid
+beacons from the clock-set portion of that capture. Its initial 27-panel
+layout was expanded locally to 39 telemetry panels and 82 public fields, with
+native gauges, all-state mode blocks, all five public EPS power flags, a
+spacecraft render, and CSIE bin-count charts. It supports local panel editing
+without uploading captures to SatNOGS. The reviewed visuals are now applied to
+the hosted dashboard, including the spacecraft image; the recorded values and
+extra earlier-packet histogram remain local. Battery and bus gauges use a
+12–16 V scale with red below 13.2 V, yellow from 13.2 to 14 V, and green at 14 V and above.
+CDH choices run PHOENIX, SAFE, DOWNLINK, SCIENCE. The pointing-error plot uses
+a 0–10° axis and displays the actual maximum in its legend, including values
+above the plotted range.
+The [preview instructions](../suncet_processing_pipeline/satnogs/dashboard/README.md#local-recorded-preview)
+describe its fixed final-packet summaries and provisional spacecraft-time axis.
+This completes a layout preview with real values; hosted ingestion and
+end-to-end operational display acceptance remain pending.
 
 ## Scope and data contract
 
@@ -17,10 +67,11 @@ layout. Do not query a legacy layout as though it were current telemetry.
 Bind panels to the public aliases and apply only their defined engineering
 conversions; aliases without a conversion retain their raw values. Do not
 rescale decoder output a second time. Preserve any
-schema unit marked inferred in the panel description. Actual datasource,
-measurement names, tags, and query paths must be discovered after editor access
-and ingestion are available; the schema aliases are not yet verified Grafana
-query identifiers. Include the decoder/schema revision in dashboard notes.
+schema unit marked inferred in the panel description. Local code establishes
+the proposed measurement, flat aliases, numeric states, and tags (`satellite`,
+`sat_id`, `decoder`, `station`, `observer`, `source`, `version`). Verify these
+against the deployed datasource after decoder release and DB association.
+Include the decoder/schema revision in dashboard notes.
 
 Only the approved public beacon fields belong here. Reception timestamps,
 observation/station IDs, and decoder revision are provenance from the receiving
@@ -78,7 +129,11 @@ Keep the reception-age/coverage banner visible above all groups.
 - Synthetic fixtures may support an explicitly labeled preview. They must never
   be mixed into live queries or presented as received SunCET telemetry.
 
-## Obtain dashboard editor access
+## Dashboard editor access — granted
+
+Editor access and SunCET team membership were reported by the mission owner;
+Scratchpad access was verified on 2026-09-29. The historical procedure below is
+retained for future maintainers. No new access request is needed for this user.
 
 The official [SatNOGS Satellite Operator Guide](https://wiki.satnogs.org/Satellite_Operator_Guide#2.2_Add_a_new_Mission)
 was checked on 2026-09-29. Its dashboard procedure is:
@@ -94,8 +149,7 @@ was checked on 2026-09-29. Its dashboard procedure is:
 4. After SatNOGS grants editor permissions, create the mission dashboard.
 
 The guide does not list owning a ground station as an editor-access
-prerequisite. Network scheduling permission is a separate matter. This plan
-does not imply that editor access has been requested or granted.
+prerequisite. Network scheduling permission is a separate matter.
 
 Copy-ready request; replace placeholders in the confidential issue, not here:
 
@@ -125,9 +179,11 @@ https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLI
 
 ## Implementation and acceptance
 
-After access is granted, inspect the actual datasource and accepted decoder
-fields, create a development dashboard, and save its reproducible export in
-the repository. Validate one recorded observation end to end: source packet,
+The Scratchpad dashboard and its export now exist, and their source-level
+field mappings pass the local integration check. Confirm the actual deployed
+decoder fields and measurement before enabling the staged queries. Implement
+the reception-age display after timestamp and provenance semantics are verified.
+Validate one recorded observation end to end: source packet,
 selected layout, checksum result, decoded engineering values, observation
 timestamp, and displayed values. Exercise an empty range, interrupted source,
 unknown state, non-finite float, stale sample, and observation gap. Review units,

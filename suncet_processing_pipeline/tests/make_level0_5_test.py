@@ -1,6 +1,7 @@
 """Focused tests for canonical Level 0.5 ingest and CSIE row policy."""
 
 from collections import Counter
+import csv
 import json
 from types import SimpleNamespace
 
@@ -61,6 +62,9 @@ def test_level0_5_defaults_to_checksums_and_duckdb():
     assert args.require_packet_checksums is True
     assert args.skip_duckdb is False
     assert args.telemetry_database is None
+    assert args.write_decoded_csv is False
+    assert args.write_packet_manifest is False
+    assert args.write_csie_jpeg2000 is False
 
 
 def test_level0_5_checksum_bypass_is_explicit():
@@ -71,11 +75,194 @@ def test_level0_5_checksum_bypass_is_explicit():
     assert args.require_packet_checksums is False
 
 
+def test_level0_5_jpeg2000_output_is_explicit():
+    args = level0_5._build_argument_parser().parse_args(
+        ["--write-csie-jpeg2000"]
+    )
+
+    assert args.write_csie_jpeg2000 is True
+
+
+def test_explicit_input_file_bypasses_prefix_discovery(tmp_path):
+    selected = tmp_path / "capture_b.dat"
+    selected.write_bytes(b"selected")
+    (tmp_path / "capture_a.dat").write_bytes(b"other")
+
+    mode, prefix, paths = level0_5.resolve_input_files_and_mode(
+        tmp_path,
+        prefix="capture",
+        input_mode="xband",
+        input_files=[selected.name],
+    )
+
+    assert mode == "xband"
+    assert prefix == "capture"
+    assert paths == [selected]
+
+
+def test_decode_defaults_to_direct_rows_without_csv_products(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        level0_5,
+        "import_bus_decoder_bundle",
+        lambda _config: level0_5.DecoderBundle(None, None, None),
+    )
+    monkeypatch.setattr(
+        level0_5,
+        "read_ctdb_field_definitions_from_config",
+        lambda _config: {},
+    )
+    packet = b"\x08\x01\xc0\x01\x00\x00\x00"
+    record = PacketRecord(
+        packet_index=0,
+        source_offset=0,
+        apid=1,
+        packet_len=len(packet),
+        source="test",
+        acceptance_mode="checksum_bypassed_structural",
+        checksum_validated=False,
+        original_primary_header_endian="big",
+        primary_header_normalized=False,
+        payload_16bit_words_swapped=False,
+        packet=packet,
+    )
+    decoded_dir = tmp_path / "decoded"
+
+    decoded = level0_5.decode_packet_records(
+        [record],
+        SimpleNamespace(),
+        {1: "beacon"},
+        decoded_dir,
+    )
+
+    assert decoded.stats.total_packets == 1
+    assert list(decoded.rows_by_apid) == [1]
+    assert decoded.packet_names == {1: "beacon"}
+    assert list(decoded_dir.iterdir()) == []
+
+
+def test_csie_hk_wire_length_comes_from_v1_1_9_definition(tmp_path):
+    bus = tmp_path / "bus"
+    csie = tmp_path / "csie"
+    bus.mkdir()
+    csie.mkdir()
+    (bus / "ct_tlm.csv").write_text("APID,DataType\n")
+    (csie / "ct_tlm.csv").write_text("APID,DataType\n537,U3552\n")
+
+    expected = level0_5.read_expected_packet_bytes_from_config(
+        SimpleNamespace(bus_ctdb_path=bus, csie_ctdb_path=csie)
+    )
+
+    assert expected[537] == 444
+
+
+def test_csie_hk_444_byte_packet_uses_generated_v1_1_9_checksum(tmp_path, monkeypatch):
+    class FakeCsieHk:
+        def __init__(self, packet, _header, _file_origin):
+            self.SHCOARSE = int.from_bytes(packet[:4], "big")
+            self.csie_hk_intg_ms = 123
+            self.csie_hk_fletcher32 = int.from_bytes(packet[-4:], "big")
+
+    fake_csie = SimpleNamespace(CSIE_HK=FakeCsieHk)
+    monkeypatch.setattr(
+        level0_5,
+        "import_bus_decoder_bundle",
+        lambda _config: level0_5.DecoderBundle(None, None, fake_csie),
+    )
+    monkeypatch.setattr(
+        level0_5,
+        "read_ctdb_field_definitions_from_config",
+        lambda _config: {},
+    )
+    body = b"\x00" * 432 + b"\x12\x34" + b"\xaa\xbb\xcc\xdd"
+    packet = b"\x0a\x19\xc0\x01\x01\xb5" + body
+    record = PacketRecord(
+        packet_index=0,
+        source_offset=0,
+        apid=537,
+        packet_len=len(packet),
+        source="test",
+        acceptance_mode="fletcher32_le_words_stored_be",
+        checksum_validated=True,
+        original_primary_header_endian="big",
+        primary_header_normalized=False,
+        payload_16bit_words_swapped=False,
+        packet=packet,
+    )
+
+    decoded = level0_5.decode_packet_records(
+        [record],
+        SimpleNamespace(),
+        {537: "csie_hk"},
+        tmp_path / "decoded",
+    )
+
+    row = decoded.rows_by_apid[537][0]
+    assert row["csie_hk_fletcher32"] == 0xAABBCCDD
+    assert row["csie_hk_intg_ms"] == 123
+    assert "csie_hk_schema_status" not in row
+    assert "csie_hk_unknown_tail_2bytes_hex" not in row
+
+
+def test_direct_duckdb_source_key_separates_independent_xband_inputs(
+    tmp_path, monkeypatch
+):
+    captured = {}
+    captured_rows = {}
+    captured_names = {}
+
+    class FakeTelemetryProcessor:
+        def __init__(self, version, database_path, software_versions):
+            self.database_path = tmp_path / "telemetry.duckdb"
+
+        def process_decoded_rows(self, rows, names, source_paths):
+            captured.update(source_paths)
+            captured_rows.update(rows)
+            captured_names.update(names)
+            return {
+                "files_ingested": 1,
+                "files_replaced": 0,
+                "files_skipped": 0,
+                "rows_ingested": 1,
+                "rows_removed": 0,
+            }
+
+    monkeypatch.setattr(level0_5, "TelemetryProcessor", FakeTelemetryProcessor)
+    decoded = SimpleNamespace(
+        rows_by_apid={
+            1: [{"value": 1}],
+            536: [{"image_data": 1}],
+            538: [{"image_metadata": 1}],
+        },
+        packet_names={1: "beacon", 536: "csie_data", 538: "csie_meta"},
+    )
+    config = SimpleNamespace(
+        version_pipeline="test",
+        version_bus="bus",
+        version_csie="csie",
+        version_dsps="dsps",
+    )
+    args = SimpleNamespace(
+        skip_duckdb=False,
+        telemetry_database=None,
+        duckdb_source_key="capture_a",
+    )
+
+    level0_5.ingest_decoded_rows_to_duckdb(decoded, tmp_path, config, args)
+
+    assert captured[1].name == "decoded_apid_0001_beacon__xband_capture_a.csv"
+    assert captured_rows == {1: [{"value": 1}]}
+    assert captured_names == {1: "beacon"}
+    assert set(captured) == {1}
+
+
 def test_level0_5_ingests_decoded_csv_into_duckdb(tmp_path):
     decoded = tmp_path / "decoded_packets"
     decoded.mkdir()
     (decoded / "decoded_apid_0001_beacon.csv").write_text(
         "time,temperature\n1,10\n2,11\n"
+    )
+    (decoded / "decoded_apid_0538_csie_meta.csv").write_text(
+        "time,image_counter\n1,42\n"
     )
     database = tmp_path / "telemetry.duckdb"
     config = SimpleNamespace(
@@ -92,8 +279,10 @@ def test_level0_5_ingests_decoded_csv_into_duckdb(tmp_path):
 
     assert summary == {
         "files_ingested": 1,
+        "files_replaced": 0,
         "files_skipped": 0,
         "rows_ingested": 2,
+        "rows_removed": 0,
     }
     assert database.is_file()
 
@@ -490,6 +679,12 @@ def test_csie_metadata_capture_set_derives_timing_and_normalization():
     assert derived["effective_exposure_time_inner"] == 8 * 0.035 / 8
     assert derived["effective_exposure_time_outer"] == 3 * 15 / 4
     assert derived["exposure_time"] == 169 - 100
+    assert derived["capture_start_j2000"] == 100
+    assert derived["capture_average_j2000"] == 134.5
+    assert derived["capture_end_j2000"] == 169
+    assert derived["capture_start_iso8601"] == "2000-01-01T00:01:40Z"
+    assert derived["capture_average_iso8601"] == "2000-01-01T00:02:14.500Z"
+    assert derived["capture_end_iso8601"] == "2000-01-01T00:02:49Z"
     assert warnings == []
 
 
@@ -553,6 +748,38 @@ def test_csie_meta_decode_prefers_generated_engineering_values():
     assert expected_cols == {4360: 1504}
     assert warnings == []
 
+
+def test_csie_hk_geometry_association_uses_latest_sample_before_capture():
+    meta = {"SHCOARSE": 120, "SHFINE": 0}
+    samples = [
+        {
+            "_geometry_j2000": 100.0,
+            "csie_115_hk_icm_rad_sqr": 62500,
+            "csie_115_hk_icm_cent_col": 752,
+            "csie_115_hk_icm_cent_row": 1000,
+        },
+        {
+            "_geometry_j2000": 110.0,
+            "csie_115_hk_icm_rad_sqr": 40000,
+            "csie_115_hk_icm_cent_col": 700,
+            "csie_115_hk_icm_cent_row": 900,
+        },
+        {
+            "_geometry_j2000": 130.0,
+            "csie_115_hk_icm_rad_sqr": 1,
+            "csie_115_hk_icm_cent_col": 1,
+            "csie_115_hk_icm_cent_row": 1,
+        },
+    ]
+
+    enriched, warning = level0_5.associate_csie_hk_geometry(meta, samples)
+
+    assert warning is None
+    assert enriched["icm_circle_radius_squared_pixels"] == 40000
+    assert enriched["icm_circle_center_column_pixels"] == 700
+    assert enriched["icm_circle_center_row_pixels"] == 900
+    assert enriched["icm_geometry_hk_j2000"] == 110.0
+    assert enriched["icm_geometry_hk_age_seconds"] == 10.0
 
 def test_csie_meta_decode_falls_back_to_raw_ctdb_fields():
     packet = b"\x0a\x1a\xc0\x07\x00\x01" + (1114).to_bytes(2, "big")
@@ -649,6 +876,8 @@ def test_csie_json_preserves_nesting_and_uses_product_crosswalk(tmp_path):
     output = tmp_path / "image_4360_meta.json"
     meta = {
         "version": 0,
+        "SHCOARSE": 843_505_701,
+        "SHFINE": 770,
         "REUSABLE_SPARE_10": 0,
         "csie_meta_bus_volt": 9.8726022,
         "REUSABLE_SPARE_32": 29.5896,
@@ -675,7 +904,9 @@ def test_csie_json_preserves_nesting_and_uses_product_crosswalk(tmp_path):
     payload = json.loads(output.read_text())
 
     assert next(iter(payload)) == "image_id"
+    assert list(payload)[1] == "metadata_time_iso8601"
     assert list(payload)[-1] == "metadata_packets"
+    assert payload["metadata_time_iso8601"] == "2026-09-23T19:08:26.770Z"
     assert payload["image_counter"] == 4360
     assert payload["detector_temp"] == 23.8449
     assert payload["detector_temp_board"] == 24.1275
@@ -686,6 +917,166 @@ def test_csie_json_preserves_nesting_and_uses_product_crosswalk(tmp_path):
     assert nested["csie_meta_detBackside_temp"] == 23.7
     assert nested["csie_meta_adc_thermistor_temp"] == 29.4
     assert not any("reusable_spare" in key.casefold() for key in nested)
+
+
+def test_csie_json_uses_null_for_unavailable_metadata_time(tmp_path):
+    output = tmp_path / "image_4360_meta.json"
+
+    _write_csie_meta_json(output, 4360, {"csie_meta_img_id": 4360}, [])
+
+    payload = json.loads(output.read_text())
+    assert payload["metadata_time_iso8601"] is None
+    assert level0_5._metadata_time_iso8601(None) is None
+
+
+def test_csie_inventory_places_iso_time_immediately_after_image_id(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        level0_5, "read_ctdb_field_definitions_from_config", lambda _config: {}
+    )
+    monkeypatch.setattr(
+        level0_5, "read_expected_packet_bytes_from_config", lambda _config: {}
+    )
+    monkeypatch.setattr(
+        level0_5,
+        "import_bus_decoder_bundle",
+        lambda _config: SimpleNamespace(csie_pkts=None),
+    )
+
+    stats = level0_5.write_csie_image_products(
+        [],
+        SimpleNamespace(also_save_csie_meta_json=True),
+        tmp_path,
+    )
+
+    with stats.inventory_path.open(newline="") as handle:
+        fieldnames = csv.DictReader(handle).fieldnames
+    assert fieldnames[:2] == ["image_id", "metadata_time_iso8601"]
+
+
+def test_csie_image_writer_accepts_apid537_geometry_records(tmp_path, monkeypatch):
+    class GeneratedCsieHk:
+        def __init__(self, payload, header, file_origin):
+            self.csie_115_hk_icm_rad_sqr = 62500
+            self.csie_115_hk_icm_cent_col = 752
+            self.csie_115_hk_icm_cent_row = 1000
+
+    monkeypatch.setattr(
+        level0_5, "read_ctdb_field_definitions_from_config", lambda _config: {}
+    )
+    monkeypatch.setattr(
+        level0_5,
+        "import_bus_decoder_bundle",
+        lambda _config: SimpleNamespace(
+            csie_pkts=SimpleNamespace(CSIE_META=None, CSIE_HK=GeneratedCsieHk)
+        ),
+    )
+    packet = (
+        (0x0800 | 537).to_bytes(2, "big")
+        + (0xC000).to_bytes(2, "big")
+        + (5).to_bytes(2, "big")
+        + (100).to_bytes(4, "big")
+        + (250).to_bytes(2, "big")
+    )
+    record = PacketRecord(
+        packet_index=0,
+        source_offset=0,
+        apid=537,
+        packet_len=len(packet),
+        source="test",
+        acceptance_mode="test",
+        checksum_validated=True,
+        original_primary_header_endian="big",
+        primary_header_normalized=False,
+        payload_16bit_words_swapped=False,
+        packet=packet,
+    )
+
+    stats = level0_5.write_csie_image_products(
+        [record], SimpleNamespace(also_save_csie_meta_json=False), tmp_path
+    )
+
+    assert stats.inventory_path.is_file()
+    assert not any("could not supply ICM geometry" in item for item in stats.warnings)
+
+
+def test_csie_inventory_append_preserves_prior_images(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        level0_5, "read_ctdb_field_definitions_from_config", lambda _config: {}
+    )
+    monkeypatch.setattr(
+        level0_5, "read_expected_packet_bytes_from_config", lambda _config: {}
+    )
+    monkeypatch.setattr(
+        level0_5,
+        "import_bus_decoder_bundle",
+        lambda _config: SimpleNamespace(csie_pkts=None),
+    )
+    inventory = tmp_path / "csie_image_inventory.csv"
+    inventory.write_text(
+        "image_id,metadata_time_iso8601,source,warnings\n"
+        "41,2026-10-11T00:00:00Z,prior,kept\n"
+    )
+
+    level0_5.write_csie_image_products(
+        [],
+        SimpleNamespace(also_save_csie_meta_json=True),
+        tmp_path,
+        append_inventory=True,
+    )
+
+    with inventory.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 1
+    assert rows[0]["image_id"] == "41"
+    assert rows[0]["source"] == "prior"
+    assert rows[0]["warnings"] == "kept"
+
+
+def test_uhf_csie_selection_recovers_nested_xband_stream(monkeypatch, tmp_path):
+    recovered = PacketRecord(
+        packet_index=0,
+        source_offset=0,
+        apid=536,
+        packet_len=12,
+        source="nested",
+        acceptance_mode="test",
+        checksum_validated=True,
+        original_primary_header_endian="big",
+        primary_header_normalized=False,
+        payload_16bit_words_swapped=False,
+        packet=b"\x0a\x18\xc0\x00\x00\x05" + b"\x00" * 6,
+    )
+    monkeypatch.setattr(
+        level0_5,
+        "strip_xband_payload_stream",
+        lambda _data: (
+            b"nested-payload",
+            SimpleNamespace(internal_sync_markers_removed=3),
+        ),
+    )
+    monkeypatch.setattr(
+        level0_5,
+        "recover_xband_csie_records",
+        lambda stream, _config: ([recovered], [f"scanned {stream!r}"]),
+    )
+    spec = level0_5.SourceSpec(
+        source_id="uhf",
+        input_mode="uhf",
+        search_root=tmp_path,
+        input_paths=[],
+        output_dir=tmp_path,
+        prefix="ccsds",
+    )
+
+    records, warnings = level0_5.select_csie_records_for_source(
+        [], level0_5.SYNC_MARKER + b"payload", spec, object()
+    )
+
+    assert records == [recovered]
+    assert recovered.source_provenance_quality == "nested_xband_in_playback_stream_scan"
+    assert any("3 embedded sync markers" in warning for warning in warnings)
 
 
 def test_csie_fits_uses_spreadsheet_names_and_omits_spares(tmp_path):
@@ -703,6 +1094,12 @@ def test_csie_fits_uses_spreadsheet_names_and_omits_spares(tmp_path):
             "csie_meta_bus_volt": 9.8726022,
             "csie_meta_detBackside_temp": 23.8449,
             "csie_meta_detBoard_temp": 24.1275,
+            "capture_start_j2000": 843_505_700.0,
+            "capture_average_j2000": 843_505_707.5,
+            "capture_end_j2000": 843_505_715.0,
+            "capture_start_iso8601": "2026-09-23T19:08:25Z",
+            "capture_average_iso8601": "2026-09-23T19:08:32.500Z",
+            "capture_end_iso8601": "2026-09-23T19:08:40Z",
         },
         inventory_row={},
         engineering_units_applied=True,
@@ -716,6 +1113,13 @@ def test_csie_fits_uses_spreadsheet_names_and_omits_spares(tmp_path):
     assert header["BRD_TEMP"] == 24.1275
     assert header["ADC_TEMP"] == 29.5896
     assert "BUSVOLT" in header
+    assert header["DATE-OBS"] == "2026-09-23T19:08:25Z"
+    assert header["DATE-BEG"] == "2026-09-23T19:08:25Z"
+    assert header["DATE-AVG"] == "2026-09-23T19:08:32.500Z"
+    assert header["DATE-END"] == "2026-09-23T19:08:40Z"
+    assert header["J2K-BEG"] == 843_505_700.0
+    assert header["J2K-AVG"] == 843_505_707.5
+    assert header["J2K-END"] == 843_505_715.0
     assert "IMGID" not in header
     assert "DETBACKS" not in header
     assert "DETBOARD" not in header
@@ -1011,6 +1415,58 @@ def test_packetizer_can_return_records_without_compact_packet_stream():
     assert output == b""
     assert stats.packet_bytes == len(packet)
     assert [record.packet for record in stats.records] == [packet]
+
+
+def test_packetizer_candidate_scan_preserves_overlapping_headers():
+    packet = _ccsds_packet(68, b"accepted")
+
+    output, stats = packetize_checksum_valid_ccsds(
+        b"\x08" + packet,
+        {8, 68},
+        expected_packet_bytes={8: 99, 68: len(packet)},
+        extract_playback_wrappers=False,
+    )
+
+    assert output == packet
+    assert [record.source_offset for record in stats.records] == [1]
+    assert stats.dropped_non_filler_bytes == 1
+
+
+def test_packetizer_candidate_scan_accounts_for_skipped_filler_and_noise():
+    packet = _ccsds_packet(68, b"accepted")
+    prefix = b"\x00\x55\xff\x12"
+    suffix = b"\x55\xab\x00"
+
+    output, stats = packetize_checksum_valid_ccsds(
+        prefix + packet + suffix,
+        {68},
+        extract_playback_wrappers=False,
+    )
+
+    assert output == packet
+    assert stats.dropped_filler_bytes == 5
+    assert stats.dropped_non_filler_bytes == 2
+
+
+def test_packetizer_candidate_scan_does_not_visit_every_noise_byte(monkeypatch):
+    packet = _ccsds_packet(68, b"accepted")
+    original = level0_5.ccsds_packet_at
+    calls = 0
+
+    def counted_packet_at(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(level0_5, "ccsds_packet_at", counted_packet_at)
+    output, _stats = packetize_checksum_valid_ccsds(
+        b"\x12" * 100_000 + packet,
+        {68},
+        extract_playback_wrappers=False,
+    )
+
+    assert output == packet
+    assert calls == 1
 
 
 def test_level0_5_source_processing_keeps_binary_stages_in_memory(tmp_path):

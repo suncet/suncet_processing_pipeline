@@ -1,4 +1,4 @@
-![Python 3.12 | 3.14](https://img.shields.io/badge/python-3.12_|_3.14-blue)
+![Python 3.11–3.14](https://img.shields.io/badge/python-3.11%E2%80%933.14-blue)
 [![Tests](https://github.com/suncet/suncet_processing_pipeline/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/suncet/suncet_processing_pipeline/actions/workflows/unit-tests.yml)
 
 # SunCET Data Processing Pipeline
@@ -17,6 +17,65 @@ The repository also hosts the canonical
 [SunCET public beacon specification](docs/SUNCET_PUBLIC_BEACON_SPEC.md).
 The offline spacecraft/transmitter form entries are maintained in the
 [SatNOGS DB submission draft](docs/SATNOGS_DB_SUBMISSION_DRAFT.md).
+
+Mission-owned SatNOGS decoder code, the public schema, and test vectors belong
+in `suncet_processing_pipeline/satnogs/`; receiver and upstream integration
+validation belongs in `benchmarks/satnogs_*`. Dashboard deployment tooling and
+upstream contribution bundles should move mechanically to
+`integrations/satnogs/` after the current upstream work settles. A separate
+repository is warranted only if that integration becomes an independently
+released/deployed service or a maintained upstream fork.
+
+## Release scope and versioning
+
+Release `1.0.0` covers the operational Level 0.5 pipeline: checksum-validated
+X-band, UHF/Hydra, and debug-hardline ingest; CTDB telemetry decoding; direct
+DuckDB storage; CSIE image reconstruction; incremental X-band operation; and
+processing provenance. The software release version comes from the repository
+`version` file. It is deliberately independent of `version_pipeline`, currently
+`2.0.2`, which identifies the Level 0.5 output/database schema and must change
+when a CTDB or flight-software change would make those outputs incompatible.
+
+Later science levels are not part of the production-ready `1.0.0` claim. Level
+1 remains incomplete because its detector and radiometric corrections require
+the first real solar calibration data. Level 2 deconvolution and Level 4 CME
+tracking have tested provisional implementations. Level 3 likewise awaits real
+solar images: only then can residual recentering and any fine rotation needed to
+put solar north precisely upward be measured, specified, and validated. The
+end-to-end benchmark's explicitly labeled Level 3 pass-through is only an
+interface and performance fixture.
+
+One Level 1 geometric correction does not require first-light calibration: use
+the APID 46 body-to-J2000 attitude quaternion, with spacecraft +Z as the
+telescope boresight, to choose a lossless `np.rot90` multiple that places solar
+north along the detector's short Y axis. One end of that short image axis will
+be provisionally designated +Y and verified on orbit. Exposures spanning the
+spacecraft roll must be flagged and left unrotated rather than interpolated or
+assigned one of the stable 90-degree orientations.
+
+The Level 1 DN/s normalization component uses the effective stored-DN exposure
+derived from CSIE stacking, particle filtering, and right-shift metadata. A 2-D
+image receives different inner/outer exposure divisors only when CSIE metadata
+explicitly identifies `FPM0_INSIDE_FPM1_OUTSIDE`; unequal exposures with OFF,
+missing, or ambiguous composite metadata fail closed. The configurable circle
+center and radius-squared come from the APID 537 CSIE HK sample valid at capture
+time and are copied into the Level 0.5 FITS/JSON metadata. The circle coordinates
+are already in the processed (binned) image coordinate system.
+
+The main Level 1 writer now applies that per-pixel DN/s normalization and the
+APID 46 lossless coarse orientation. It reads attitude and any legacy missing
+circle geometry from the canonical all-APID
+`$suncet_data/test_data/suncet_telemetry_test_phase_v<version_pipeline>.duckdb`;
+folder-local
+time-corrected analysis databases are never selected automatically. The output
+is deliberately marked provisional because dark/flat/bad-pixel and remaining
+first-light-dependent calibration are not yet production-ready. Run it with:
+
+```sh
+python -m suncet_processing_pipeline.make_level1 \
+  /path/to/level0_5/csie_images \
+  --output-dir /path/to/level1
+```
 
 ## Portable data roots
 
@@ -43,6 +102,9 @@ The stable top-level convention is:
 ```text
 $suncet_data/                  public or synchronized
 ├── calibration/
+├── level0/
+│   ├── leafspace_ground_stations/   incoming X-band deliveries
+│   └── …                             UHF/source-specific deliveries
 ├── metadata/
 ├── level0_5/ … level4/
 ├── processing_runs/
@@ -62,7 +124,17 @@ Additional science/reference directories may live below `suncet_data`, but code
 must address them relative to that root.
 
 ## Instructions
-The SunCET Data Processing Pipeline supports Python 3.12 and the current Python 3.14 release on Intel and ARM systems. The environment specifications are architecture-neutral: Conda/Mamba or pip selects native packages for Intel/ARM macOS and Linux automatically.
+The pipeline supports CPython 3.11 through 3.14, with Python 3.14 as the
+production baseline. Although Python 3.15 is now an active stable release, the
+required scientific stack does not yet resolve on it; 3.15 support will be
+added after those dependencies catch up and the complete pipeline passes there.
+Pre-release Python 3.16 and end-of-life Python 3.10 are not supported. The
+policy is reviewed against the official
+[CPython support schedule](https://devguide.python.org/versions/) whenever a
+Python branch changes status, but dependency compatibility is required before a
+new branch is claimed as supported. The environment specifications are
+architecture-neutral: Conda/Mamba or pip selects native packages for Intel/ARM
+macOS and Linux automatically.
 
 The recommended production/SOC environment contains only pipeline runtime dependencies:
 
@@ -92,7 +164,7 @@ python -m pip install --no-deps -e .
 
 GNU Radio is not imported by the processing pipeline. Its large dependency stack is therefore isolated in `environment-radio.yml` and can be installed only where radio tooling is needed.
 
-To use pip inside an existing Python 3.12+ virtual environment:
+To use pip inside an existing Python 3.11–3.14 virtual environment:
 
 ```
 python -m pip install -r requirements.txt
@@ -146,7 +218,9 @@ to create them even after the live development Sheet changes.
 
 Mission-length scalar telemetry is stored in DuckDB, with one table per APID.
 This preserves each APID's natural sample times while still allowing SQL and
-ASOF joins for cross-system plots. Level 0.5 decoded CSVs can be ingested with:
+ASOF joins for cross-system plots. The standard Level 0.5 path writes decoded
+rows directly to DuckDB without per-APID CSV intermediates. Existing or
+explicitly requested diagnostic CSVs can still be ingested with:
 
 ```sh
 python -m suncet_processing_pipeline.make_telemetry_file \
@@ -265,15 +339,44 @@ The code uses a lightweight run management system. First, a new run is created w
 The canonical Level 0.5 implementation is
 `suncet_processing_pipeline.make_level0_5`. It supports X-band, hardline CCSDS,
 UHF/Hydra, and combined-source ingest. Raw concatenation, transport cleanup, and
-packet recovery stay in memory; the durable outputs are decoded tables, packet
-manifests, image inventories/products, source summaries, provenance, and a
-pipeline-versioned prelaunch DuckDB directly under `test_data`. Packet checksums
-and DuckDB ingest are enabled by default; decoded per-APID CSVs remain available
-during the test phase. Increment `version_pipeline` whenever a bus, CSIE, or DSPS
-CTDB/flight-software version changes so unlike telemetry definitions cannot share
-one database.
-Each run reprocesses the authoritative raw inputs; legacy intermediate binaries
-are ignored.
+packet recovery stay in memory; the durable outputs are decoded tables,
+image inventories/products, source summaries, provenance, and a pipeline-versioned
+prelaunch DuckDB directly under `test_data`. Packet checksums and direct DuckDB
+ingest are enabled by default. Per-APID decoded CSVs and the large packet manifest
+are opt-in diagnostics (`--write-decoded-csv` and `--write-packet-manifest`).
+CSIE FITS and PNG products remain standard; JPEG2000 previews are disabled unless
+`--write-csie-jpeg2000` is requested.
+Increment `version_pipeline` whenever a bus, CSIE, or DSPS CTDB/flight-software
+version changes so unlike telemetry definitions cannot share one database.
+Legacy intermediate binaries are ignored. Run `./process_new_data` from the
+repository root, or `suncet-process-new-data` after installing the package. With
+no folder argument, both commands inspect every standard delivery route under
+`$suncet_data/level0`: Leafspace uses X-band framing, while Fairbanks, LASP, and
+SatNOGS use UHF framing. Only new or replaced raw files are processed. Pass a
+specific delivery or test folder as the first argument, or as `--folder PATH` to
+the installed command. A nonstandard folder is inspected for X-band, hardline,
+and nested Hydra/UHF inputs; `--input-mode` can provide an explicit override.
+Use `--rebuild` for an explicit replay of the selected route history. Remaining
+arguments are forwarded to Level 0.5 (for example, `--write-packet-manifest` for
+a diagnostic run).
+
+### Temporary telemetry-definition compatibility
+
+One current wire format differs from its authoritative CTDB description:
+
+- APID 35 (`dsps_data`) is emitted as a 124-byte packet but is absent from the
+  bus CTDB packet and telemetry tables. DSPS CTDB v6.09 instead exposes the
+  prefix decoder as `DSPS_PASS` and describes 122 bytes. Level 0.5 decodes only
+  that known prefix, preserves the extra two bytes and four-byte trailer as raw
+  hex, and marks the result provisional. It does not claim that the generated
+  checksum field or unavailable engineering-unit conversions are valid. A
+  complete authoritative APID 35 product requires corrected CTDB packet and
+  field definitions.
+
+CSIE CTDB v1.1.9 defines the complete 444-byte APID 537 packet, including its
+two padding bytes and correctly positioned Fletcher-32 trailer; no CSIE wire-
+length compatibility path remains in the pipeline.
+
 For example:
 
 ```sh
@@ -316,6 +419,11 @@ $ pytest -v
 * To get to Level 0c, 1, and 2: the output of the preceding level
 
 ## Discussion: Output
-| Level 0.5 | Level 1 | Level 2 | Level 3 | Level 4 |
-| --- | --- | --- | --- | --- |
-| Raw images with metadata in header | Images with basic corrections like dark and flat field | Images with point spread function deconvolution | Images with detailed corrections like fine rotation and sun-centering | Coronal Mass Ejection (CME) catalog: average speed and acceleration, height-time, speed-time, and acceleration-time plots, movies |
+
+| Level | Intended product | Current status |
+| --- | --- | --- |
+| 0.5 | Raw images with metadata in headers; decoded telemetry in DuckDB | Operational `1.0.0` release scope |
+| 1 | Images with detector/radiometric corrections such as dark and flat field | Incomplete pending first real solar calibration data |
+| 2 | Images with point-spread-function deconvolution | Provisional implementation tested with synthetic/calibration fixtures |
+| 3 | Images with fine rotation, solar-north alignment, and sun-centering | Corrections await real solar data needed to measure residual recentering/rotation; benchmark pass-through only |
+| 4 | CME catalog, kinematics, plots, and movies | Provisional known-window implementation; continuous event discovery remains future work |

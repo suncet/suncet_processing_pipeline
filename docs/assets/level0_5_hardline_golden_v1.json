@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "dataset": "2026-09-17_dsps_light_leak_check",
+  "purpose": "Known-good Level 0.5 debug-hardline telemetry regression",
+  "processing": {
+    "input_mode": "hardline",
+    "packet_checksums_required": true,
+    "bus_ctdb_version": "2.0.5",
+    "csie_ctdb_version": "1.1.9",
+    "dsps_ctdb_version": "6.09",
+    "pipeline_schema_version": "2.0.2"
+  },
+  "inputs": [
+    {
+      "name": "ccsds_2026_259_22_50_53",
+      "size_bytes": 2000116,
+      "sha256": "39f4b1dd629347ccabea32fd6d1a1fd0436dfff7403dfe0e299572a8048c7d57"
+    },
+    {
+      "name": "ccsds_2026_259_22_58_15",
+      "size_bytes": 157728,
+      "sha256": "1ed64ac58480bf49f0f143e903a3ae94e77f942daa7a52d0c5e12191776f2ba0"
+    },
+    {
+      "name": "ccsds_2026_260_00_52_11",
+      "size_bytes": 1893344,
+      "sha256": "4bacb15d811cfad1cf59c0ad6cac874c185429c012242ba344d372209379d0e4"
+    }
+  ],
+  "packet_recovery": {
+    "candidates": 19183,
+    "accepted": 12525,
+    "checksum_verified": 12525,
+    "checksum_failed": 6658,
+    "incomplete": 0,
+    "by_apid": {
+      "1": {"name": "beacon", "candidates": 11239, "accepted": 11238, "checksum_failed": 1},
+      "8": {"name": "tbl_hk", "candidates": 899, "accepted": 899, "checksum_failed": 0},
+      "20": {"name": "log_msg", "candidates": 23, "accepted": 23, "checksum_failed": 0},
+      "21": {"name": "storage_hk", "candidates": 1, "accepted": 1, "checksum_failed": 0},
+      "35": {"name": "dsps_data", "candidates": 6657, "accepted": 0, "checksum_failed": 6657},
+      "520": {"name": "tbl_hk", "candidates": 18, "accepted": 18, "checksum_failed": 0},
+      "537": {"name": "csie_hk", "candidates": 346, "accepted": 346, "checksum_failed": 0}
+    }
+  },
+  "duckdb_rows_by_apid": {
+    "1": 11238,
+    "8": 899,
+    "20": 23,
+    "21": 1,
+    "520": 18,
+    "537": 346
+  },
+  "csie_recovery": {
+    "metadata_packets": 0,
+    "data_row_packets": 0,
+    "images_written": 0
+  },
+  "known_apid35_limitation": {
+    "status": "provisional packet definition; excluded by strict checksum validation",
+    "diagnostic_bypass_candidates": 6657,
+    "diagnostic_bypass_decoded": 6657,
+    "release_interpretation": "Expected until an authoritative complete APID 35 wire/checksum definition replaces the temporary DSPS_PASS compatibility decoder."
+  },
+  "stable_output_sha256": {
+    "csie_image_inventory.csv": "a08e41bb2c4c0bade5122d1e8f9ba0da290039b5e38d7c50e62096fb5350fbff",
+    "decoded_packet_summary.csv": "c0eaa7c23651eb0bb7cf72adda88c4dd9b564c8f92ea40d7942b9534a97f5c0e",
+    "packets_manifest.csv": "f41275cca09e40dc363e47f18c91cfb9c30d57b996236cb8e0269625ab01b39d"
+  }
+}

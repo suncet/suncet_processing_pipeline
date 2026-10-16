@@ -1,12 +1,9 @@
 """Build the prelaunch test-phase, per-APID DuckDB telemetry store.
 
-Level 0.5 already writes one decoded CSV stream per APID. This module ingests
-those products transactionally, preserving each APID's natural sampling cadence
-instead of forcing unrelated packets onto one shared timeline.
-
-Per-APID CSVs remain intentional, inspectable test-phase products. Once the
-mission leaves this iterative test phase, Level 0.5 is expected to write DuckDB
-directly and retire the routine decoded-CSV intermediate.
+Level 0.5 writes decoded rows directly into this store, preserving each APID's
+natural sampling cadence instead of forcing unrelated packets onto one shared
+timeline.  The CSV ingest entry point remains available for explicit diagnostic
+imports and older products, but CSVs are not part of the normal processing path.
 """
 
 from __future__ import annotations
@@ -33,6 +30,35 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _dataframe_sha256(apid: int, frame: pd.DataFrame) -> str:
+    """Return a stable content identity for one directly decoded APID frame."""
+    digest = hashlib.sha256()
+    digest.update(b"suncet-decoded-apid-frame-v1\0")
+    digest.update(str(apid).encode("ascii"))
+    digest.update(b"\0")
+    for column_name, dtype in zip(frame.columns, frame.dtypes):
+        digest.update(str(column_name).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(dtype).encode("ascii"))
+        digest.update(b"\0")
+    row_hashes = pd.util.hash_pandas_object(
+        frame,
+        index=False,
+        categorize=False,
+    )
+    digest.update(row_hashes.to_numpy(dtype="uint64", copy=False).tobytes())
+    return digest.hexdigest()
+
+
+def _rollback_without_masking(connection) -> None:
+    """Roll back when possible without hiding the transaction's real exception."""
+    try:
+        connection.execute("ROLLBACK")
+    except duckdb.TransactionException:
+        # DuckDB may already have ended a transaction after a failed COMMIT.
+        pass
 
 
 class CTDBDocumenter:
@@ -113,7 +139,11 @@ class CTDBDocumenter:
 
 
 class TelemetryProcessor:
-    """Ingest decoded per-APID CSVs into one versioned test-phase database."""
+    """Store decoded APID rows in one versioned test-phase database.
+
+    Normal Level 0.5 processing supplies decoded rows directly. CSV ingestion is
+    retained for diagnostic exports and compatibility with existing products.
+    """
 
     def __init__(self, version=None, database_path=None, software_versions=None):
         if version is None:
@@ -199,8 +229,10 @@ class TelemetryProcessor:
         files = self._discover(path, file_list)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         ingested = 0
+        replaced = 0
         skipped = 0
         rows_ingested = 0
+        rows_removed = 0
         with duckdb.connect(str(self.database_path)) as connection:
             self._initialize(connection)
             for source in files:
@@ -210,14 +242,56 @@ class TelemetryProcessor:
                 packet_name = match.group("name")
                 table_name = f"apid_{apid:04d}"
                 checksum = _sha256(source)
-                already_loaded = connection.execute(
-                    "SELECT 1 FROM _ingestions WHERE source_sha256 = ?", [checksum]
-                ).fetchone()
-                if already_loaded:
-                    skipped += 1
-                    continue
                 connection.execute("BEGIN")
                 try:
+                    previous_ingestions = connection.execute(
+                        "SELECT ingestion_id, table_name, rows_ingested, source_sha256 "
+                        "FROM _ingestions WHERE source_path = ?",
+                        [str(source)],
+                    ).fetchall()
+                    stale_ingestions = [
+                        row for row in previous_ingestions if row[3] != checksum
+                    ]
+                    matching_ingestions = [
+                        row for row in previous_ingestions if row[3] == checksum
+                    ]
+
+                    # Older pipeline versions could append a rebuilt CSV under the
+                    # same path. Remove every superseded ingestion in the same
+                    # transaction as the replacement so rerunning Level 0.5 is safe.
+                    for ingestion_id, old_table_name, old_count, _old_checksum in (
+                        stale_ingestions
+                    ):
+                        safe_old_table = str(old_table_name).replace('"', '""')
+                        connection.execute(
+                            f'DELETE FROM "{safe_old_table}" WHERE _ingestion_id = ?',
+                            [ingestion_id],
+                        )
+                        connection.execute(
+                            "DELETE FROM _ingestions WHERE ingestion_id = ?",
+                            [ingestion_id],
+                        )
+                        rows_removed += old_count
+
+                    if matching_ingestions:
+                        connection.execute("COMMIT")
+                        skipped += 1
+                        if stale_ingestions:
+                            replaced += 1
+                        continue
+
+                    # Preserve content-based deduplication when the identical CSV is
+                    # already represented by a different source path.
+                    already_loaded = connection.execute(
+                        "SELECT 1 FROM _ingestions WHERE source_sha256 = ?", [checksum]
+                    ).fetchone()
+                    if already_loaded:
+                        connection.execute("COMMIT")
+                        skipped += 1
+                        if stale_ingestions:
+                            replaced += 1
+                        continue
+
                     connection.execute(
                         "INSERT INTO _apid_catalog VALUES (?, ?, ?) "
                         "ON CONFLICT (apid) DO UPDATE SET "
@@ -225,23 +299,35 @@ class TelemetryProcessor:
                         [apid, packet_name, table_name],
                     )
                     source_sql = str(source).replace("'", "''")
+                    csv_scan = (
+                        f"read_csv_auto('{source_sql}', header=true, "
+                        "all_varchar=false, sample_size=-1)"
+                    )
                     connection.execute(
                         f'CREATE TABLE IF NOT EXISTS "{table_name}" AS '
                         f"SELECT *, uuid() AS _ingestion_id, '{checksum}'::VARCHAR AS _source_sha256 "
-                        f"FROM read_csv_auto('{source_sql}', header=true, all_varchar=false) LIMIT 0"
+                        f"FROM {csv_scan} LIMIT 0"
                     )
                     existing_columns = {
-                        row[0]
+                        row[0]: row[1]
                         for row in connection.execute(
                             f'DESCRIBE "{table_name}"'
                         ).fetchall()
                     }
                     source_columns = connection.execute(
-                        f"DESCRIBE SELECT * FROM read_csv_auto("
-                        f"'{source_sql}', header=true, all_varchar=false)"
+                        f"DESCRIBE SELECT * FROM {csv_scan}"
                     ).fetchall()
                     for column_name, column_type, *_rest in source_columns:
                         if column_name in existing_columns:
+                            if (
+                                existing_columns[column_name] != "VARCHAR"
+                                and column_type == "VARCHAR"
+                            ):
+                                safe_column = str(column_name).replace('"', '""')
+                                connection.execute(
+                                    f'ALTER TABLE "{table_name}" ALTER COLUMN '
+                                    f'"{safe_column}" TYPE VARCHAR'
+                                )
                             continue
                         safe_column = str(column_name).replace('"', '""')
                         connection.execute(
@@ -252,7 +338,7 @@ class TelemetryProcessor:
                     connection.execute(
                         f'INSERT INTO "{table_name}" BY NAME '
                         f"SELECT *, ?::UUID AS _ingestion_id, ?::VARCHAR AS _source_sha256 "
-                        f"FROM read_csv_auto('{source_sql}', header=true, all_varchar=false)",
+                        f"FROM {csv_scan}",
                         [ingestion_id, checksum],
                     )
                     count = connection.execute(
@@ -267,11 +353,199 @@ class TelemetryProcessor:
                     )
                     connection.execute("COMMIT")
                 except Exception:
-                    connection.execute("ROLLBACK")
+                    _rollback_without_masking(connection)
                     raise
                 ingested += 1
+                if stale_ingestions:
+                    replaced += 1
                 rows_ingested += count
-        return {"files_ingested": ingested, "files_skipped": skipped, "rows_ingested": rows_ingested}
+        return {
+            "files_ingested": ingested,
+            "files_replaced": replaced,
+            "files_skipped": skipped,
+            "rows_ingested": rows_ingested,
+            "rows_removed": rows_removed,
+        }
+
+    def process_decoded_rows(
+        self,
+        rows_by_apid: dict[int, list[dict[str, object]]],
+        packet_names: dict[int, str],
+        source_paths: dict[int, Path],
+    ) -> dict[str, int]:
+        """Ingest decoded rows directly, replacing prior data for each source path.
+
+        ``source_paths`` are stable logical identities. They intentionally use the
+        historical decoded-CSV paths even when no CSV is written, allowing the first
+        direct run to replace rows previously ingested through the CSV path.
+        """
+        missing_paths = sorted(set(rows_by_apid) - set(source_paths))
+        if missing_paths:
+            raise ValueError(
+                "Missing direct-ingest source path(s) for APID(s): "
+                + ", ".join(str(apid) for apid in missing_paths)
+            )
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        ingested = 0
+        replaced = 0
+        skipped = 0
+        rows_ingested = 0
+        rows_removed = 0
+        relation_name = "_incoming_decoded_rows"
+
+        with duckdb.connect(str(self.database_path)) as connection:
+            self._initialize(connection)
+            for apid, rows in sorted(rows_by_apid.items()):
+                if not rows:
+                    continue
+                packet_name = packet_names.get(apid, f"apid_{apid}")
+                table_name = f"apid_{apid:04d}"
+                source = Path(source_paths[apid]).resolve()
+                frame = pd.DataFrame.from_records(rows)
+                checksum = _dataframe_sha256(apid, frame)
+                connection.register(relation_name, frame)
+                try:
+                    previous_ingestions = connection.execute(
+                        "SELECT ingestion_id, table_name, rows_ingested, source_sha256 "
+                        "FROM _ingestions WHERE source_path = ?",
+                        [str(source)],
+                    ).fetchall()
+                    stale_ingestions = [
+                        row for row in previous_ingestions if row[3] != checksum
+                    ]
+                    matching_ingestions = [
+                        row for row in previous_ingestions if row[3] == checksum
+                    ]
+                    already_loaded = matching_ingestions or connection.execute(
+                        "SELECT 1 FROM _ingestions WHERE source_sha256 = ?",
+                        [checksum],
+                    ).fetchone()
+                    if already_loaded:
+                        removed_for_source = 0
+                        if stale_ingestions:
+                            connection.execute("BEGIN")
+                            try:
+                                for (
+                                    ingestion_id,
+                                    old_table_name,
+                                    old_count,
+                                    _old_checksum,
+                                ) in stale_ingestions:
+                                    safe_old_table = str(old_table_name).replace(
+                                        '"', '""'
+                                    )
+                                    connection.execute(
+                                        f'DELETE FROM "{safe_old_table}" '
+                                        "WHERE _ingestion_id = ?",
+                                        [ingestion_id],
+                                    )
+                                    connection.execute(
+                                        "DELETE FROM _ingestions WHERE ingestion_id = ?",
+                                        [ingestion_id],
+                                    )
+                                    removed_for_source += old_count
+                                connection.execute("COMMIT")
+                            except Exception:
+                                _rollback_without_masking(connection)
+                                raise
+                        rows_removed += removed_for_source
+                        skipped += 1
+                        if stale_ingestions:
+                            replaced += 1
+                        continue
+
+                    # DuckDB cannot safely combine ALTER TABLE with deleting old
+                    # rows from that table in one transaction. Commit all schema
+                    # evolution first; the subsequent replacement remains atomic.
+                    connection.execute(
+                        "INSERT INTO _apid_catalog VALUES (?, ?, ?) "
+                        "ON CONFLICT (apid) DO UPDATE SET "
+                        "packet_name = excluded.packet_name, table_name = excluded.table_name",
+                        [apid, packet_name, table_name],
+                    )
+                    connection.execute(
+                        f'CREATE TABLE IF NOT EXISTS "{table_name}" AS '
+                        f"SELECT *, uuid() AS _ingestion_id, "
+                        f"'{checksum}'::VARCHAR AS _source_sha256 "
+                        f"FROM {relation_name} LIMIT 0"
+                    )
+                    existing_columns = {
+                        row[0]: row[1]
+                        for row in connection.execute(
+                            f'DESCRIBE "{table_name}"'
+                        ).fetchall()
+                    }
+                    source_columns = connection.execute(
+                        f"DESCRIBE SELECT * FROM {relation_name}"
+                    ).fetchall()
+                    for column_name, column_type, *_rest in source_columns:
+                        if column_name in existing_columns:
+                            if (
+                                existing_columns[column_name] != "VARCHAR"
+                                and column_type == "VARCHAR"
+                            ):
+                                safe_column = str(column_name).replace('"', '""')
+                                connection.execute(
+                                    f'ALTER TABLE "{table_name}" ALTER COLUMN '
+                                    f'"{safe_column}" TYPE VARCHAR'
+                                )
+                            continue
+                        safe_column = str(column_name).replace('"', '""')
+                        connection.execute(
+                            f'ALTER TABLE "{table_name}" ADD COLUMN '
+                            f'"{safe_column}" {column_type}'
+                        )
+
+                    removed_for_source = 0
+                    connection.execute("BEGIN")
+                    for ingestion_id, old_table_name, old_count, _old_checksum in (
+                        stale_ingestions
+                    ):
+                        safe_old_table = str(old_table_name).replace('"', '""')
+                        connection.execute(
+                            f'DELETE FROM "{safe_old_table}" WHERE _ingestion_id = ?',
+                            [ingestion_id],
+                        )
+                        connection.execute(
+                            "DELETE FROM _ingestions WHERE ingestion_id = ?",
+                            [ingestion_id],
+                        )
+                        removed_for_source += old_count
+                    ingestion_id = connection.execute("SELECT uuid()").fetchone()[0]
+                    connection.execute(
+                        f'INSERT INTO "{table_name}" BY NAME '
+                        f"SELECT *, ?::UUID AS _ingestion_id, "
+                        f"?::VARCHAR AS _source_sha256 FROM {relation_name}",
+                        [ingestion_id, checksum],
+                    )
+                    count = connection.execute(
+                        f'SELECT count(*) FROM "{table_name}" WHERE _ingestion_id = ?',
+                        [ingestion_id],
+                    ).fetchone()[0]
+                    connection.execute(
+                        "INSERT INTO _ingestions "
+                        "(ingestion_id, source_path, source_sha256, apid, table_name, rows_ingested) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        [ingestion_id, str(source), checksum, apid, table_name, count],
+                    )
+                    connection.execute("COMMIT")
+                except Exception:
+                    _rollback_without_masking(connection)
+                    raise
+                finally:
+                    connection.unregister(relation_name)
+                rows_removed += removed_for_source
+                ingested += 1
+                if stale_ingestions:
+                    replaced += 1
+                rows_ingested += count
+        return {
+            "files_ingested": ingested,
+            "files_replaced": replaced,
+            "files_skipped": skipped,
+            "rows_ingested": rows_ingested,
+            "rows_removed": rows_removed,
+        }
 
 
 def main(argv=None):
@@ -285,7 +559,13 @@ def main(argv=None):
     directories: list[Path] = []
     for path in args.paths:
         (directories if path.is_dir() else files).append(path)
-    summary = {"files_ingested": 0, "files_skipped": 0, "rows_ingested": 0}
+    summary = {
+        "files_ingested": 0,
+        "files_replaced": 0,
+        "files_skipped": 0,
+        "rows_ingested": 0,
+        "rows_removed": 0,
+    }
     for directory in directories or [None]:
         result = processor.process_files(path=directory, file_list=files)
         files = []

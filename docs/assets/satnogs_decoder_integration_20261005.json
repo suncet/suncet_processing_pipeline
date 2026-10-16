@@ -1,0 +1,74 @@
+{
+  "validated_on": "2026-10-05",
+  "decoder_base_revision": "813bbd0c549eb68fa20851c5407b16fbb245efbe",
+  "upstream_python_runtime": "0.10",
+  "mission_reference_runtime": "0.11",
+  "db_revision": "e6ea806331a3d075c88eab1890a41ab8bcb93f7d",
+  "db_utils_sha256": "0d00371f29171a0204598321251f132e8d1fd573ec8c8359678f9812fb645f96",
+  "input_sha256": "30ff20c8c860630d4168d81ea1fcb8b4d966029de5b0a66c2c360ca25673ccbe",
+  "receiver": {
+    "gr_satnogs_commit": "4defcfc445c1f94450c48ad348689e7986ebe6f7",
+    "satnogs_flowgraphs_commit": "75eb7300fdf38ca3e6455d8bed687fc10d680054",
+    "crcpp_commit": "6da4f42ec110c22d10973f4c16927700f1b52bf1",
+    "mode": {
+      "script_name": "satnogs_fsk_ax25.py",
+      "has_baudrate": true,
+      "has_framing": true,
+      "framing": "ax25",
+      "outputs_frames": true
+    },
+    "native_sources": [
+      "ax25_decoder.cc",
+      "decoder.cc",
+      "frame_decoder_impl.cc",
+      "metadata.cc",
+      "doppler_correction_cc_impl.cc",
+      "dummy_doppler_correction.cc"
+    ],
+    "original_grc_sha256": "d7e17b2583d9513d3de14baa2b21414e0183a24563a0350f52362e3d1c4f22cf",
+    "generated_grc_sha256": "76b522ab03996b66e6e2ce2b6181daf46993338774af37d03ca87767ca9928d3",
+    "bridge_sha256": "30852882bc6ed30f44ccabe44843a72ae96101fca896baa70cd6a2750a898ea1"
+  },
+  "results": {
+    "receiver_frames": 20,
+    "beacons_ingested_in_memory": 10,
+    "other_frames_rejected": 10,
+    "approved_fields_per_beacon": 111,
+    "all_public_values_match_mission_decoder": true,
+    "ingested_field_counts": [
+      111
+    ],
+    "raw_structure_top_level_keys": [
+      "beacon"
+    ],
+    "nan_and_both_infinities_omitted_without_losing_other_fields": true,
+    "unknown_state_preserves_integer_field_type": true,
+    "corrupt_excluded_region_rejected": true
+  },
+  "db_contract": {
+    "measurement": "satellite NORAD number (98244 currently proposed)",
+    "field_names": "111 flat public aliases; engineering values and integer state codes",
+    "timestamp": "demoddata reception timestamp, formatted to whole UTC seconds",
+    "tested_timestamp_metadata": "synthetic local metadata; not recording reception times",
+    "tags": [
+      "satellite",
+      "sat_id",
+      "decoder",
+      "station",
+      "observer",
+      "source",
+      "version"
+    ]
+  },
+  "dashboard": {
+    "dashboard_uid": "ffzqpb9arppfkb",
+    "saved_version": 5,
+    "telemetry_panels": 38,
+    "queried_public_aliases": 82,
+    "all_aliases_present_in_decoded_points": true,
+    "four_canvas_state_panels_support_numeric_codes": true,
+    "all_hosted_targets_still_disabled": true
+  },
+  "scope": "Local released-receiver replay, compiled upstream decoder, and unchanged DB ingestion functions with in-memory I/O substitutes. No live DB, Influx server, Network upload, or Grafana query/render test.",
+  "privacy": "No IQ samples, packet bytes, recorded telemetry values, or other packet identifiers exported."
+}

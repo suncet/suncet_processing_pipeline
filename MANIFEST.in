@@ -1,0 +1,7 @@
+include version
+include requirements.txt
+recursive-include suncet_processing_pipeline/config_files *.ini *.json
+include suncet_processing_pipeline/satnogs/public_beacon_schema.csv
+include suncet_processing_pipeline/satnogs/suncet_apid1.ksy
+recursive-include suncet_processing_pipeline/satnogs/test_data *.hex *.json
+prune suncet_processing_pipeline/tests

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "dataset": "2026-06-03_fm_xband_test_vacuum_ambient_temperature",
+  "purpose": "Known-good Level 0.5 X-band image-reconstruction regression",
+  "inputs": [
+    {
+      "name": "BluefinAnomaly_GoodDataMaybe",
+      "size_bytes": 77899784,
+      "sha256": "5e48ae0fc0a8e865d3ebbc107d6bd593361183e709f9dba8b308744409555c7e"
+    },
+    {
+      "name": "BluefinAnomaly_GoodDataMaybe2",
+      "size_bytes": 129373800,
+      "sha256": "a29f7b2fdd9396604e4942bb4b49edeccae121bc394d285c018a53b4f54efa35"
+    }
+  ],
+  "merged_input_sha256": "9866f2b8051daebae0a37c9ad1e089003d076e05f829264aefe747f705d003fb",
+  "transfer_frames": {
+    "total": 100814,
+    "footer_checksum_valid": 82362,
+    "footer_checksum_failed": 18452
+  },
+  "csie_rows": {
+    "candidates": 38882,
+    "checksum_valid": 29858,
+    "checksum_failed": 9024
+  },
+  "reconstructed_images": {
+    "count": 30,
+    "rows": 2000,
+    "columns": 1504,
+    "dtype": "uint16",
+    "all_selected_rows_checksum_valid_image_ids": [
+      2806,
+      2807,
+      2808,
+      2809,
+      2830,
+      2831,
+      2832
+    ]
+  },
+  "golden_pixel_arrays": [
+    {
+      "image_id": 2806,
+      "pixel_byte_order": "big-endian",
+      "sha256": "1eb52d4c7841c5e20e1886b8985e9aa00793531c6d433e4cb2f09a7184ef0cdc"
+    },
+    {
+      "image_id": 2807,
+      "pixel_byte_order": "big-endian",
+      "sha256": "a9066131d08e9ec226b110b4bd2b29a8e897db61375533523d7fb04b5aebf0cd"
+    },
+    {
+      "image_id": 2808,
+      "pixel_byte_order": "big-endian",
+      "sha256": "5cd28b7fbd908b000a7b79bf37863805d4acbaeac207ae5a1e9b5a589ef14556"
+    },
+    {
+      "image_id": 2830,
+      "pixel_byte_order": "big-endian",
+      "sha256": "6f9859fd4594516cf6feb2e93f49c50763974a96677ebc5394ff0bc54bdd01c2"
+    },
+    {
+      "image_id": 2831,
+      "pixel_byte_order": "big-endian",
+      "sha256": "b1bab6c3d9a0c8762fdc3216b16ec184c2a73acb24828bf9478111df2d4d51f5"
+    },
+    {
+      "image_id": 2832,
+      "pixel_byte_order": "big-endian",
+      "sha256": "55e45a533617afb0469af87178e11ff8c651dfd88808c6019fc3a41fd7a32db7"
+    }
+  ]
+}

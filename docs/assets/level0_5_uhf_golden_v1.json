@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "dataset": "2026-09-17_uhf_19200_baud_image_4x4bin_shift4_internal_led",
+  "purpose": "Known-good Level 0.5 UHF/Hydra playback and image-reconstruction regression",
+  "processing": {
+    "input_mode": "uhf",
+    "packet_checksums_required": true,
+    "bus_ctdb_version": "2.0.5",
+    "csie_ctdb_version": "1.1.9",
+    "dsps_ctdb_version": "6.09",
+    "pipeline_schema_version": "2.0.2"
+  },
+  "inputs": [
+    {
+      "name": "ccsds_2026_261_00_12_49",
+      "size_bytes": 436404,
+      "sha256": "8ea7e711c4487b3f043d6efa0938e077473b006e1beb63b81545d32ad13fac7d"
+    }
+  ],
+  "uhf_playback": {
+    "segment_packets_seen": 1653,
+    "segment_groups_seen": 57,
+    "complete_apid72_packets_rebuilt": 57,
+    "incomplete_apid72_packets_dropped": 0,
+    "duplicate_segment_packets_removed": 0,
+    "conflicting_segment_indices": 0,
+    "nested_xband_sync_markers_removed_for_csie_recovery": 502
+  },
+  "packet_recovery": {
+    "candidates": 92,
+    "accepted": 88,
+    "checksum_verified": 88,
+    "checksum_failed": 4,
+    "incomplete": 0,
+    "by_apid": {
+      "1": {"name": "beacon", "candidates": 86, "accepted": 86, "checksum_failed": 0},
+      "2": {"name": "lib_hk", "candidates": 2, "accepted": 0, "checksum_failed": 2},
+      "514": {"name": "lib_hk", "candidates": 2, "accepted": 0, "checksum_failed": 2},
+      "538": {"name": "csie_meta", "candidates": 2, "accepted": 2, "checksum_failed": 0}
+    }
+  },
+  "csie_recovery": {
+    "metadata_packets": 2,
+    "data_row_packets": 500,
+    "checksum_valid_rows": 500,
+    "checksum_failed_rows": 0,
+    "images_written": 1,
+    "image_id": 4485,
+    "rows": 500,
+    "columns": 376,
+    "dtype": "uint16",
+    "pixel_byte_order": "big-endian",
+    "pixel_array_sha256": "d87a2aebfa05a2e86f2b77c24034ef75e5c7628a2b707e78b5a358d7db25460d"
+  },
+  "duckdb_rows_by_apid": {
+    "1": 86
+  },
+  "stable_output_sha256": {
+    "csie_image_inventory.csv": "83d0fa272f17790bf0a7f2dbd49d43f1d62089cad221839f205b5d293680e317",
+    "decoded_packet_summary.csv": "99d5d100735a89b354a49c5d8277598c18c8fb6df465981f5b72fefe78939c15",
+    "packets_manifest.csv": "2ed4a153a6a659f48af7612a551d084590eb8499efa441afa6dc59e111052889"
+  }
+}

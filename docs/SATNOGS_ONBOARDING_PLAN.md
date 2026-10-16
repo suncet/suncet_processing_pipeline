@@ -1,6 +1,6 @@
 # SunCET SatNOGS Onboarding and Operations Plan
 
-Last updated: 2026-09-29
+Last updated: 2026-10-05
 
 ## Purpose
 
@@ -103,15 +103,29 @@ inactive/unconfirmed transmitter suggestion.
 Flight software has confirmed its complete radio-interface frame buffer:
 literal destination and source address octets representing `LASP-0` and
 `SUN1-0`, control `0x03`, PID `0xF0`, the CCSDS packet, and a CRC-16/X-25 FCS.
-Both unusual `0x41` SSID octets are literal and intentional. An RF capture must
-still establish flags, bit stuffing, and the exact boundary delivered by the
-SatNOGS receive path.
+Both unusual `0x41` SSID octets are literal and intentional. The September 30
+flight-unit IQ capture now confirms flags, bit stuffing, and captured FCS.
+The released SatNOGS GFSK/AX.25 receiver now passes a local integration replay:
+it retains the header and removes flags/FCS, delivering 268-byte beacon frames.
+
+The [2026-09-23 Hydra capture audit](SATNOGS_UHF_VALIDATION_20260923.md) found
+this literal header immediately before 544 checksum-valid beacons. Most saved
+beacons are bare CCSDS; at 516 header-bearing boundaries the next header follows
+the packet immediately, with no FCS bytes. This supports the software framing
+description but does not establish the SatNOGS receiver's output boundary.
+On 2026-09-29, the mission owner accepted these headers as valid evidence for
+implementation. Address order/callsigns, literal SSID octets, control/PID, and
+direct CCSDS encapsulation are therefore closed as header-layout questions.
+The reason Hydra retained them need not be resolved before decoder work.
 
 #### Radio configuration evidence
 
-The public beacon specification omits unresolved deviation, filter,
-interleaving, and whitening rows; these remain receiver-validation tasks here.
-It lists FEC as TBC. Obtain the as-built TRX-U hardware/firmware revision and
+The [September 30 IQ audit](SATNOGS_IQ_VALIDATION_20260930.md) establishes the
+9600-baud receive chain with G3RUH descrambling, NRZI, and HDLC, without FEC or
+deinterleaving. Measured deviation is approximately ±2.4 kHz; Gaussian BT and
+the complete burst preamble remain unconfirmed. The public transmitter table
+still lists FEC as TBC because the capture does not establish every supported
+configuration. Obtain the as-built TRX-U hardware/firmware revision and
 active downlink configuration for both 9600 and 19200 modes from the radio/FSW
 team or vendor. The public
 [TRX-U datasheet](https://www.aac-clyde.space/wp-content/uploads/2021/11/TRX-U-datasheet.pdf)
@@ -199,10 +213,10 @@ DB suggestions.
 - The public schema has been reconciled to CTDB 2.0.5 offsets, types, and
   engineering definitions. Packet provenance must identify this version:
   historical layouts can also be 252 bytes, so length and checksum alone do
-  not establish that a packet has the supported field layout. The UHF packets
-  requested from the mission team, recorded the previous week, remain the next
-  recorded-data comparison; they are validation evidence, not a request for
-  another CTDB definition.
+  not establish that a packet has the supported field layout. The
+  [2026-09-23 recorded Hydra comparison](SATNOGS_UHF_VALIDATION_20260923.md)
+  passes for all 111 public fields across 7,352 distinct checksum-valid
+  beacons. Thirty-four checksum-valid version packets report FSW 2.0.5.
 - The 16-bit fine-time encoding has been resolved empirically as integer
   milliseconds after the coarse second. Production timestamp conversion, the
   public schema, and the decoder now use `coarse + fine / 1000` and constrain
@@ -228,22 +242,25 @@ not block the initial SatNOGS DB suggestions:
 
 - CTDB 2.0.5 defines the supported 252-byte layout. The earlier 251-byte CTDB
   2.0.1 export and its compiler-aligned 252-byte counterpart are historical
-  evidence only and are not accepted decoder contracts. Compare the current
-  decoder with the requested UHF packet sample before operational acceptance.
+  evidence only and are not accepted decoder contracts. The current decoder's
+  local recorded-packet comparison and released-receiver IQ replay pass;
+  local upstream-decoder/DB-function integration also passes. Upstream
+  acceptance/deployment and hosted ingestion remain before operational acceptance.
 - The FCC authorization and technical submission resolve the center frequency,
   19.2 kHz emission bandwidth, GFSK modulation, RHCP polarization, no-FEC filing
   configuration, 2 W transmitter output, 1.53 W authorized ERP, experimental
-  service, and license identifiers. Frequency deviation, filtering, whitening,
-  interleaving, and exact programmed flight settings still need confirmation or
-  RF measurement.
+  service, and license identifiers. The September 30 flight-unit recording now
+  verifies the 9600-baud descrambling/line-coding/framing chain and supplies a
+  deviation estimate. Gaussian BT and configuration readback remain open.
 - The FCC filing describes 19200 bit/s, while the current mission operations
-  plan uses 9600 baud nominally and retains 19200 baud as a contingency. Both
-  modes need flight-equivalent receiver validation.
+  plan uses 9600 baud nominally and retains 19200 baud as a contingency. The
+  flight-unit 9600-baud offline test and released SatNOGS receiver replay pass;
+  19200 baud and live Network reception still need validation.
 - Flight software has confirmed the literal 16-byte AX.25 header assembled as
   destination, source, control, and PID; the direct CCSDS payload; and the FCS
   calculation and append operation. The `0x41` octets are not modified later.
-  Ground-side removal of flags or FCS remains a separate receiver-path question
-  for SatNOGS laboratory validation.
+  The local SatNOGS replay establishes that its GFSK/AX.25 receiver removes
+  flags and FCS while preserving the complete literal header.
 - The private APID 1 definition includes a command-opcode name map. Do not copy
   that map into the public decoder. The mission has also excluded command
   counters/status, arm states, and other uplink-related beacon values from the
@@ -252,7 +269,7 @@ not block the initial SatNOGS DB suggestions:
   Fletcher-32 coverage, AX.25-plus-CCSDS layering, and the 256-byte threshold for
   segmentation. Separate flight-source confirmation resolves the literal AX.25
   address octets and FCS. CTDB 2.0.5 is the mission-approved field definition;
-  recorded-packet comparison remains pending. The successfully validated
+  the recorded Hydra packet comparison passes. The successfully validated
   pipeline Fletcher-32 implementation is the working authority for its word
   order, seed, and stored byte order. Neither legacy compiler padding nor a new
   FSW definition is a current blocker.
@@ -311,21 +328,33 @@ longer blocks the transmitter suggestion.
 DB-facing values and public citations. Complete receiver configuration is a
 separate phase-4 gate.
 
-### 4. Validate reception with flight-representative data — pending
+### 4. Validate reception with flight-representative data — nominal local receiver replay passes
 
-- The requested flight-equivalent IQ recording is pending. Use it for
-  demodulator and receiver-boundary validation; a decoded UHF packet file can
-  validate the packet parser but does not replace this RF evidence.
+- The [September 30 flight-unit IQ audit](SATNOGS_IQ_VALIDATION_20260930.md)
+  recovers ten distinct beacons, each with valid CRC-16/X-25 and Fletcher-32,
+  plus ten other CRC-valid frames excluded from public analysis. The mission
+  owner confirmed actual flight hardware and FSW 2.0.5 on October 5.
+- The receive-only reconstruction establishes 9600 baud, G3RUH scrambling,
+  NRZI, HDLC flags/bit stuffing, literal AX.25 header, direct CCSDS payload,
+  and the full-FCS adapter. Deviation is approximately ±2.4 kHz; Gaussian BT,
+  complete burst preamble, and 19200-baud operation remain open.
 - Confirm the exact center frequency, modulation, rate, coding, framing, and
   beacon cadence against the public specification.
-- Run the recording through the most appropriate existing `gr-satnogs`
-  flowgraph.
-- Verify the captured AX.25 FCS against the confirmed algorithm and determine
-  exactly what bytes SatNOGS passes to the Kaitai decoder.
-- Compare the resulting CCSDS APID 1 packet byte-for-byte with an independently
-  captured reference packet.
-- If no existing receiver is adequate, document the mismatch and contribute
-  the smallest required `gr-satnogs` flowgraph and client support.
+- The [released-receiver replay](../benchmarks/satnogs_receiver_replay/README.md)
+  passes with `satnogs-flowgraphs` 2.7 and `gr-satnogs` v3.1.0.1. The GFSK mode
+  selects `satnogs_fsk_ax25.py`; its standard settings recover all 20 CRC-valid
+  frames, including all ten beacons. No custom flowgraph or tuning is needed
+  for this recording. Disabling descrambling produces zero valid frames.
+- Captured AX.25 FCS passes independent verification. Both the reconstructed
+  GNU Radio HDLC path and the upstream receiver retain the header and remove
+  flags/FCS, giving 268 bytes to
+  `decode_public_ax25_beacon(..., fcs_present=False)`. PMT serialization and the
+  subscriber's JSON/base64 representation preserve the bytes.
+- All 20 frames match the separate receive reconstruction and independent
+  HDLC recovery byte-for-byte. No paired independent recording from this
+  session was supplied; this is agreement between decoders of the same IQ.
+- Live Network reception and the 19200-baud contingency mode remain untested.
+  The local replay does not establish a deployed station's software version.
 
 Retain the validation artifacts with the test results: a flight-equivalent raw
 AX.25 frame, extracted APID 1 bytes, independently verified raw and engineering
@@ -333,69 +362,117 @@ values, the expected checksum calculation, receiver settings, and a short
 representative IQ/audio recording where sharing rights and size permit. These
 are acceptance evidence for reception/decoding, not initial transmitter-form
 attachments. Keep action tracking here rather than in the public specification.
+Keep this mixed IQ recording and all raw packets private. Even an APID 1-only
+crop retains excluded command/status bytes; it is not a sanitized public
+artifact. The aggregate audit and existing synthetic fixture can support
+upstream preparation without disclosing captured bytes.
 
-**Gate:** A repeatable laboratory test produces an intact APID 1 packet using
-the same reception path expected in the SatNOGS Network.
+**Gate:** Passed locally for nominal 9600 baud: a repeatable laboratory replay
+produces intact APID 1 packets through the released SatNOGS receive chain.
 
-### 5. Implement the APID 1 Kaitai decoder — in progress
+### 5. Implement the APID 1 Kaitai decoder — submitted, awaiting upstream review
 
 - The generated [`suncet_apid1.ksy`](../suncet_processing_pipeline/satnogs/suncet_apid1.ksy)
   now targets only CTDB 2.0.5, exposing its 111 approved public fields and
   engineering conversions while consuming excluded regions opaquely. It
   enforces the exact 252-byte packet size, APID 1 primary word, declared length,
   end-of-input, and fine-time range. There is no legacy compatibility path.
-- The parser deliberately starts at the bare CCSDS packet until RF testing
-  establishes whether the selected SatNOGS receive path retains the known
-  AX.25 header or FCS. Use
+- The Kaitai core starts at the bare CCSDS packet. A tested local
+  [`AX.25 adapter`](../suncet_processing_pipeline/satnogs/ax25.py) now validates
+  the accepted literal header and extracts the beacon. Its caller explicitly
+  selects 268-byte header-plus-packet input or 270-byte input with an FCS;
+  the latter additionally validates CRC-16/X-25. The released SatNOGS
+  GFSK/AX.25 receiver replay establishes the 268-byte input boundary. Use
   [`decoder.py`](../suncet_processing_pipeline/satnogs/decoder.py) as the
   validated entrypoint: it applies the Python Fletcher-32/envelope contract
   before invoking Kaitai. The KSY alone only consumes checksum bytes.
+- The adapter passes the recorded 544 valid header-bearing beacons with
+  unchanged public values and rejects the 278 checksum-invalid candidates.
+  All 126 local SatNOGS tests pass in the `suncet` environment, including
+  independent FCS vectors, corrupted header/payload/checksum bytes, and wrong
+  input boundaries. The full-FCS path additionally passes all ten beacons
+  recovered from the September 30 flight-unit IQ capture. The expanded local
+  SatNOGS suite passes 144 tests as of October 5.
 - The official Kaitai compiler 0.11 and Python runtime 0.11 now compile and
   execute the generated parser successfully locally. Passing local checks
   compare all 111 synthetic public-field values and independent engineering
   expectations, and exercise malformed packets, checksum corruption, and
   boundary values. CI is configured to rebuild with the SHA-256-pinned official
   compiler ZIP, compare generated source, run the parser tests, and decode a
-  fixture from the installed wheel. This records local verification and CI
-  configuration, not a completed remote CI run. Reproduce the source check with
+  fixture from the installed wheel. The published core passed remote CI for
+  commit `78049a4`; the new AX.25 adapter has local validation only so far.
+  Reproduce the source check with
   `python -m suncet_processing_pipeline.satnogs.build_decoder --check --compiler PATH`.
-- The fixture is deliberately synthetic. The requested recent UHF telemetry
-  remains the recorded-flight comparison gate. The separate
-  pending IQ sample establishes the RF receiver path; neither sample blocks
-  local implementation or preparation for upstream review.
-- Use the current `satnogs-decoders` repository conventions and a comparable
-  AX.25/CCSDS mission such as CIRBE as a structural reference.
+- The committed fixture is deliberately synthetic. Local validation against
+  the supplied 2026-09-23 Hydra capture now passes: 14,270 valid occurrences,
+  7,352 distinct packets, and zero mismatches across all 111 approved fields
+  against the generated private CTDB decoder. The raw captures remain private;
+  the [aggregate audit](SATNOGS_UHF_VALIDATION_20260923.md) records the evidence.
+  The September 30 IQ sample passes both offline receiver reconstruction and
+  the released SatNOGS receiver replay. Live Network ingestion remains pending.
+- The [upstream contribution bundle](../suncet_processing_pipeline/satnogs/upstream/README.md)
+  now supplies a pure Kaitai 0.10 wrapper for the verified 268-byte receiver
+  input. It enforces Fletcher-32 and the full CCSDS envelope on construction,
+  including through the upstream DB entrypoint. Anonymous excluded regions
+  and checksum buffers are hidden from the raw-structure API.
+- [Integration checks completed 2026-10-05](SATNOGS_DECODER_INTEGRATION_20261005.md):
+  all 164 schemas compile to Python/JavaScript; 293 upstream Python tests,
+  JavaScript checks, five static checks, and installed-wheel decoding pass.
+  The actual DB ingestion functions, with in-memory I/O substitutes, accept
+  ten flight beacons with all 111 public values matching and reject ten other
+  frames. Upstream state values use stable integer codes supported by Grafana;
+  nonfinite sensor readings are omitted without losing the rest of the point.
+  Hosted ingestion and deployment remain unverified.
+- Mission-maintainer review and DCO sign-off were approved on 2026-10-06 under
+  the current upstream
+  [contribution guide](https://gitlab.com/librespacefoundation/satnogs/satnogs-decoders/-/blob/master/CONTRIBUTING.md).
+  The six-file contribution is submitted as
+  [merge request !542](https://gitlab.com/librespacefoundation/satnogs/satnogs-decoders/-/merge_requests/542),
+  targeting upstream `master`. Published commit `f31782b6` includes the approved
+  sign-off and exactly matches the reviewed local contribution tree.
+  Follow-up commit `6248b1c6` corrects one test's class reference for pylint;
+  [remote CI #2918408670](https://gitlab.com/jmason86/satnogs-decoders/-/pipelines/2918408670)
+  passes in full. The MR awaits one eligible upstream approval.
 - Parse the required link and CCSDS framing, then accept only APID 1 for public
   telemetry extraction.
 - Define meaningful field names, types, enumerations, units, scale factors, and
   documentation references for every exposed beacon field.
 - Do not include unrelated APID definitions or private CTDB material.
-- Submit the decoder to the upstream `satnogs-decoders` project and respond to
-  maintainer review once its actual input boundary and recorded-frame evidence
-  are ready; preserve end-to-end checksum validation in that integration.
+- Respond to upstream review of merge request !542. After release/deployment,
+  request DB association of decoder `suncet` with the SunCET satellite entry.
 
 **Gate:** Upstream tests pass and the accepted decoder converts an observed
 SunCET APID 1 frame into correct engineering values while rejecting or ignoring
 non-beacon packets safely.
 
-### 6. Build the SunCET dashboard — local plan ready, implementation pending
+### 6. Build the SunCET dashboard — Scratchpad draft created, ingestion pending
 
 - The [dashboard plan](SATNOGS_DASHBOARD_PLAN.md) maps approved public aliases to
   identity/time, power, thermal, ADCS, payload/radio, and fault-status panels.
   It defines units/enums, no-data and stale-data behavior, raw spacecraft time
-  versus reception UTC, and a confidential editor-access request template.
-  It is a local design, not a live or recorded-telemetry-validated dashboard.
-- Sign in to the SatNOGS Dashboard once through Libre Space Foundation SSO.
-- Open the confidential `satnogs-ops` request containing the SunCET satellite,
-  maintainer team, and account email to obtain editor access.
-- Create a compact operations dashboard from APID 1 fields.
+  versus reception UTC, and the remaining acceptance checks.
+- Editor access and membership in the SunCET team were confirmed by the mission
+  owner on 2026-09-29. Scratchpad creation/editing was verified.
+- [suncet-dev](https://dashboard.satnogs.org/d/ffzqpb9arppfkb/suncet-dev) now exists
+  in Scratchpad with 38 telemetry panels covering 82 approved public fields.
+  Its section layout follows the read-only AEPEX reference; no other dashboard
+  was edited. The generator and saved export are in
+  `suncet_processing_pipeline/satnogs/dashboard/`.
+- The production datasource is `SatNOGS DB` (`000000001`). A field-key query for
+  provisional measurement `98244` returned no frames. All telemetry queries
+  remain disabled, and reception timestamp/age remains explicitly unavailable.
 - Group panels into spacecraft identity/time, power, thermal, ADCS, radio, and
   fault/status categories as supported by the actual beacon definition.
 - Show units, enumerated states, last-observation time, and data gaps clearly.
 - Avoid implying that beacon sampling is continuous or simultaneous when it is
   not.
-- Validate datasource field paths, decoder ingestion, and the time policy
-  against recorded observations before calling the dashboard operational.
+- Local DB-function validation confirms all 82 saved query aliases and the
+  Canvas numeric state mappings. The code writes flat engineering fields,
+  uses the satellite NORAD number as measurement, and formats reception
+  timestamps to whole UTC seconds. Live field presence and Grafana query/
+  display behavior still need verification after decoder deployment.
+- Validate hosted ingestion and displayed recorded observations, including
+  provenance/time semantics, before calling the dashboard operational.
 
 **Gate:** A maintainer can diagnose basic spacecraft health from a decoded
 beacon without consulting raw bytes.
@@ -470,11 +547,17 @@ beacon without consulting raw bytes.
 ## Immediate next action
 
 The public specification is published and transmitter suggestion 13013 awaits
-moderator review. Respond to review feedback. Compare the tested CTDB 2.0.5
-decoder with the already-requested UHF packets when they arrive. Use the
-separately requested IQ sample for demodulation and
-receiver-boundary validation before upstream integration. Sign in to the
-dashboard and request editor access using the prepared template. The mission
+moderator review. Respond to review feedback. The local CTDB 2.0.5
+recorded-data comparison, released receiver replay, and local upstream decoder/
+DB-function integration now pass. Mission-maintainer review and DCO sign-off
+are complete; [decoder merge request !542](https://gitlab.com/librespacefoundation/satnogs/satnogs-decoders/-/merge_requests/542)
+is open. Respond to upstream review. After acceptance and deployment,
+request the SunCET DB decoder association. No new nominal-mode IQ sample is
+needed for those steps, and recorded raw frames must remain private.
+The Scratchpad `suncet-dev` dashboard's 82 field aliases and numeric state
+mappings pass the local contract check. Verify actual hosted fields, reception
+timestamps, and displayed values before enabling queries or promoting it to
+public Telemetry. The mission
 owner confirmed the public launch wording on 2026-09-29: no earlier than
 2027-03-15, manifested on a SpaceX Falcon 9 launch. No new CTDB/FSW definition
 or RF sample is needed to submit the transmitter record.
@@ -485,19 +568,25 @@ No further mission-team answer currently blocks the initial satellite or
 transmitter DB suggestions. The following input remains necessary for receiver
 and decoder validation:
 
-1. **Recorded packet comparison:** the requested recent UHF telemetry is pending.
-   Compare its CTDB 2.0.5 decoded values against independent
-   expectations. The mission has approved the available CTDB 2.0.5 definitions;
-   another export or definition confirmation is not a prerequisite.
-2. **Flight-equivalent RF/IQ sample:** the requested recording and paired raw
-   frame are pending. They establish frequency deviation, pulse shaping, line
-   coding, whitening/scrambling, interleaving, both supported baud modes, and
-   the exact over-air and decoder-input boundaries. This is separate from the
-   packet-parser comparison and transmitter registration.
+1. **Recorded packet comparison — complete locally:** all 111 approved fields
+   agree with the separate generated CTDB 2.0.5 decoder on the supplied Hydra
+   capture. No additional packet sample is needed for this local comparison.
+   The local upstream decoder/DB-function check now passes on the flight IQ;
+   hosted ingestion and dashboard display still require an end-to-end check.
+2. **Flight-unit RF/IQ sample — received; nominal offline test passes:** the
+   September 30 sample resolves the recorded 9600-baud line coding,
+   descrambling, HDLC, and FCS questions, and supports approximately ±2.4 kHz
+   deviation. Remaining inputs are Gaussian BT/configuration readback, a
+   19200-baud sample if offered, and a paired independent packet record if
+   available. Released SatNOGS receiver replay and the local upstream-decoder
+   integration pass; live Network reception remains unverified.
 3. **UTC conversion policy:** fine time is confirmed as integer milliseconds,
    but the epoch/time-scale and leap-second policy for authoritative UTC display
    remains unresolved. Preserve raw epoch seconds and reception time separately
-   while this is settled; it does not block the transmitter record.
+   while this is settled; it does not block the transmitter record. The Hydra
+   capture also includes 4,043 valid beacon occurrences with coarse time below
+   one day, apparently before clock setting. Do not treat those values as
+   actual observation times.
 
 No further answer is currently needed about the legacy APID 1 compiler
 padding, the flight-software AX.25 buffer or FCS, modulation, polarization,

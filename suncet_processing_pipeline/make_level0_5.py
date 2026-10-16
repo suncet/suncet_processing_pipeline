@@ -26,6 +26,7 @@ import os
 import re
 import struct
 import sys
+import time
 import types
 from array import array
 from collections import Counter
@@ -43,6 +44,7 @@ from suncet_processing_pipeline.run_provenance import (
 )
 from suncet_processing_pipeline.spacecraft_time import (
     combine_spacecraft_time_seconds,
+    j2000_seconds_to_iso8601,
 )
 
 
@@ -104,7 +106,9 @@ INPUT_MODE_HARDLINE = "hardline"
 INPUT_MODE_UHF = "uhf"
 INPUT_MODE_COMBINED = "combined"
 CSIE_DATA_APID = 536
+CSIE_HK_APID = 537
 CSIE_META_APID = 538
+DUCKDB_EXCLUDED_CSIE_APIDS = frozenset((CSIE_DATA_APID, CSIE_META_APID))
 CSIE_SECONDARY_HEADER_LEN = 6
 CSIE_ROW_CHECKSUM_LEN = 4
 CSIE_MAX_SENSOR_ROWS = 2000
@@ -136,6 +140,14 @@ CSIE_LEVEL0_5_FITS_NAMES = {
     "detector_temp": "DET_TEMP",
     "detector_temp_board": "BRD_TEMP",
     "csie_meta_adc_thermistor_temp": "ADC_TEMP",
+    # Explicit names consumed by Level 1. These avoid order-dependent
+    # eight-character FITS keyword collisions among the CSIE config fields.
+    "icm_proc_cfg_posi_select_meta": "ICMPOS",
+    "fpm_proc_cfg_col_bin_meta": "BINCOLR",
+    "fpm_proc_cfg_row_bin_meta": "BINROWR",
+    "csie_meta_fpm_col_pix_offset": "ROICOL0",
+    "csie_meta_fpm_col_chan_offset": "COLCHAN",
+    "csie_meta_fpm_row_ptr_offset": "ROIROW0",
 }
 # FIXME(FSW/CTDB): APID 35 is present in current hardline data and is named
 # APID_TLM_DSPS_DATA_PKT in generated CTDB constants/state maps, but it is missing
@@ -381,6 +393,13 @@ class DecodeStats:
 
 
 @dataclass
+class DecodedTelemetry:
+    stats: DecodeStats
+    rows_by_apid: dict[int, list[dict[str, object]]]
+    packet_names: dict[int, str]
+
+
+@dataclass
 class CsieImageStats:
     output_dir: Path
     inventory_path: Path
@@ -415,6 +434,25 @@ class FixStats:
     fixed_bytes: int
     uhf_playback: UhfPlaybackReassemblyStats | None = None
     direct_playback: DirectPlaybackUnwrapStats | None = None
+
+
+def _finish_timed_phase(
+    timings: dict[str, float],
+    phase_name: str,
+    started: float,
+) -> None:
+    elapsed = time.perf_counter() - started
+    timings[phase_name] = timings.get(phase_name, 0.0) + elapsed
+    print(f"Phase timing — {phase_name}: {elapsed:.3f} s")
+
+
+def _print_phase_timing_summary(timings: dict[str, float]) -> None:
+    if not timings:
+        return
+    print("\nLevel 0.5 phase timing summary:")
+    for phase_name, elapsed in timings.items():
+        print(f"  {phase_name:<34} {elapsed:10.3f} s")
+    print(f"  {'measured phase total':<34} {sum(timings.values()):10.3f} s")
 
 
 def resolve_config_data_folder(config: Config) -> Path:
@@ -484,6 +522,7 @@ def resolve_input_files_and_mode(
     *,
     prefix: str | None,
     input_mode: str,
+    input_files: list[str] | None = None,
 ) -> tuple[str, str, list[Path]]:
     """Resolve input mode, prefix, and files for staged ingest."""
     normalized_mode = INPUT_MODE_CCSDS if input_mode == INPUT_MODE_HARDLINE else input_mode
@@ -494,6 +533,21 @@ def resolve_input_files_and_mode(
         INPUT_MODE_UHF,
     }:
         raise ValueError(f"unsupported input mode: {input_mode}")
+
+    if input_files:
+        if normalized_mode == INPUT_MODE_AUTO:
+            raise ValueError("--input-file requires an explicit --input-mode")
+        resolved_paths: list[Path] = []
+        for value in input_files:
+            candidate = Path(value).expanduser()
+            if not candidate.is_absolute():
+                candidate = folder / candidate
+            candidate = candidate.resolve()
+            if not candidate.is_file():
+                raise FileNotFoundError(f"Explicit input file does not exist: {candidate}")
+            if candidate not in resolved_paths:
+                resolved_paths.append(candidate)
+        return normalized_mode, prefix or resolved_paths[0].name, resolved_paths
 
     if normalized_mode == INPUT_MODE_AUTO and prefix is None:
         xband_paths = discover_prefixed_binary_files(folder, DEFAULT_XBAND_PREFIX)
@@ -1789,6 +1843,67 @@ def record_playback_inner_packet(
     return True
 
 
+def _ccsds_candidate_pattern(
+    valid_apids: set[int],
+    *,
+    include_playback_wrappers: bool,
+) -> re.Pattern[bytes] | None:
+    """Compile a one-pass matcher for plausible two-byte CCSDS headers.
+
+    A telemetry packet has version/type zero and the secondary-header flag set,
+    so its first word is exactly ``0x0800 | APID``. Playback APID 68 wrappers
+    historically also occur without that flag. Grouping candidate low bytes by
+    high byte keeps the regular expression small and lets the C regex engine skip
+    long image/filler spans instead of invoking Python once per byte.
+    """
+    header_words = {
+        0x0800 | apid for apid in valid_apids if 0 <= apid <= 0x07FF
+    }
+    if include_playback_wrappers:
+        header_words.add(68)
+    if not header_words:
+        return None
+
+    low_bytes_by_high: dict[int, set[int]] = {}
+    for word in header_words:
+        high, low = word.to_bytes(2, "big")
+        low_bytes_by_high.setdefault(high, set()).add(low)
+
+    alternatives: list[bytes] = []
+    for high, low_bytes in sorted(low_bytes_by_high.items()):
+        high_literal = re.escape(bytes((high,)))
+        if len(low_bytes) == 1:
+            alternatives.append(
+                high_literal + re.escape(bytes((next(iter(low_bytes)),)))
+            )
+        else:
+            alternatives.append(
+                high_literal
+                + b"["
+                + re.escape(bytes(sorted(low_bytes)))
+                + b"]"
+            )
+    # Lookahead preserves overlapping candidates. A false candidate at byte N
+    # must not hide a real packet beginning at N+1.
+    return re.compile(b"(?=(?:" + b"|".join(alternatives) + b"))")
+
+
+def _record_dropped_span(
+    stats: PacketizeStats,
+    data: bytes,
+    start: int,
+    end: int,
+) -> None:
+    """Account for a rejected span using C-level byte counts."""
+    if end <= start:
+        return
+    filler_count = sum(
+        data.count(bytes((value,)), start, end) for value in FILLER_BYTES
+    )
+    stats.dropped_filler_bytes += filler_count
+    stats.dropped_non_filler_bytes += end - start - filler_count
+
+
 def packetize_checksum_valid_ccsds(
     data: bytes,
     valid_apids: set[int],
@@ -1813,7 +1928,22 @@ def packetize_checksum_valid_ccsds(
     stats = PacketizeStats()
     i = 0
     n = len(data)
-    while i + 6 <= n:
+    candidate_pattern = _ccsds_candidate_pattern(
+        valid_apids,
+        include_playback_wrappers=extract_playback_wrappers,
+    )
+    candidate_matches = (
+        candidate_pattern.finditer(data) if candidate_pattern is not None else ()
+    )
+    for candidate_match in candidate_matches:
+        candidate_offset = candidate_match.start()
+        if candidate_offset < i:
+            continue
+        if candidate_offset + 6 > n:
+            break
+        _record_dropped_span(stats, data, i, candidate_offset)
+        i = candidate_offset
+
         if extract_playback_wrappers:
             playback_info = playback_wrapper_packet_at(data, i)
             if playback_info is not None:
@@ -1916,16 +2046,11 @@ def packetize_checksum_valid_ccsds(
             else:
                 _record_incomplete_packet(stats, apid)
 
-        if data[i] in FILLER_BYTES:
-            stats.dropped_filler_bytes += 1
-        else:
-            stats.dropped_non_filler_bytes += 1
+        _record_dropped_span(stats, data, i, i + 1)
         i += 1
 
     if i < n:
-        tail = data[i:]
-        stats.dropped_filler_bytes += sum(1 for b in tail if b in FILLER_BYTES)
-        stats.dropped_non_filler_bytes += sum(1 for b in tail if b not in FILLER_BYTES)
+        _record_dropped_span(stats, data, i, n)
 
     valid_records.sort(key=lambda item: item[0])
     stats.records.sort(key=lambda item: item.source_offset)
@@ -2768,19 +2893,21 @@ def _clean_generated_decode_csvs(decoded_dir: Path) -> None:
                 path.unlink()
 
 
-def decode_packet_records_to_csv(
+def decode_packet_records(
     packet_records: list[PacketRecord],
     config: Config,
     apid_names: dict[int, str],
     decoded_dir: Path,
     *,
+    write_decoded_csvs: bool = False,
+    write_packet_manifest: bool = False,
+    write_summary_csv: bool = False,
     manifest_name: str = DEFAULT_PACKET_MANIFEST_BASENAME,
     summary_name: str = DEFAULT_DECODE_SUMMARY_BASENAME,
     manifest_path_override: Path | None = None,
     summary_path_override: Path | None = None,
-) -> DecodeStats:
+) -> DecodedTelemetry:
     decoded_dir.mkdir(parents=True, exist_ok=True)
-    _clean_generated_decode_csvs(decoded_dir)
     manifest_path = manifest_path_override or decoded_dir / manifest_name
     summary_path = summary_path_override or decoded_dir / summary_name
     stats = DecodeStats(
@@ -2793,6 +2920,7 @@ def decode_packet_records_to_csv(
 
     manifest_rows: list[dict[str, object]] = []
     rows_by_apid: dict[int, list[dict[str, object]]] = {}
+    packet_names: dict[int, str] = {}
     decoder_messages_by_apid: Counter = Counter()
 
     for record in packet_records:
@@ -2806,6 +2934,7 @@ def decode_packet_records_to_csv(
             stats.unexpected_little_endian_headers += 1
 
         packet_name = apid_names.get(record.apid, f"apid_{record.apid}")
+        packet_names[record.apid] = packet_name
         header_meta = _packet_header_metadata(record.packet)
         base_row: dict[str, object] = {
             "packet_index": record.packet_index,
@@ -2949,17 +3078,20 @@ def decode_packet_records_to_csv(
             stats.no_decoder_per_apid[record.apid] += 1
 
         rows_by_apid.setdefault(record.apid, []).append(row)
-        csv_name = f"decoded_apid_{record.apid:04d}_{_safe_csv_stem(packet_name)}.csv"
-        manifest_row = dict(base_row)
-        manifest_row.update(
-            {
-                "decoder_kind": decoder_kind,
-                "decode_status": decode_status,
-                "decode_error": decode_error,
-                "decoded_csv": csv_name,
-            }
-        )
-        manifest_rows.append(manifest_row)
+        if write_packet_manifest:
+            csv_name = (
+                f"decoded_apid_{record.apid:04d}_{_safe_csv_stem(packet_name)}.csv"
+            )
+            manifest_row = dict(base_row)
+            manifest_row.update(
+                {
+                    "decoder_kind": decoder_kind,
+                    "decode_status": decode_status,
+                    "decode_error": decode_error,
+                    "decoded_csv": csv_name,
+                }
+            )
+            manifest_rows.append(manifest_row)
 
     manifest_fields = [
         "packet_index",
@@ -2992,8 +3124,9 @@ def decode_packet_records_to_csv(
         "decode_error",
         "decoded_csv",
     ]
-    _write_csv_rows(manifest_path, manifest_rows, manifest_fields)
-    stats.output_paths.append(manifest_path)
+    if write_packet_manifest:
+        _write_csv_rows(manifest_path, manifest_rows, manifest_fields)
+        stats.output_paths.append(manifest_path)
 
     per_packet_fields = [
         "packet_index",
@@ -3025,65 +3158,112 @@ def decode_packet_records_to_csv(
         "decode_status",
         "decode_error",
     ]
-    for apid, rows in sorted(rows_by_apid.items()):
-        packet_name = apid_names.get(apid, f"apid_{apid}")
-        path = decoded_dir / f"decoded_apid_{apid:04d}_{_safe_csv_stem(packet_name)}.csv"
-        _write_csv_rows(path, rows, per_packet_fields)
-        stats.output_paths.append(path)
+    if write_decoded_csvs:
+        for apid, rows in sorted(rows_by_apid.items()):
+            packet_name = apid_names.get(apid, f"apid_{apid}")
+            path = (
+                decoded_dir
+                / f"decoded_apid_{apid:04d}_{_safe_csv_stem(packet_name)}.csv"
+            )
+            _write_csv_rows(path, rows, per_packet_fields)
+            stats.output_paths.append(path)
 
-    summary_rows: list[dict[str, object]] = []
-    for apid in sorted(stats.per_apid):
-        packet_count = stats.per_apid[apid]
-        packet_name = apid_names.get(apid, f"apid_{apid}")
-        rows = rows_by_apid.get(apid, [])
-        avg_packet_bytes = _avg(sum(int(row["packet_len"]) for row in rows), packet_count)
-        summary_rows.append(
-            {
-                "apid": apid,
-                "packet_name": packet_name,
-                "packets": packet_count,
-                "decoded": stats.decoded_per_apid[apid],
-                "decode_failed": stats.failed_per_apid[apid],
-                "no_decoder": stats.no_decoder_per_apid[apid],
-                "generated_decoder": stats.generated_per_apid[apid],
-                "generic_ctdb_csv": stats.generic_per_apid[apid],
-                "primary_headers_normalized": sum(
-                    1 for row in rows if row["primary_header_normalized"]
-                ),
-                "payload_16bit_words_swapped": sum(
-                    1 for row in rows if row["payload_16bit_words_swapped"]
-                ),
-                "decoder_messages": decoder_messages_by_apid[apid],
-                "avg_packet_bytes": f"{avg_packet_bytes:.1f}",
-                "min_packet_bytes": min((int(row["packet_len"]) for row in rows), default=0),
-                "max_packet_bytes": max((int(row["packet_len"]) for row in rows), default=0),
-            }
+    if write_summary_csv:
+        summary_rows: list[dict[str, object]] = []
+        for apid in sorted(stats.per_apid):
+            packet_count = stats.per_apid[apid]
+            packet_name = apid_names.get(apid, f"apid_{apid}")
+            rows = rows_by_apid.get(apid, [])
+            avg_packet_bytes = _avg(
+                sum(int(row["packet_len"]) for row in rows),
+                packet_count,
+            )
+            summary_rows.append(
+                {
+                    "apid": apid,
+                    "packet_name": packet_name,
+                    "packets": packet_count,
+                    "decoded": stats.decoded_per_apid[apid],
+                    "decode_failed": stats.failed_per_apid[apid],
+                    "no_decoder": stats.no_decoder_per_apid[apid],
+                    "generated_decoder": stats.generated_per_apid[apid],
+                    "generic_ctdb_csv": stats.generic_per_apid[apid],
+                    "primary_headers_normalized": sum(
+                        1 for row in rows if row["primary_header_normalized"]
+                    ),
+                    "payload_16bit_words_swapped": sum(
+                        1 for row in rows if row["payload_16bit_words_swapped"]
+                    ),
+                    "decoder_messages": decoder_messages_by_apid[apid],
+                    "avg_packet_bytes": f"{avg_packet_bytes:.1f}",
+                    "min_packet_bytes": min(
+                        (int(row["packet_len"]) for row in rows),
+                        default=0,
+                    ),
+                    "max_packet_bytes": max(
+                        (int(row["packet_len"]) for row in rows),
+                        default=0,
+                    ),
+                }
+            )
+        _write_csv_rows(
+            summary_path,
+            summary_rows,
+            [
+                "apid",
+                "packet_name",
+                "packets",
+                "decoded",
+                "decode_failed",
+                "no_decoder",
+                "generated_decoder",
+                "generic_ctdb_csv",
+                "primary_headers_normalized",
+                "payload_16bit_words_swapped",
+                "decoder_messages",
+                "avg_packet_bytes",
+                "min_packet_bytes",
+                "max_packet_bytes",
+            ],
         )
-    _write_csv_rows(
-        summary_path,
-        summary_rows,
-        [
-            "apid",
-            "packet_name",
-            "packets",
-            "decoded",
-            "decode_failed",
-            "no_decoder",
-            "generated_decoder",
-            "generic_ctdb_csv",
-            "primary_headers_normalized",
-            "payload_16bit_words_swapped",
-            "decoder_messages",
-            "avg_packet_bytes",
-            "min_packet_bytes",
-            "max_packet_bytes",
-        ],
-    )
-    stats.output_paths.append(summary_path)
+        stats.output_paths.append(summary_path)
 
     for warning in bundle.warnings:
         print(f"WARNING: {warning}")
-    return stats
+    return DecodedTelemetry(
+        stats=stats,
+        rows_by_apid=rows_by_apid,
+        packet_names=packet_names,
+    )
+
+
+def decode_packet_records_to_csv(
+    packet_records: list[PacketRecord],
+    config: Config,
+    apid_names: dict[int, str],
+    decoded_dir: Path,
+    *,
+    manifest_name: str = DEFAULT_PACKET_MANIFEST_BASENAME,
+    summary_name: str = DEFAULT_DECODE_SUMMARY_BASENAME,
+    manifest_path_override: Path | None = None,
+    summary_path_override: Path | None = None,
+) -> DecodeStats:
+    """Compatibility/diagnostic writer for explicit decoded CSV requests."""
+    _clean_generated_decode_csvs(decoded_dir)
+    decoded = decode_packet_records(
+        packet_records,
+        config,
+        apid_names,
+        decoded_dir,
+        write_decoded_csvs=True,
+        write_packet_manifest=True,
+        write_summary_csv=True,
+        manifest_name=manifest_name,
+        summary_name=summary_name,
+        manifest_path_override=manifest_path_override,
+        summary_path_override=summary_path_override,
+    )
+    return decoded.stats
 
 
 def _to_int_or_none(value) -> int | None:
@@ -3146,6 +3326,80 @@ def decode_csie_meta_packet(
     return generic_ctdb_decode_packet(packet, rows)
 
 
+def decode_csie_hk_geometry_packet(
+    packet: bytes,
+    field_definitions: dict[int, list[dict[str, str]]],
+    generated_decoder: object | None = None,
+) -> dict[str, object]:
+    """Decode the APID 537 fields that define the configurable ICM circle."""
+    if generated_decoder is not None:
+        decoder_output = io.StringIO()
+        with contextlib.redirect_stdout(decoder_output):
+            packet_object = generated_decoder(
+                packet[6:], bytearray(packet[:6]), "csie_image_products"
+            )
+        decoded = _decoder_object_fields(packet_object)
+    else:
+        rows = field_definitions.get(CSIE_HK_APID)
+        if not rows:
+            raise RuntimeError("No CTDB field rows available for APID 537 csie_hk")
+        decoded = generic_ctdb_decode_packet(packet, rows)
+    required = (
+        "csie_115_hk_icm_rad_sqr",
+        "csie_115_hk_icm_cent_col",
+        "csie_115_hk_icm_cent_row",
+    )
+    missing = [name for name in required if _to_int_or_none(decoded.get(name)) is None]
+    if missing:
+        raise ValueError("APID 537 is missing ICM geometry field(s): " + ", ".join(missing))
+    return decoded
+
+
+def associate_csie_hk_geometry(
+    meta: dict[str, object],
+    geometry_samples: list[dict[str, object]],
+) -> tuple[dict[str, object], str | None]:
+    """Attach the latest APID 537 circle configuration valid at capture time."""
+    if not geometry_samples:
+        return meta, "no APID 537 CSIE HK is available for ICM circle geometry"
+    capture_time = meta.get("capture_start_j2000")
+    if capture_time is None:
+        capture_time = _capture_timestamp_seconds(meta)
+    else:
+        capture_time = float(capture_time)
+    if capture_time is None:
+        return meta, "capture time unavailable; APID 537 ICM geometry was not associated"
+    timed = sorted(
+        (
+            (float(sample["_geometry_j2000"]), sample)
+            for sample in geometry_samples
+            if sample.get("_geometry_j2000") is not None
+        ),
+        key=lambda item: item[0],
+    )
+    before = [item for item in timed if item[0] <= capture_time]
+    selected = before[-1] if before else None
+    if selected is None:
+        return meta, "no APID 537 ICM geometry sample exists at or before capture time"
+    sample_time, sample = selected
+    enriched = {
+        **meta,
+        "icm_circle_radius_squared_pixels": int(
+            sample["csie_115_hk_icm_rad_sqr"]
+        ),
+        "icm_circle_center_column_pixels": int(
+            sample["csie_115_hk_icm_cent_col"]
+        ),
+        "icm_circle_center_row_pixels": int(
+            sample["csie_115_hk_icm_cent_row"]
+        ),
+        "icm_geometry_hk_j2000": sample_time,
+        "icm_geometry_hk_age_seconds": capture_time - sample_time,
+        "icm_geometry_source": "APID 537 CSIE HK",
+    }
+    return enriched, None
+
+
 def _meta_source(meta: dict[str, object]) -> str:
     value = meta.get("csie_meta_meta_src")
     if value is None:
@@ -3187,6 +3441,18 @@ def _capture_timestamp_seconds(meta: dict[str, object]) -> float | None:
         return None
     try:
         return combine_spacecraft_time_seconds(coarse, fine or 0)
+    except ValueError:
+        return None
+
+
+def _metadata_time_iso8601(meta: dict[str, object] | None) -> str | None:
+    if meta is None:
+        return None
+    timestamp = _capture_timestamp_seconds(meta)
+    if timestamp is None:
+        return None
+    try:
+        return j2000_seconds_to_iso8601(timestamp)
     except ValueError:
         return None
 
@@ -3320,11 +3586,19 @@ def summarize_csie_metadata_packets(
     if timed_captures:
         first_start, _ = min(timed_captures, key=lambda item: item[0])
         last_start, last_meta = max(timed_captures, key=lambda item: item[0])
+        derived["capture_start_j2000"] = first_start
+        derived["capture_start_iso8601"] = j2000_seconds_to_iso8601(first_start)
         final_integration_ms = _first_int(last_meta, "csie_meta_intg_ms", "INTG_MS")
         if final_integration_ms is not None:
-            derived["exposure_time"] = (
-                last_start + final_integration_ms / 1000.0 - first_start
+            capture_end = last_start + final_integration_ms / 1000.0
+            capture_average = (first_start + capture_end) / 2.0
+            derived["capture_average_j2000"] = capture_average
+            derived["capture_end_j2000"] = capture_end
+            derived["capture_average_iso8601"] = j2000_seconds_to_iso8601(
+                capture_average
             )
+            derived["capture_end_iso8601"] = j2000_seconds_to_iso8601(capture_end)
+            derived["exposure_time"] = capture_end - first_start
     else:
         warnings.append("capture timestamps unavailable; TELAPSE was not derived")
     return product_meta, derived, warnings
@@ -3632,6 +3906,12 @@ def _write_csie_fits(
     header["OUTRANGE"] = int(inventory_row.get("out_of_range_rows", 0) or 0)
 
     derived_fits_names = {
+        "capture_start_j2000": "J2K-BEG",
+        "capture_average_j2000": "J2K-AVG",
+        "capture_end_j2000": "J2K-END",
+        "capture_start_iso8601": "DATE-BEG",
+        "capture_average_iso8601": "DATE-AVG",
+        "capture_end_iso8601": "DATE-END",
         "exposure_time": "TELAPSE",
         "integration_time_inner": "INTTIMEI",
         "integration_time_outer": "INTTIMEO",
@@ -3643,6 +3923,12 @@ def _write_csie_fits(
         "effective_exposure_time_outer": "EFFEXPO",
         "particle_filtering_enabled_inner": "PIXFILTI",
         "particle_filtering_enabled_outer": "PIXFILTO",
+        "icm_circle_radius_squared_pixels": "ICMRAD2",
+        "icm_circle_center_column_pixels": "ICMCOL",
+        "icm_circle_center_row_pixels": "ICMROW",
+        "icm_geometry_hk_j2000": "ICMHKJ2",
+        "icm_geometry_hk_age_seconds": "ICMAGE",
+        "icm_geometry_source": "ICMSRC",
         "csie_metadata_packet_count": "METAPKTS",
         "csie_capture_metadata_count": "CAPMETA",
         "csie_process_metadata_count": "PROCMETA",
@@ -3650,6 +3936,22 @@ def _write_csie_fits(
     for internal_name, fits_name in derived_fits_names.items():
         if internal_name in meta:
             header[fits_name] = meta[internal_name]
+    if "capture_start_iso8601" in meta:
+        header["DATE-OBS"] = meta["capture_start_iso8601"]
+
+    # Store physical binning factors explicitly. The CTDB fields are encoded as
+    # factor-minus-one; Level 1 should not have to rediscover that convention.
+    proc_config = _first_int(meta, "csie_meta_fpm_proc_config")
+    if proc_config is not None:
+        header["BINROW"] = (proc_config & 0xFF) + 1
+        header["BINCOL"] = ((proc_config >> 8) & 0xFF) + 1
+    else:
+        row_bin_raw = _first_int(meta, "fpm_proc_cfg_row_bin_meta")
+        col_bin_raw = _first_int(meta, "fpm_proc_cfg_col_bin_meta")
+        if row_bin_raw is not None:
+            header["BINROW"] = row_bin_raw + 1
+        if col_bin_raw is not None:
+            header["BINCOL"] = col_bin_raw + 1
 
     used_keys = set(header)
     output_meta = _level0_5_output_fields(
@@ -3733,6 +4035,7 @@ def _write_csie_meta_json(
     )
     payload = {
         "image_id": image_id,
+        "metadata_time_iso8601": _metadata_time_iso8601(meta),
         **product_meta,
         "metadata_packets": [
             _level0_5_output_fields(packet, apid=CSIE_META_APID)
@@ -4277,80 +4580,82 @@ def infer_csie_uncompressed_dimensions_from_rows(
     return CSIE_MAX_SENSOR_ROWS, CSIE_MAX_SENSOR_COLS, 1
 
 
-def scan_csie_records_from_fixed_stream(
-    fixed_payload_stream: bytes,
+def scan_csie_records_from_stream(
+    stream: bytes,
     field_definitions: dict[int, list[dict[str, str]]],
     expected_packet_bytes: dict[int, int],
     generated_meta_decoder: object | None = None,
+    *,
+    source: str,
 ) -> tuple[list[PacketRecord], str, list[str]]:
-    """
-    Recover CSIE metadata/row packets from the full fixed payload stream.
-
-    HK/ADCS packets currently decode from the VCDU 32-bit-reversed cleaned stream.
-    CSIE image rows in this test file appear in the opposite byte-order view,
-    so scan both views and choose the one with the most CSIE structure.
-    """
+    """Recover CSIE metadata/row packets from one explicitly selected stream view."""
     expected_meta_len = expected_packet_bytes.get(CSIE_META_APID)
-    scan_results: list[tuple[int, list[PacketRecord], str, list[str]]] = []
-    for source, stream in (
-        ("cleaned_full_stream", fixed_payload_stream),
-        (
-            "cleaned_pre_vcdu_word32_full_stream",
-            reverse_32bit_words(fixed_payload_stream),
-        ),
-    ):
-        warnings: list[str] = []
-        meta_records = _scan_csie_meta_records_in_stream(
-            stream,
-            source=source,
-            expected_meta_len=expected_meta_len,
-        )
-        meta_records, meta_filter_warnings = _filter_plausible_csie_meta_records(
+    warnings: list[str] = []
+    meta_records = _scan_csie_meta_records_in_stream(
+        stream,
+        source=source,
+        expected_meta_len=expected_meta_len,
+    )
+    meta_records, meta_filter_warnings = _filter_plausible_csie_meta_records(
+        meta_records,
+        field_definitions,
+        generated_meta_decoder,
+    )
+    warnings.extend(meta_filter_warnings)
+    known_image_ids, expected_cols_by_image, expectation_warnings = (
+        _metadata_expectations_from_records(
             meta_records,
             field_definitions,
             generated_meta_decoder,
         )
-        warnings.extend(meta_filter_warnings)
-        known_image_ids, expected_cols_by_image, expectation_warnings = (
-            _metadata_expectations_from_records(
-                meta_records,
-                field_definitions,
-                generated_meta_decoder,
-            )
-        )
-        warnings.extend(expectation_warnings)
-        data_records, data_warnings = _scan_csie_data_records_in_stream(
-            stream,
-            source=source,
-            known_image_ids=known_image_ids,
-            expected_cols_by_image=expected_cols_by_image,
-        )
-        warnings.extend(data_warnings)
-        records = sorted(meta_records + data_records, key=lambda item: item.source_offset)
-        for packet_index, record in enumerate(records):
-            record.packet_index = packet_index
-        score = len(meta_records) * 10 + len(data_records)
-        scan_results.append((score, records, source, warnings))
-
-    _score, records, source, warnings = max(scan_results, key=lambda item: item[0])
-    if source == "cleaned_pre_vcdu_word32_full_stream" and records:
-        warnings.insert(
-            0,
-            "CSIE image extraction used reverse_32bit_words(cleaned in-memory stream) "
-            "for the full-stream scan. HK/ADCS decoding still uses the cleaned stream "
-            "directly; "
-            "this CSIE byte-order exception is a temporary FSW/FPGA contract item to revisit.",
-        )
+    )
+    warnings.extend(expectation_warnings)
+    data_records, data_warnings = _scan_csie_data_records_in_stream(
+        stream,
+        source=source,
+        known_image_ids=known_image_ids,
+        expected_cols_by_image=expected_cols_by_image,
+    )
+    warnings.extend(data_warnings)
+    records = sorted(meta_records + data_records, key=lambda item: item.source_offset)
+    for packet_index, record in enumerate(records):
+        record.packet_index = packet_index
     if records:
-        warnings.append(
-            "CSIE image extraction scans the full cleaned stream as well as the "
-            "accepted packet records."
-        )
         warnings.append(
             "APID 536 secondary header bytes are interpreted as CSIE image_id/filler "
             "for image assembly, even if the current CTDB labels those fields as SHCOARSE/SHFINE."
         )
     return records, source, warnings
+
+
+def recover_xband_csie_records(
+    fixed_payload_stream: bytes,
+    config: Config,
+) -> tuple[list[PacketRecord], list[str]]:
+    """Recover X-band CSIE packets once from their flight byte-order view."""
+    field_definitions = read_ctdb_field_definitions_from_config(config)
+    expected_packet_bytes = read_expected_packet_bytes_from_config(config)
+    decoder_bundle = import_bus_decoder_bundle(config)
+    generated_meta_decoder = (
+        getattr(decoder_bundle.csie_pkts, "CSIE_META", None)
+        if decoder_bundle.csie_pkts is not None
+        else None
+    )
+    source = "xband_csie_pre_vcdu_word32"
+    records, _source, warnings = scan_csie_records_from_stream(
+        reverse_32bit_words(fixed_payload_stream),
+        field_definitions,
+        expected_packet_bytes,
+        generated_meta_decoder,
+        source=source,
+    )
+    if records:
+        warnings.insert(
+            0,
+            "X-band CSIE packets were recovered once from the pre-VCDU-word-reversal "
+            "view and promoted into the image packet path.",
+        )
+    return records, warnings
 
 
 def _csie_row_quality_rank(checksum_status: object) -> int:
@@ -4368,19 +4673,20 @@ def write_csie_image_products(
     config: Config,
     output_dir: Path,
     *,
-    fixed_payload_stream: bytes | None = None,
     output_suffix: str = "",
-    write_jpeg2000: bool = True,
+    write_jpeg2000: bool = False,
     write_png: bool = True,
     write_meta_json: bool | None = None,
     inventory_name: str = DEFAULT_CSIE_INVENTORY_BASENAME,
+    append_inventory: bool = False,
 ) -> CsieImageStats:
     """
-    Inventory and assemble CSIE images from the full fixed stream.
+    Inventory and assemble CSIE images from recovered packet records.
 
     Recovered JPEG-LS streams are preserved as ``.jls`` and decoded to native uint16
-    FITS plus rotated inferno PNG/JP2 previews. Uncompressed rows use the same product
-    writers. Every assumption or skipped condition is recorded in the inventory.
+    FITS plus rotated inferno PNG previews. JPEG2000 previews are optional. Uncompressed
+    rows use the same product writers. Every assumption or skipped condition is recorded
+    in the inventory.
     """
     import numpy as np
 
@@ -4388,10 +4694,14 @@ def write_csie_image_products(
     inventory_path = output_dir / inventory_name
     stats = CsieImageStats(output_dir=output_dir, inventory_path=inventory_path)
     field_definitions = read_ctdb_field_definitions_from_config(config)
-    expected_packet_bytes = read_expected_packet_bytes_from_config(config)
     decoder_bundle = import_bus_decoder_bundle(config)
     generated_meta_decoder = (
         getattr(decoder_bundle.csie_pkts, "CSIE_META", None)
+        if decoder_bundle.csie_pkts is not None
+        else None
+    )
+    generated_hk_decoder = (
+        getattr(decoder_bundle.csie_pkts, "CSIE_HK", None)
         if decoder_bundle.csie_pkts is not None
         else None
     )
@@ -4404,30 +4714,14 @@ def write_csie_image_products(
     if write_meta_json is None:
         write_meta_json = bool(getattr(config, "also_save_csie_meta_json", False))
 
-    packet_csie_records = [
-        record for record in packet_records if record.apid in (CSIE_DATA_APID, CSIE_META_APID)
+    csie_records = [
+        record
+        for record in packet_records
+        if record.apid in (CSIE_DATA_APID, CSIE_HK_APID, CSIE_META_APID)
     ]
-    stream_csie_records: list[PacketRecord] = []
-    stream_source = ""
-    if fixed_payload_stream is not None:
-        stream_csie_records, stream_source, stream_warnings = scan_csie_records_from_fixed_stream(
-            fixed_payload_stream,
-            field_definitions,
-            expected_packet_bytes,
-            generated_meta_decoder,
-        )
-        stats.warnings.extend(stream_warnings)
-
-    csie_records = packet_csie_records
     stats.source = "recovered_packet_records"
-    if len(stream_csie_records) > len(packet_csie_records):
-        csie_records = stream_csie_records
-        stats.source = stream_source
-    elif packet_csie_records and stream_csie_records:
-        stats.warnings.append(
-            "CSIE packets were found in both recovered packet records and the full "
-            "cleaned stream; using packet records because they are at least as complete."
-        )
+    if csie_records:
+        stats.source = csie_records[0].source or stats.source
 
     metadata_by_image: dict[int, list[dict[str, object]]] = {}
     metadata_counts: Counter = Counter()
@@ -4437,8 +4731,29 @@ def write_csie_image_products(
     row_summaries_by_image: dict[int, list[dict[str, object]]] = {}
     row_lengths_by_image: dict[int, Counter] = {}
     compressed_chunks_by_image: dict[int, list[dict[str, object]]] = {}
+    geometry_samples: list[dict[str, object]] = []
 
     for record in csie_records:
+        if record.apid == CSIE_HK_APID:
+            try:
+                geometry = decode_csie_hk_geometry_packet(
+                    record.packet,
+                    field_definitions,
+                    generated_hk_decoder,
+                )
+                sort_time = _record_sort_time(record)
+                if sort_time is None:
+                    raise ValueError("APID 537 packet has no usable secondary-header time")
+                geometry["_geometry_j2000"] = combine_spacecraft_time_seconds(
+                    sort_time[0], sort_time[1]
+                )
+                geometry_samples.append(geometry)
+            except Exception as exc:
+                stats.warnings.append(
+                    f"APID 537 packet_index={record.packet_index} could not supply "
+                    f"ICM geometry: {type(exc).__name__}: {exc}"
+                )
+            continue
         if record.apid == CSIE_META_APID:
             stats.meta_packets += 1
             try:
@@ -4535,6 +4850,11 @@ def write_csie_image_products(
         )
         if meta is not None:
             meta = {**meta, **derived_meta}
+            meta, geometry_warning = associate_csie_hk_geometry(
+                meta, geometry_samples
+            )
+            if geometry_warning is not None:
+                metadata_warnings.append(geometry_warning)
         rows = rows_by_image.get(image_id, {})
         row_summaries = row_summaries_by_image.get(image_id, [])
         row_lengths = row_lengths_by_image.get(image_id, Counter())
@@ -5000,6 +5320,22 @@ def write_csie_image_products(
 
         inventory_row = {
             "image_id": image_id,
+            "metadata_time_iso8601": _metadata_time_iso8601(meta),
+            "icm_circle_radius_squared_pixels": (
+                meta.get("icm_circle_radius_squared_pixels", "")
+                if meta is not None
+                else ""
+            ),
+            "icm_circle_center_column_pixels": (
+                meta.get("icm_circle_center_column_pixels", "")
+                if meta is not None
+                else ""
+            ),
+            "icm_circle_center_row_pixels": (
+                meta.get("icm_circle_center_row_pixels", "")
+                if meta is not None
+                else ""
+            ),
             "source": stats.source,
             "meta_packets": metadata_counts[image_id],
             "data_packets": len(row_summaries),
@@ -5051,11 +5387,12 @@ def write_csie_image_products(
         }
         inventory_rows.append(inventory_row)
 
-    _write_csv_rows(
-        inventory_path,
-        inventory_rows,
-        [
+    inventory_fields = [
             "image_id",
+            "metadata_time_iso8601",
+            "icm_circle_radius_squared_pixels",
+            "icm_circle_center_column_pixels",
+            "icm_circle_center_row_pixels",
             "source",
             "meta_packets",
             "data_packets",
@@ -5104,8 +5441,29 @@ def write_csie_image_products(
             "jpegls_decode_error",
             "meta_json_path",
             "warnings",
-        ],
-    )
+        ]
+    if append_inventory and inventory_path.is_file():
+        with inventory_path.open(newline="", encoding="utf-8") as stream:
+            existing_rows = list(csv.DictReader(stream))
+        rows_by_image_id = {
+            str(row.get("image_id", "")): {
+                field: row.get(field, "") for field in inventory_fields
+            }
+            for row in existing_rows
+            if str(row.get("image_id", ""))
+        }
+        for row in inventory_rows:
+            rows_by_image_id[str(row["image_id"])] = row
+
+        def inventory_sort_key(row: dict[str, object]) -> tuple[int, object]:
+            try:
+                return (0, int(str(row.get("image_id", ""))))
+            except ValueError:
+                return (1, str(row.get("image_id", "")))
+
+        inventory_rows = sorted(rows_by_image_id.values(), key=inventory_sort_key)
+
+    _write_csv_rows(inventory_path, inventory_rows, inventory_fields)
     stats.output_paths.append(inventory_path)
     if not stats.meta_packets and not stats.data_packets:
         stats.warnings.append(
@@ -5153,9 +5511,17 @@ def print_decode_summary(stats: DecodeStats) -> None:
     print(f"  packets without decoder/field rows:    {stats.no_decoder_packets:,}")
     print(f"  primary headers normalized to BE:      {stats.primary_headers_normalized:,}")
     print(f"  payloads 16-bit word byte-swapped:     {stats.payload_16bit_words_swapped:,}")
-    print(f"  manifest CSV:                          {stats.manifest_path}")
-    print(f"  decode summary CSV:                    {stats.summary_path}")
-    print(f"  per-APID CSV folder:                   {stats.decoded_dir}")
+    written_paths = set(stats.output_paths)
+    if stats.manifest_path in written_paths:
+        print(f"  manifest CSV:                          {stats.manifest_path}")
+    if stats.summary_path in written_paths:
+        print(f"  decode summary CSV:                    {stats.summary_path}")
+    decoded_csv_count = sum(
+        path.name.startswith("decoded_apid_") for path in stats.output_paths
+    )
+    if decoded_csv_count:
+        print(f"  per-APID CSV files:                    {decoded_csv_count:,}")
+        print(f"  per-APID CSV folder:                   {stats.decoded_dir}")
     if stats.unexpected_little_endian_headers:
         print(
             "WARNING: decoded "
@@ -5270,6 +5636,60 @@ def annotate_records_with_source_metadata(
         record.source_output_dir = str(spec.output_dir)
 
 
+def select_csie_records_for_source(
+    packet_records: list[PacketRecord],
+    fixed_data: bytes,
+    spec: SourceSpec,
+    config: Config,
+) -> tuple[list[PacketRecord], list[str]]:
+    """Select CSIE packets, including X-band frames nested in UHF playback."""
+    packet_image_records = [
+        record
+        for record in packet_records
+        if record.apid in (CSIE_DATA_APID, CSIE_META_APID)
+    ]
+    packet_hk_records = [
+        record for record in packet_records if record.apid == CSIE_HK_APID
+    ]
+    recovery_stream = fixed_data
+    provenance_quality = "xband_pre_vcdu_word32_stream_scan"
+    nested_transport_warnings: list[str] = []
+    if spec.input_mode != INPUT_MODE_XBAND and SYNC_MARKER in fixed_data:
+        recovery_stream, nested_stats = strip_xband_payload_stream(fixed_data)
+        if nested_stats.internal_sync_markers_removed:
+            provenance_quality = "nested_xband_in_playback_stream_scan"
+            nested_transport_warnings.append(
+                "Recovered CSIE image packets from X-band-framed bytes nested in "
+                f"{spec.input_mode} playback data; removed "
+                f"{nested_stats.internal_sync_markers_removed} embedded sync markers."
+            )
+        else:
+            recovery_stream = b""
+    elif spec.input_mode != INPUT_MODE_XBAND:
+        return packet_image_records + packet_hk_records, []
+
+    recovered_records, warnings = recover_xband_csie_records(recovery_stream, config)
+    warnings[0:0] = nested_transport_warnings
+    annotate_records_with_source_metadata(
+        recovered_records,
+        spec,
+        provenance_quality=provenance_quality,
+        packet_offsets_are_passthrough=False,
+    )
+    if len(recovered_records) >= len(packet_image_records):
+        selected_image_records = recovered_records
+    else:
+        warnings.append(
+            "The ordinary packet path produced more CSIE records than the X-band flight "
+            "byte-order recovery path; using the ordinary packet records."
+        )
+        selected_image_records = packet_image_records
+    # APID 537 is an ordinary telemetry packet rather than an image-stream
+    # recovery target. Preserve it solely to bind the configurable ICM circle
+    # geometry to each image product.
+    return selected_image_records + packet_hk_records, warnings
+
+
 def process_source_product(
     spec: SourceSpec,
     args: argparse.Namespace,
@@ -5350,16 +5770,23 @@ def process_source_product(
         ),
     )
 
+    csie_records, csie_recovery_warnings = select_csie_records_for_source(
+        packet_stats.records,
+        fixed_data,
+        spec,
+        config,
+    )
+
     if not args.skip_csie_images:
         csie_stats = write_csie_image_products(
-            packet_stats.records,
+            csie_records,
             config,
             output_dir / args.csie_dir_name,
-            fixed_payload_stream=fixed_data,
             output_suffix=args.product_suffix,
-            write_jpeg2000=not args.skip_csie_jpeg2000,
+            write_jpeg2000=args.write_csie_jpeg2000,
             write_png=not args.skip_csie_png,
         )
+        csie_stats.warnings[:0] = csie_recovery_warnings
         print_csie_image_summary(csie_stats)
 
     return SourceProduct(
@@ -5503,6 +5930,8 @@ def run_combined_pipeline(
     config: Config,
     folder: Path,
 ) -> None:
+    run_started = time.perf_counter()
+    timings: dict[str, float] = {}
     warn_about_legacy_intermediates(folder)
     if args.prefix is not None:
         print(
@@ -5536,6 +5965,7 @@ def run_combined_pipeline(
         "from configured CTDB telemetry definitions."
     )
 
+    phase_started = time.perf_counter()
     source_products = [
         process_source_product(
             spec,
@@ -5547,7 +5977,9 @@ def run_combined_pipeline(
         )
         for spec in specs
     ]
+    _finish_timed_phase(timings, "source processing and CSIE products", phase_started)
 
+    phase_started = time.perf_counter()
     combined_records = prepare_combined_records(source_products)
     print(
         f"\nCombined {len(combined_records):,} recovered packet record(s) in memory."
@@ -5555,6 +5987,7 @@ def run_combined_pipeline(
 
     combined_stats = packetize_stats_from_records(combined_records)
     print_packet_summary(combined_stats, apid_names)
+    _finish_timed_phase(timings, "combine recovered packets", phase_started)
 
     source_summary_path = folder / COMBINED_SOURCE_SUMMARY_BASENAME
     write_combined_source_summary(source_summary_path, source_products)
@@ -5562,16 +5995,31 @@ def run_combined_pipeline(
 
     if not args.skip_decode_csv:
         decoded_dir = folder / COMBINED_DECODED_DIR_BASENAME
-        decode_stats = decode_packet_records_to_csv(
+        _clean_generated_decode_csvs(decoded_dir)
+        for stale_path in (
+            folder / COMBINED_PACKET_MANIFEST_BASENAME,
+            folder / COMBINED_DECODE_SUMMARY_BASENAME,
+        ):
+            if stale_path.is_file():
+                stale_path.unlink()
+        phase_started = time.perf_counter()
+        decoded = decode_packet_records(
             combined_records,
             config,
             apid_names,
             decoded_dir,
+            write_decoded_csvs=args.write_decoded_csv,
+            write_packet_manifest=args.write_packet_manifest,
+            write_summary_csv=args.write_decoded_csv,
             manifest_path_override=folder / COMBINED_PACKET_MANIFEST_BASENAME,
             summary_path_override=folder / COMBINED_DECODE_SUMMARY_BASENAME,
         )
-        print_decode_summary(decode_stats)
-        ingest_decoded_telemetry_to_duckdb(decoded_dir, config, args)
+        _finish_timed_phase(timings, "CTDB telemetry decode", phase_started)
+        print_decode_summary(decoded.stats)
+
+        phase_started = time.perf_counter()
+        ingest_decoded_rows_to_duckdb(decoded, decoded_dir, config, args)
+        _finish_timed_phase(timings, "DuckDB direct ingest", phase_started)
 
     if args.skip_csie_images:
         print("CSIE image assembly skipped for all source products.")
@@ -5581,6 +6029,8 @@ def run_combined_pipeline(
             f"{folder / DEFAULT_SOURCE_PRODUCTS_DIR_BASENAME}/*/"
             f"{args.csie_dir_name}."
         )
+    _print_phase_timing_summary(timings)
+    print(f"Level 0.5 wall time: {time.perf_counter() - run_started:.3f} s")
 
 
 def _build_argument_parser() -> argparse.ArgumentParser:
@@ -5633,6 +6083,16 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--input-file",
+        action="append",
+        default=None,
+        help=(
+            "Process this exact input file instead of discovering every file with the "
+            "configured prefix. May be repeated. Relative paths are resolved against "
+            "--folder. An explicit --input-mode is required."
+        ),
+    )
+    parser.add_argument(
         "--spacecraft-id",
         type=int,
         default=DEFAULT_SPACECRAFT_ID,
@@ -5659,16 +6119,40 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         "--decoded-dir-name",
         default=DEFAULT_DECODED_DIR_BASENAME,
         help=(
-            "Folder basename for decoded packet CSV exports. "
+            "Folder basename used for stable DuckDB source identities and optional "
+            "decoded-packet CSV diagnostics. "
             f"Default: {DEFAULT_DECODED_DIR_BASENAME}."
         ),
+    )
+    parser.add_argument(
+        "--duckdb-source-key",
+        default="",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--skip-decode-csv",
         action="store_true",
         help=(
-            "Skip CTDB decoder CSV export and the dependent DuckDB ingest after "
-            "in-memory packet recovery."
+            "Legacy name: skip CTDB telemetry decoding and the dependent direct "
+            "DuckDB ingest after in-memory packet recovery."
+        ),
+    )
+    parser.add_argument(
+        "--write-decoded-csv",
+        action="store_true",
+        help=(
+            "Diagnostic mode: also write per-APID decoded CSVs and the compact "
+            "decode summary. Standard processing writes decoded rows directly to "
+            "DuckDB without CSV intermediates."
+        ),
+    )
+    parser.add_argument(
+        "--write-packet-manifest",
+        action="store_true",
+        help=(
+            "Diagnostic mode: write the large packet-by-packet provenance CSV. "
+            "Disabled by default because the processing manifest and DuckDB retain "
+            "the operational provenance needed for normal runs."
         ),
     )
     parser.add_argument(
@@ -5683,7 +6167,10 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skip-duckdb",
         action="store_true",
-        help="Skip the standard DuckDB ingest while retaining decoded CSV products.",
+        help=(
+            "Skip the standard direct DuckDB ingest. Combine with "
+            "--write-decoded-csv only for diagnostic CSV-only processing."
+        ),
     )
     parser.add_argument(
         "--csie-dir-name",
@@ -5696,17 +6183,29 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skip-csie-images",
         action="store_true",
-        help="Skip CSIE image inventory and JLS/FITS/PNG/JPEG2000 product assembly.",
+        help="Skip CSIE image inventory and JLS/FITS/PNG product assembly.",
     )
-    parser.add_argument(
-        "--skip-csie-jpeg2000",
+    jpeg2000_group = parser.add_mutually_exclusive_group()
+    jpeg2000_group.add_argument(
+        "--write-csie-jpeg2000",
         action="store_true",
-        help="Write CSIE FITS products but skip JPEG2000 preview products.",
+        help="Also write JPEG2000 preview products (disabled by default).",
+    )
+    jpeg2000_group.add_argument(
+        "--skip-csie-jpeg2000",
+        dest="write_csie_jpeg2000",
+        action="store_false",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--skip-csie-png",
         action="store_true",
         help="Write CSIE FITS products but skip inferno PNG preview products.",
+    )
+    parser.add_argument(
+        "--append-csie-inventory",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--product-suffix",
@@ -5736,7 +6235,12 @@ def ingest_decoded_telemetry_to_duckdb(
     if args.skip_duckdb:
         print("DuckDB telemetry ingest skipped by request.")
         return None
-    telemetry_csvs = sorted(decoded_dir.glob("decoded_apid_*.csv"))
+    telemetry_csvs = []
+    for path in sorted(decoded_dir.glob("decoded_apid_*.csv")):
+        match = re.match(r"decoded_apid_(\d+)_", path.name)
+        if match is not None and int(match.group(1)) in DUCKDB_EXCLUDED_CSIE_APIDS:
+            continue
+        telemetry_csvs.append(path)
     if not telemetry_csvs:
         print("DuckDB telemetry store unchanged: no decoded APID telemetry CSVs.")
         return None
@@ -5754,8 +6258,68 @@ def ingest_decoded_telemetry_to_duckdb(
     print(
         "DuckDB ingest: "
         f"{summary['files_ingested']:,} file(s) ingested, "
+        f"{summary['files_replaced']:,} changed file(s) replaced, "
         f"{summary['files_skipped']:,} unchanged file(s) skipped, "
-        f"{summary['rows_ingested']:,} row(s) added"
+        f"{summary['rows_ingested']:,} row(s) added, "
+        f"{summary['rows_removed']:,} superseded row(s) removed"
+    )
+    return summary
+
+
+def ingest_decoded_rows_to_duckdb(
+    decoded: DecodedTelemetry,
+    decoded_dir: Path,
+    config: Config,
+    args: argparse.Namespace,
+) -> dict[str, int] | None:
+    """Write decoded Level 0.5 rows directly to the standard DuckDB store."""
+    if args.skip_duckdb:
+        print("DuckDB telemetry ingest skipped by request.")
+        return None
+    telemetry_rows = {
+        apid: rows
+        for apid, rows in decoded.rows_by_apid.items()
+        if apid not in DUCKDB_EXCLUDED_CSIE_APIDS
+    }
+    telemetry_names = {
+        apid: packet_name
+        for apid, packet_name in decoded.packet_names.items()
+        if apid in telemetry_rows
+    }
+    if not telemetry_rows:
+        print("DuckDB telemetry store unchanged: no decoded APID telemetry rows.")
+        return None
+
+    source_key = _safe_csv_stem(args.duckdb_source_key) if args.duckdb_source_key else ""
+    source_mode = _safe_csv_stem(getattr(args, "input_mode", INPUT_MODE_XBAND))
+    source_paths = {}
+    for apid, packet_name in telemetry_names.items():
+        stem = f"decoded_apid_{apid:04d}_{_safe_csv_stem(packet_name)}"
+        if source_key:
+            stem = f"{stem}__{source_mode}_{source_key}"
+        source_paths[apid] = decoded_dir / f"{stem}.csv"
+    processor = TelemetryProcessor(
+        version=config.version_pipeline,
+        database_path=args.telemetry_database,
+        software_versions={
+            "bus_ctdb_version": config.version_bus,
+            "csie_ctdb_version": config.version_csie,
+            "dsps_ctdb_version": config.version_dsps,
+        },
+    )
+    summary = processor.process_decoded_rows(
+        telemetry_rows,
+        telemetry_names,
+        source_paths,
+    )
+    print(f"DuckDB telemetry store: {processor.database_path}")
+    print(
+        "DuckDB direct ingest: "
+        f"{summary['files_ingested']:,} APID stream(s) ingested, "
+        f"{summary['files_replaced']:,} changed stream(s) replaced, "
+        f"{summary['files_skipped']:,} unchanged stream(s) skipped, "
+        f"{summary['rows_ingested']:,} row(s) added, "
+        f"{summary['rows_removed']:,} superseded row(s) removed"
     )
     return summary
 
@@ -5772,6 +6336,8 @@ def run(
     context and may supply an already parsed config and resolved data folder.
     """
     args = _build_argument_parser().parse_args(argv)
+    run_started = time.perf_counter()
+    timings: dict[str, float] = {}
 
     if _prepared is None:
         config = Config(os.path.abspath(os.path.expanduser(args.config)))
@@ -5795,6 +6361,7 @@ def run(
         folder,
         prefix=args.prefix,
         input_mode=args.input_mode,
+        input_files=args.input_file,
     )
     if not input_paths:
         if input_mode == INPUT_MODE_UHF:
@@ -5838,12 +6405,15 @@ def run(
             "unwrapped before inner packet recovery."
         )
 
+    phase_started = time.perf_counter()
     merged_data, merge_stats = merge_binary_inputs(input_paths)
+    _finish_timed_phase(timings, "merge raw inputs", phase_started)
     print(
         f"\nMerged {merge_stats.input_file_count} raw file(s) in memory: "
         f"{merge_stats.input_bytes:,} bytes"
     )
 
+    phase_started = time.perf_counter()
     apid_names = read_apid_names_from_config(config)
     valid_apids = set(apid_names)
     print(f"Loaded {len(valid_apids)} valid APIDs from configured CTDBs.")
@@ -5859,6 +6429,9 @@ def run(
         f"Loaded fixed packet byte sizes for {len(expected_packet_bytes)} APIDs "
         "from configured CTDB telemetry definitions."
     )
+    _finish_timed_phase(timings, "load CTDB definitions", phase_started)
+
+    phase_started = time.perf_counter()
     fixed_data, fix_stats = build_fixed_binary(
         merged_data,
         valid_apids=valid_apids,
@@ -5867,8 +6440,11 @@ def run(
         spacecraft_id=args.spacecraft_id,
         strip_out_of_phase_xband_artifacts=not args.preserve_rf_lapse_artifacts,
     )
+    del merged_data
+    _finish_timed_phase(timings, "X-band/transport cleanup", phase_started)
     print_fix_summary(fix_stats)
 
+    phase_started = time.perf_counter()
     _packet_stream, packet_stats = packetize_checksum_valid_ccsds(
         fixed_data,
         valid_apids,
@@ -5877,6 +6453,7 @@ def run(
         extract_playback_wrappers=input_mode == INPUT_MODE_XBAND,
         emit_packet_stream=False,
     )
+    _finish_timed_phase(timings, "CCSDS packet recovery", phase_started)
     print_packet_summary(packet_stats, apid_names)
     single_source_spec = SourceSpec(
         source_id=input_mode,
@@ -5911,33 +6488,60 @@ def run(
             )
         ),
     )
+    phase_started = time.perf_counter()
     for record in packet_stats.records:
         record.packet_hash = hashlib.blake2b(record.packet, digest_size=16).hexdigest()
         if _record_sort_time(record) is None:
             record.combined_time_source = "single_source_order"
 
+    csie_records, csie_recovery_warnings = select_csie_records_for_source(
+        packet_stats.records,
+        fixed_data,
+        single_source_spec,
+        config,
+    )
+    del fixed_data
+    _finish_timed_phase(timings, "record provenance and CSIE recovery", phase_started)
+
     if not args.skip_decode_csv:
         decoded_dir = folder / args.decoded_dir_name
-        decode_stats = decode_packet_records_to_csv(
+        _clean_generated_decode_csvs(decoded_dir)
+        phase_started = time.perf_counter()
+        decoded = decode_packet_records(
             packet_stats.records,
             config,
             apid_names,
             decoded_dir,
+            write_decoded_csvs=args.write_decoded_csv,
+            write_packet_manifest=args.write_packet_manifest,
+            write_summary_csv=args.write_decoded_csv,
         )
-        print_decode_summary(decode_stats)
-        ingest_decoded_telemetry_to_duckdb(decoded_dir, config, args)
+        _finish_timed_phase(timings, "CTDB telemetry decode", phase_started)
+        print_decode_summary(decoded.stats)
+        if not args.write_decoded_csv and not args.write_packet_manifest:
+            print("Decoded CSV diagnostics disabled; telemetry retained in DuckDB only.")
+
+        phase_started = time.perf_counter()
+        ingest_decoded_rows_to_duckdb(decoded, decoded_dir, config, args)
+        _finish_timed_phase(timings, "DuckDB direct ingest", phase_started)
 
     if not args.skip_csie_images:
+        phase_started = time.perf_counter()
         csie_stats = write_csie_image_products(
-            packet_stats.records,
+            csie_records,
             config,
             folder / args.csie_dir_name,
-            fixed_payload_stream=fixed_data,
             output_suffix=args.product_suffix,
-            write_jpeg2000=not args.skip_csie_jpeg2000,
+            write_jpeg2000=args.write_csie_jpeg2000,
             write_png=not args.skip_csie_png,
+            append_inventory=args.append_csie_inventory,
         )
+        csie_stats.warnings[:0] = csie_recovery_warnings
         print_csie_image_summary(csie_stats)
+        _finish_timed_phase(timings, "CSIE image products", phase_started)
+
+    _print_phase_timing_summary(timings)
+    print(f"Level 0.5 wall time: {time.perf_counter() - run_started:.3f} s")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -5974,6 +6578,7 @@ def main(argv: list[str] | None = None) -> None:
                 folder,
                 prefix=provenance_args.prefix,
                 input_mode=provenance_args.input_mode,
+                input_files=provenance_args.input_file,
             )
             provenance.record_inputs(input_paths)
         run(argv_list, _prepared=(config, folder))

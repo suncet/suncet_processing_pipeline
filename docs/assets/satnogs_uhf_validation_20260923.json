@@ -1,0 +1,145 @@
+{
+  "input_files": [
+    {
+      "file": "2026_266_16_40_45/ccsds_2026_266_16_43_50",
+      "size_bytes": 12348,
+      "sha256": "baf3353c85f3d09e62a217374529f9c6103f32ab5b3d4889b7e022038657d8c3",
+      "candidates": 49,
+      "valid": 49,
+      "valid_bare": 49
+    },
+    {
+      "file": "2026_266_16_49_22/ccsds_2026_266_16_49_30",
+      "size_bytes": 33768,
+      "sha256": "3ca8295d33b0b7d23215525a7b189cf2d5614b84f6c8f53281a52d7caaa26c8e",
+      "candidates": 134,
+      "valid": 134,
+      "valid_bare": 134
+    },
+    {
+      "file": "2026_266_17_01_15/ccsds_2026_266_17_02_00",
+      "size_bytes": 4536,
+      "sha256": "16ba3d78fc11c861c141467f3bb58bd3d3affa3e367710cc8e578ee0ff7eb92b",
+      "candidates": 18,
+      "valid": 18,
+      "valid_bare": 18
+    },
+    {
+      "file": "2026_266_17_09_01/ccsds_2026_266_17_09_20",
+      "size_bytes": 37296,
+      "sha256": "56f8f75a44477c71520def1544fe189eebab80ac5c5c839e85a0509098010847",
+      "candidates": 148,
+      "valid": 148,
+      "valid_bare": 148
+    },
+    {
+      "file": "2026_266_17_21_44/ccsds_2026_266_17_22_20",
+      "size_bytes": 2000237,
+      "sha256": "1d4c7e7d0f6f0c8e4031678ff9d01116b6b74db51226e755e10e10d4fd1ea86b",
+      "candidates": 6404,
+      "valid": 6211,
+      "valid_bare": 5852,
+      "valid_after_ax25_header": 359,
+      "invalid": 193,
+      "invalid_after_ax25_header": 193
+    },
+    {
+      "file": "2026_266_17_21_44/ccsds_2026_266_20_16_13",
+      "size_bytes": 2000047,
+      "sha256": "3405fcce5f5287ade445bcb8eb89c876df2466c0af4bf936face94d7b34cb695",
+      "candidates": 7148,
+      "valid": 7065,
+      "valid_bare": 6885,
+      "valid_after_ax25_header": 180,
+      "invalid": 83,
+      "invalid_after_ax25_header": 83
+    },
+    {
+      "file": "2026_266_17_21_44/ccsds_2026_266_23_20_03",
+      "size_bytes": 173378,
+      "sha256": "6ecd5b620512170161c557cb143e9865e5b94e62a559ca9e0e44575a1c05870e",
+      "candidates": 647,
+      "valid": 645,
+      "valid_bare": 640,
+      "valid_after_ax25_header": 5,
+      "invalid": 2,
+      "invalid_after_ax25_header": 2
+    }
+  ],
+  "counts": {
+    "candidates": 14548,
+    "valid": 14270,
+    "valid_bare": 13726,
+    "valid_after_ax25_header": 544,
+    "invalid": 278,
+    "invalid_after_ax25_header": 278
+  },
+  "unique_valid_packets": 7352,
+  "copy_multiplicities": {
+    "2": 6918,
+    "1": 434
+  },
+  "coarse_seconds_min_max": [
+    10,
+    843521762
+  ],
+  "coarse_below_one_day": 4043,
+  "fine_ms_min_max": [
+    27,
+    969
+  ],
+  "wrapped_following_bytes": {
+    "next_is_another_ax25_header": 516,
+    "other_following_bytes": 28
+  },
+  "reference_csv_rows": 14270,
+  "reference_valid_matched_rows": 14270,
+  "reference_invalid_or_missing": {},
+  "valid_captures_missing_from_reference": 0,
+  "reference_duplicate_excess": 0,
+  "fields_compared": 111,
+  "values_compared": 1583970,
+  "mismatch_fields": {},
+  "mismatch_examples": [],
+  "inspected_on": "2026-09-29",
+  "source_dataset": "test_data/2026-09-23_cpt/uhf_rundirs",
+  "direct_comparison": {
+    "private_ctdb_version": "2.0.5",
+    "unique_packets_compared": 7352,
+    "unique_values_compared": 816072,
+    "mismatch_fields": {},
+    "strict_packetizer": {
+      "recovered": 14270,
+      "missing": 0,
+      "extra": 0
+    },
+    "version_packet_checksums": {
+      "fletcher32_le_words_stored_be": 34
+    },
+    "recorded_software_versions": {
+      "2.0.5": 34
+    },
+    "fcs_following_header_candidates": {
+      "candidates_tested": 822,
+      "matches": 0
+    },
+    "overlap": {
+      "valid_starts_inside_invalid_candidate": 222
+    },
+    "valid_occurrences": 14270
+  },
+  "reference_csv_sha256": "fe556f72b4f8e1db2403b927b525914c624369057789a622d7d35153dbc3fb26",
+  "reference_csv_relative_path": "decoded_packets/decoded_apid_0001_beacon.csv",
+  "schema_sha256": "67d7da70c811f7dc88f6ea76f39ddf849c1378284c61596fffb13d74fe4bc128",
+  "generated_parser_sha256": "ada3be9454e43ffbaef96bae325640a8cf78b5ca162f250c34c6eef7f7d0d154",
+  "ax25_adapter_validation": {
+    "header_layout_accepted_by_mission_owner": "2026-09-29",
+    "fcs_present": false,
+    "accepted_occurrences": 544,
+    "rejected_fletcher_occurrences": 278,
+    "public_values_compared": 60384,
+    "mismatches": 0,
+    "fcs_present_true_evidence": "synthetic tests only",
+    "local_satnogs_tests_passed": 126
+  }
+}

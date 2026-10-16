@@ -1,0 +1,150 @@
+{
+  "input": {
+    "file": "SunCET_UHF1790796500.bin",
+    "size_bytes": 74712960,
+    "sha256": "30ff20c8c860630d4168d81ea1fcb8b4d966029de5b0a66c2c360ca25673ccbe",
+    "format": "little-endian complex float32 (interleaved I/Q)",
+    "complex_samples": 9339120,
+    "sample_rate_hz": 307200,
+    "duration_seconds": 30.40078125
+  },
+  "receiver": {
+    "gnu_radio_version": "3.10.5.1",
+    "baud": 9600,
+    "baseband_sample_rate_hz": 96000,
+    "lowpass_cutoff_hz": 9000,
+    "fir_taps": 257,
+    "fir_window": "hamming",
+    "resampling_up_down": [
+      5,
+      16
+    ],
+    "frequency_translation_hz": 0,
+    "gfsk_sensitivity": 0.3141592653589793,
+    "clock_gain_mu": 0.175,
+    "clock_relative_limit": 0.005,
+    "descrambler_mask": "0x21",
+    "descrambler_seed": 0,
+    "descrambler_length_parameter": 16,
+    "nrzi": "1 for no transition",
+    "hdlc_byte_bit_order": "LSB first",
+    "fec_or_deinterleaving_applied": false
+  },
+  "results": {
+    "independent_crc_valid_frames": 20,
+    "gnu_radio_crc_valid_frames": 20,
+    "frame_multisets_match_after_fcs_removal": true,
+    "public_beacons_both_checksums_valid": 10,
+    "other_crc_valid_frames_excluded": 10,
+    "public_fields_per_beacon": 111,
+    "header_matches": true,
+    "beacon_frames_unique": 10,
+    "control_crc_valid_counts": {
+      "without_descrambling": 0,
+      "without_nrzi_decoding": 0,
+      "nrzi_before_descrambling": 20
+    }
+  },
+  "waveform_estimate": {
+    "method": "Median positive/negative frequency plateaus within >=31-sample same-sign windows at 96 ksample/s; interior of validated beacon frames",
+    "deviation_hz_median": 2389.7,
+    "deviation_hz_per_beacon": [
+      2393.1,
+      2384.8,
+      2387.0,
+      2388.5,
+      2388.4,
+      2392.6,
+      2391.6,
+      2381.6,
+      2392.3,
+      2390.8
+    ],
+    "baseband_offset_hz_median": -113.3,
+    "caveat": "Receiver-filtered estimate, not calibrated absolute RF frequency or radio configuration readback; Gaussian BT not established"
+  },
+  "beacon_framing": [
+    {
+      "approx_start_seconds": 0.453958,
+      "approx_end_seconds": 0.681771,
+      "frame_bytes_including_fcs": 270,
+      "stuffed_zero_bits": 11,
+      "consecutive_opening_flags": 20,
+      "consecutive_closing_flags": 5
+    },
+    {
+      "approx_start_seconds": 3.452708,
+      "approx_end_seconds": 3.680417,
+      "frame_bytes_including_fcs": 270,
+      "stuffed_zero_bits": 10,
+      "consecutive_opening_flags": 20,
+      "consecutive_closing_flags": 5
+    },
+    {
+      "approx_start_seconds": 6.452292,
+      "approx_end_seconds": 6.680313,
+      "frame_bytes_including_fcs": 270,
+      "stuffed_zero_bits": 13,
+      "consecutive_opening_flags": 20,
+      "consecutive_closing_flags": 5
+    },
+    {
+      "approx_start_seconds": 9.452396,
+      "approx_end_seconds": 9.680312,
+      "frame_bytes_including_fcs": 270,
+      "stuffed_zero_bits": 12,
+      "consecutive_opening_flags": 20,
+      "consecutive_closing_flags": 5
+    },
+    {
+      "approx_start_seconds": 12.452083,
+      "approx_end_seconds": 12.679792,
+      "frame_bytes_including_fcs": 270,
+      "stuffed_zero_bits": 10,
+      "consecutive_opening_flags": 20,
+      "consecutive_closing_flags": 5
+    },
+    {
+      "approx_start_seconds": 15.4525,
+      "approx_end_seconds": 15.680104,
+      "frame_bytes_including_fcs": 270,
+      "stuffed_zero_bits": 9,
+      "consecutive_opening_flags": 20,
+      "consecutive_closing_flags": 5
+    },
+    {
+      "approx_start_seconds": 18.452708,
+      "approx_end_seconds": 18.680729,
+      "frame_bytes_including_fcs": 270,
+      "stuffed_zero_bits": 13,
+      "consecutive_opening_flags": 20,
+      "consecutive_closing_flags": 5
+    },
+    {
+      "approx_start_seconds": 21.453333,
+      "approx_end_seconds": 21.681042,
+      "frame_bytes_including_fcs": 270,
+      "stuffed_zero_bits": 10,
+      "consecutive_opening_flags": 20,
+      "consecutive_closing_flags": 5
+    },
+    {
+      "approx_start_seconds": 24.453437,
+      "approx_end_seconds": 24.681458,
+      "frame_bytes_including_fcs": 270,
+      "stuffed_zero_bits": 13,
+      "consecutive_opening_flags": 20,
+      "consecutive_closing_flags": 5
+    },
+    {
+      "approx_start_seconds": 27.455521,
+      "approx_end_seconds": 27.683333,
+      "frame_bytes_including_fcs": 270,
+      "stuffed_zero_bits": 11,
+      "consecutive_opening_flags": 20,
+      "consecutive_closing_flags": 5
+    }
+  ],
+  "privacy": "No IQ samples, packet bytes, telemetry values, or other packet identifiers exported. Approximate boundaries are not approved sharing crops.",
+  "scope": "Offline receive reconstruction; actual SatNOGS Network flowgraph, 19200-baud mode, and paired independent reception not tested"
+}

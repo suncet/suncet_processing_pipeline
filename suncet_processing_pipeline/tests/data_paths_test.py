@@ -80,6 +80,7 @@ def test_run_name_must_be_one_component(tmp_path, monkeypatch):
 
 def test_python_and_config_sources_do_not_embed_workstation_paths():
     repository = Path(__file__).resolve().parents[2]
+    excluded_roots = {".git", ".pytest_cache", "build", "dist", "tmp"}
     forbidden_fragments = (
         "/" + "Users/",
         "/" + "home/",
@@ -92,6 +93,8 @@ def test_python_and_config_sources_do_not_embed_workstation_paths():
     offenders = []
     for pattern in ("*.py", "*.ini", "*.ipynb"):
         for path in repository.rglob(pattern):
+            if excluded_roots.intersection(path.relative_to(repository).parts):
+                continue
             text = path.read_text(encoding="utf-8")
             if any(fragment in text for fragment in forbidden_fragments) or (
                 direct_data_lookup.search(text)

@@ -2,7 +2,7 @@
 
 Status: **Draft**
 
-Revision: draft-0.11
+Revision: draft-0.12
 Last updated: 2026-09-29
 
 Canonical URL:
@@ -92,11 +92,24 @@ by its low byte; together these operations place the conventional un-swapped
 CRC-16/X-25 value low byte first in the transmitted buffer. Flags are not part
 of the CRC input.
 
-An RF capture must still establish any radio-added preamble, flags, bit
-stuffing, or other physical/link framing. Separately, laboratory validation of
-the selected SatNOGS receiver path must establish whether that ground-side path
-removes flags, the AX.25 header, or FCS before passing bytes to the telemetry
-decoder.
+The September 30, 2026 flight-unit recording verifies the nominal 9600-baud
+receive chain: GFSK demodulation, self-synchronizing G3RUH descrambling
+(`b[n] XOR b[n-12] XOR b[n-17]`), NRZI decoding (no transition = 1), and HDLC
+deframing. HDLC bytes are transmitted least-significant bit first; a zero is
+stuffed after five consecutive ones. Each of the ten recovered beacons has
+20 consecutive opening `0x7E` flags and five consecutive closing flags, followed
+or preceded by other burst-start/end behavior not fully characterized here.
+Flags are removed before byte-level decoding. The frame between flags contains
+the 16-byte header, 252-byte CCSDS packet, and two FCS bytes. All ten frames
+pass both link CRC and packet Fletcher-32 checks.
+
+The measured frequency deviation is approximately ±2.4 kHz at 9600 baud,
+estimated from filtered frequency plateaus; Gaussian BT remains unconfirmed.
+No FEC or deinterleaving step is required for these recorded beacons.
+See the [RF audit](SATNOGS_IQ_VALIDATION_20260930.md) for the reproducible receiver
+settings and limitations. A local replay through the released SatNOGS
+GFSK/AX.25 receiver retains the 16-byte header and removes flags and FCS,
+delivering a 268-byte beacon frame to the telemetry decoder.
 
 ## CCSDS APID 1 packet
 
@@ -139,8 +152,12 @@ types, units, conversions, and status maps.
 
 The generated
 [`suncet_apid1.ksy`](../suncet_processing_pipeline/satnogs/suncet_apid1.ksy)
-does not yet wrap the packet in AX.25 because laboratory validation must first
-establish the actual SatNOGS decoder-input boundary.
+describes the bare CCSDS packet. The
+[`AX.25 adapter`](../suncet_processing_pipeline/satnogs/ax25.py) accepts the
+literal header above followed by one beacon, with an explicit choice of
+whether the two FCS bytes are present. It validates the FCS when present and
+always validates the beacon's Fletcher-32 checksum. The validated SatNOGS
+GFSK/AX.25 receiver boundary uses `fcs_present=False`.
 
 The repository also contains a fully synthetic, non-flight
 [`252-byte packet`](../suncet_processing_pipeline/satnogs/test_data/suncet_apid1_synthetic_252.hex)

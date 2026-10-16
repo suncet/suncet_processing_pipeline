@@ -33,7 +33,7 @@ preserves the originally submitted values.
 | Status | `Future` |
 | Countries of origin | `United States of America` |
 | Website | <https://suncet.jhuapl.edu/> |
-| Dashboard URL | Blank until the SunCET SatNOGS dashboard exists |
+| Dashboard URL | Blank until operational validation and public Telemetry promotion; suncet-dev currently exists only as a Scratchpad development dashboard |
 | Launch date | `2027-03-15 00:00` as submitted; revise if mission planning changes |
 | Deploy date | Blank until deployment timing is manifested |
 | Re-entry date | Blank |
@@ -65,9 +65,9 @@ not yet recorded.
 | Service | `Space Operation` for spacecraft health telemetry; this SatNOGS category is separate from the FCC Experimental Radio Service authorization |
 | IARU coordination | `N/A` because the link is outside the amateur bands |
 | IARU coordination URL | Leave blank |
-| ITU notification URLs | Leave blank until a public applicable entry is identified |
+| ITU notification URLs | The dedicated field failed to retain the verified URL on modification; the ITU reference is saved in Citation instead (2026-09-29) |
 | Unconfirmed | Yes before flight-equivalent RF validation and on-orbit reception |
-| Citation | Reviewed revision of the [SunCET public beacon specification](SUNCET_PUBLIC_BEACON_SPEC.md) |
+| Citation | [Public beacon specification](SUNCET_PUBLIC_BEACON_SPEC.md), plus the [official ITU SUNCET record](https://www.itu.int/itu-r/space/apps/public/spaceexplorer/networks-explorer/space-stations/dashboard/non-plans/SUNCET/125545338), identifying API/A 14222 and API/B 3490 as advance publication, not MIFR registration |
 | Email when reviewed | Yes |
 
 Do not publish uplink frequency, uplink mode, commanding details, or command
@@ -75,8 +75,15 @@ telemetry through this record. Selecting `Transmitter` accurately describes the
 public SatNOGS integration boundary even though the physical spacecraft radio
 may support private mission uplink functions.
 
-The public citation to paste into the form is:
+The radio-parameter citation used in the form is:
 <https://github.com/suncet/suncet_processing_pipeline/blob/main/docs/SUNCET_PUBLIC_BEACON_SPEC.md#uhf-transmitter>
+
+The suggestion was amended on 2026-09-29 to append the official ITU link and
+notice ID `125545338`. ITU lists receipt on 2025-12-05, API/A 14222 published
+2026-01-20, and API/B 3490 published 2026-06-23. The dashboard showed zero
+notification publications and no MIFR registration. The dedicated ITU field
+reported successful saves but remained blank; adding the reference to Citation
+persisted and was verified on suggestion 13013.
 
 The reviewed specification revision was published at that URL before submission. Citation
 means a public source for the entered radio parameters, not an attached IQ file.
