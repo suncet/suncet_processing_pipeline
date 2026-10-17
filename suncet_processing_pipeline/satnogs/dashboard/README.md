@@ -1,4 +1,4 @@
-# SunCET development dashboard
+# SunCET telemetry dashboard
 
 Created 2026-09-29 in SatNOGS Grafana 11.6.0:
 [suncet-dev](https://dashboard.satnogs.org/d/ffzqpb9arppfkb/suncet-dev),
@@ -18,8 +18,8 @@ any other existing dashboard was edited.
 - `suncet-dev.saved.json` is the actual Grafana export of the saved SunCET
   dashboard. It preserves the existing SunCET identity for subsequent work.
 - The public CSV is the only telemetry schema input. The current layout covers
-  82 approved aliases in 38 telemetry panels, 3 text/image panels, and 9 section
-  rows when the optional spacecraft image is supplied.
+  82 approved aliases in 46 telemetry/reception panels, 2 text/image panels,
+  and 9 section rows when the optional spacecraft image is supplied.
 
 ```shell
 conda activate suncet
@@ -33,14 +33,13 @@ that creates a second dashboard. Edit the SunCET UID above and export the saved
 result again. Keep the generator synchronized with layout changes. Do not
 reuse any reference dashboard's ID, UID, queries, or thresholds.
 
-## Data connection status
+## Data connection
 
-The observed production datasource is **SatNOGS DB**, InfluxDB UID `000000001`.
-AEPEX uses a NORAD-number measurement and source metadata such as `pid` and
-`observer`. A focused `SHOW FIELD KEYS FROM "98244"` query through Grafana
-returned HTTP 200 with no frames on 2026-09-29. Thus no SunCET field names have
-been verified in that measurement. `98244` is SunCET's temporary SatNOGS NORAD
-identifier; the eventual ingestion measurement may differ.
+The production datasource is **SatNOGS DB**, InfluxDB UID `000000001`.
+SunCET uses measurement `98244` and the standard SatNOGS `pid`, `observer`, and
+station metadata. The reception section follows the SPRITE/AEPEX pattern: a
+cumulative observed-frame leaderboard, latest receiving station, latest frame
+time, and count for the selected range.
 
 A recorded-data preview was investigated on 2026-09-29. The account's panel
 source picker offers `SatNOGS DB`, `SatNOGS DB development`, and the built-in
@@ -50,11 +49,9 @@ No capture was uploaded and the temporary panel was discarded. A configured
 preview source or an agreed development-DB ingestion path would be needed
 before putting these recorded values into the hosted dashboard.
 
-Every hosted target is deliberately `hide: true` (disabled). Its InfluxQL is a staged
-mapping from approved public aliases to a proposed `98244` measurement, not a
-claim that those fields have been ingested. No synthetic data or mock source is
-connected. The reception section is an explicit pending-data note, not a live
-freshness calculation. Empty panels were verified in Grafana.
+Hosted targets are enabled and query the approved public aliases directly. No
+synthetic data or mock source is connected, so panels remain empty until
+SatNOGS receives SunCET frames.
 
 Queries assume the approved engineering conversions; there is no second
 scaling pass. State mappings support the public string labels
@@ -62,11 +59,21 @@ and numeric codes. Unknown values remain visible numerically rather than being
 mapped to a healthy state. Inferred units are named in panel descriptions.
 Latest summaries and histogram use one row, preserving a common packet time.
 Time-series panels draw points without connecting gaps or carrying values
-forward. The saved dashboard has visual voltage bands but no alert rules or auto-refresh.
+forward. The dashboard has visual voltage bands, no alert rules, and a
+one-minute refresh interval.
 Native Canvas state panels query aliases of the actual source enumeration;
 missing or unknown data leaves every choice dimmed. The reported-value line
 shows the raw unknown code or **No data**. The histogram query selects one
 packet and transforms its six fields into bin/count rows.
+
+Battery charge-current series are split using the matching packet's charging
+state: charging is green and discharging is red. The separate charging-state
+table is intentionally omitted. Derived power panels calculate packet-coherent
+voltage × current for the batteries, EPS bus, both solar-array strings, CSIE,
+Dual-SPS, UHF, X-band electronics, and the X-band power amplifier. Battery
+power is positive while charging and negative while discharging. Each derived
+power panel leads a three-column row with the corresponding voltage and current
+panels immediately beside it.
 
 The [October 5 integration check](../../../docs/SATNOGS_DECODER_INTEGRATION_20261005.md)
 confirms all 82 query aliases against actual flight beacons passed through the
@@ -84,7 +91,6 @@ was created on 2026-09-29 with Grafana 11.6.0, matching SatNOGS. It uses the sam
 initial layout, expanded to 39 telemetry panels with 82 public fields from 5,241 distinct, checksum-valid
 2026-09-23 CPT beacons. The reviewed visuals have also been applied to the hosted
 dashboard; recorded values and the extra earlier-packet histogram remain local.
-Hosted datasource queries remain disabled pending ingestion verification.
 
 Use **Edit**, adjust panels, then **Save dashboard**. Saved edits persist in the
 Docker volume `suncet-grafana-preview-data`. This instance listens only on
@@ -160,20 +166,20 @@ and credentials out of commits. Rebuilding files does not update Grafana;
 export any user layout edits before replacing its saved dashboard. The local
 UID is `suncet-recorded-local`, separate from the hosted SunCET UID.
 
-## Before enabling queries or promoting to Telemetry
+## Checks after first received telemetry
 
-1. Confirm the actual SunCET measurement, field aliases/types, engineering-value
+1. Confirm the SunCET measurement, field aliases/types, engineering-value
    conversion stage, station/source metadata, and source timestamp meaning in
    the hosted datasource. Their source-level contracts now pass locally.
 2. Validate the first CTDB 2.0.5 recorded packet through checksum validation,
    ingestion, and displayed values. Resolve non-finite values (including Inf),
    unknown codes, and source failures without substituting zero or healthy states.
-3. Implement reception timestamp/age and reviewed freshness handling, distinguish
-   source failure from empty data, and validate packet-coherent summaries.
+3. Validate reception time, station attribution, the leaderboard, and
+   packet-coherent summaries.
 4. Check queries against actual numeric/string field types, timestamp ordering,
    missing fields, and observation gaps; bound query volume for normal ranges.
-5. Review operational limits and spacecraft-time display policy. Only then enable
-   verified targets and move the dashboard into the public Telemetry workflow.
+5. Review operational limits and spacecraft-time display policy after flight
+   data are available.
 
 The remaining end-to-end and edge-case acceptance checks are in
 [`docs/SATNOGS_DASHBOARD_PLAN.md`](../../../docs/SATNOGS_DASHBOARD_PLAN.md).
