@@ -22,6 +22,8 @@ BIN_LABELS = [f"{i * 32}–{(i + 1) * 32 - 1}" for i in range(6)]
 GREEN = "#378343"
 RED = "#C43B49"
 BLUE = "#5794F2"
+PURPLE = "#8F6ED5"
+ORANGE = "#FF9830"
 RECEPTION_TITLES = {
     "Ground stations leaderboard by observed frames",
     "Last frame received by",
@@ -230,6 +232,249 @@ def arrange_power_voltage_current_rows(panels):
         current["gridPos"].update(x=16, y=row_y, w=8, h=8)
 
 
+def point_style(panel):
+    """Use unconnected colored samples so gaps remain visually explicit."""
+    panel["fieldConfig"]["defaults"]["custom"].update(
+        drawStyle="points", lineWidth=0, pointSize=3, showPoints="always")
+
+
+def field_override(alias, unit_name, display, color=None):
+    properties = [{"id": "unit", "value": unit_name},
+                  {"id": "displayName", "value": display}]
+    if color:
+        properties.append({"id": "color", "value": {"mode": "fixed", "fixedColor": color}})
+    return {"matcher": {"id": "byName", "options": alias}, "properties": properties}
+
+
+def configure_direct_series(panel, title, columns, unit_name, description, *, where=None):
+    """Replace a telemetry panel with an explicitly named and colored series set."""
+    panel["title"] = title
+    selections = ", ".join(f'"{source}" AS "{alias}"' for source, alias, _, _ in columns)
+    predicate = f" AND {where}" if where else ""
+    panel["targets"] = [raw_target(
+        f'SELECT {selections} FROM "98244" WHERE $timeFilter{predicate} ORDER BY time ASC')]
+    panel["description"] = description
+    panel["fieldConfig"]["defaults"]["unit"] = unit_name
+    panel["fieldConfig"]["overrides"] = [
+        field_override(alias, unit_name, display, color)
+        for _, alias, display, color in columns
+    ]
+    point_style(panel)
+
+
+def configure_existing_series_colors(panel, series, *, points=True):
+    """Set display labels/colors for already-derived query aliases."""
+    panel["fieldConfig"]["overrides"] = [
+        field_override(alias, unit_name, display, color)
+        for alias, unit_name, display, color in series
+    ]
+    if points:
+        point_style(panel)
+
+
+def split_battery_rows(panels):
+    """Give each battery its own power, voltage, and current row."""
+    by_title = {panel["title"]: panel for panel in panels}
+    power_1 = by_title["Battery power"]
+    voltage_1 = by_title["Battery voltages"]
+    current_1 = by_title["Battery charge currents"]
+    next_id = max(panel["id"] for panel in panels) + 1
+
+    power_2 = deepcopy(power_1)
+    power_2["id"] = next_id
+    next_id += 1
+    voltage_2 = deepcopy(voltage_1)
+    voltage_2["id"] = next_id
+    next_id += 1
+    current_2 = deepcopy(current_1)
+    current_2["id"] = next_id
+    panels.extend([power_2, voltage_2, current_2])
+
+    for battery, power, voltage, current in (
+        (1, power_1, voltage_1, current_1),
+        (2, power_2, voltage_2, current_2),
+    ):
+        prefix = f"Battery {battery}"
+        power["title"] = f"{prefix} power"
+        power["targets"] = power["targets"][(battery - 1) * 2:battery * 2]
+        power["fieldConfig"]["overrides"] = [
+            override for override in power["fieldConfig"]["overrides"]
+            if override["matcher"]["options"].startswith(prefix)
+        ]
+        point_style(power)
+
+        configure_direct_series(
+            voltage,
+            f"{prefix} voltage",
+            [(f"battery_{battery}_voltage", f"{prefix} voltage", prefix, BLUE)],
+            "volt",
+            f"{prefix} terminal voltage from each public beacon packet.",
+        )
+
+        current["title"] = f"{prefix} charge current"
+        current["targets"] = current["targets"][(battery - 1) * 2:battery * 2]
+        current["fieldConfig"]["overrides"] = [
+            override for override in current["fieldConfig"]["overrides"]
+            if override["matcher"]["options"].startswith(prefix)
+        ]
+        point_style(current)
+
+    by_title["Battery 1 voltage gauge"]["title"] = "Battery 1 voltage gauge"
+    by_title["Battery 2 voltage gauge"]["title"] = "Battery 2 voltage gauge"
+
+
+def apply_reviewed_series_layout(panels):
+    """Apply mission-owner grouping, labels, colors, and section ordering."""
+    # Gauge titles must be unique before the battery time-series titles split.
+    for panel in panels:
+        if panel["title"] in {"Battery 1 voltage", "Battery 2 voltage", "EPS bus voltage"} and panel["type"] == "gauge":
+            panel["title"] += " gauge"
+    split_battery_rows(panels)
+    by_title = {panel["title"]: panel for panel in panels}
+
+    configure_existing_series_colors(
+        by_title["EPS bus power"], [("EPS bus power", "watt", "EPS bus", BLUE)])
+    configure_direct_series(
+        by_title["Bus & 3.3 V rail voltages"], "EPS bus voltage",
+        [("eps_bus_voltage", "EPS bus voltage", "EPS bus", BLUE)], "volt",
+        "EPS bus voltage. The 3.3 V reference rail is intentionally omitted from this operational plot.")
+    configure_direct_series(
+        by_title["Bus & 3.3 V rail currents"], "EPS bus current",
+        [("eps_bus_current", "EPS bus current", "EPS bus", BLUE)], "amp",
+        "EPS bus current. The 3.3 V reference-rail current is intentionally omitted from this operational plot.")
+
+    solar = [
+        ("solar_array_8_cell_string_voltage", "combined 8-cell strings", "combined 8-cell strings", BLUE),
+        ("solar_array_9_cell_string_voltage", "combined 9-cell strings", "combined 9-cell strings", PURPLE),
+    ]
+    configure_direct_series(
+        by_title["Solar array voltages"], "Solar array voltage", solar, "volt",
+        "Combined solar-array string voltages; blue is the 8-cell strings and purple is the 9-cell strings.")
+    configure_direct_series(
+        by_title["Solar array currents"], "Solar array current",
+        [(source.replace("_voltage", "_current"), alias, display, color)
+         for source, alias, display, color in solar], "amp",
+        "Combined solar-array string currents; blue is the 8-cell strings and purple is the 9-cell strings.")
+    solar_power = by_title["Solar array power"]
+    solar_power["targets"] = [raw_target(
+        'SELECT "solar_array_8_cell_string_voltage" * "solar_array_8_cell_string_current" '
+        'AS "combined 8-cell strings", "solar_array_9_cell_string_voltage" * '
+        '"solar_array_9_cell_string_current" AS "combined 9-cell strings" FROM "98244" '
+        'WHERE $timeFilter ORDER BY time ASC')]
+    configure_existing_series_colors(solar_power, [
+        ("combined 8-cell strings", "watt", "combined 8-cell strings", BLUE),
+        ("combined 9-cell strings", "watt", "combined 9-cell strings", PURPLE),
+    ])
+
+    thermal_template = by_title["Bus, batteries & solar arrays"]
+    payload_thermal = by_title["Payload, radio & reaction wheel"]
+    configure_direct_series(
+        thermal_template, "Solar array temperatures", [
+            ("sa_plus_y_temp", "+Y solar array", "+Y solar array", BLUE),
+            ("sa_minus_y_temp", "-Y solar array", "-Y solar array", PURPLE),
+        ], "celsius", "Solar-array temperatures; blue is +Y and purple is -Y.")
+    configure_direct_series(
+        payload_thermal, "Spacecraft temperatures", [
+            ("cdh_temp", "CDH", "CDH", None),
+            ("eps_temp", "EPS", "EPS", None),
+            ("ifb_therm1", "Interface Board", "Interface Board", None),
+            ("battery_1_temp", "Battery 1", "Battery 1", None),
+            ("batt_board_temp", "Battery board", "Battery board", None),
+            ("uhf_temp", "UHF radio", "UHF radio", None),
+            ("xband_pa_temp", "X-band radio", "X-band radio", None),
+            ("adcs_ana_motor1_temp", "ADCS wheel 1", "ADCS wheel 1", None),
+            ("dsps_sensor_board_temp", "DSPS", "DSPS", None),
+        ], "celsius",
+        "Bus, battery, radio, ADCS wheel 1, and DSPS temperatures. APID 1 has no Battery 2 temperature field.")
+    csie_thermal = deepcopy(thermal_template)
+    csie_thermal["id"] = max(panel["id"] for panel in panels) + 1
+    configure_direct_series(
+        csie_thermal, "CSIE temperature", [("csie_temp", "CSIE", "CSIE", BLUE)],
+        "celsius",
+        "CSIE EUV-imager electronics temperature. Values above 100 °C are the powered-off sentinel and are omitted.",
+        where='"csie_temp" <= 100')
+    panels.append(csie_thermal)
+
+    activity = by_title["Instrument activity & power"]
+    activity["title"] = "Instrument activity"
+    activity["targets"] = [target([("csie_capture_state", "csie_capture_state")])]
+    activity["fieldConfig"]["overrides"] = [
+        override for override in activity["fieldConfig"]["overrides"]
+        if override["matcher"]["options"] == "csie_capture_state"
+    ]
+    activity["fieldConfig"]["overrides"][0]["properties"][1]["value"] = "CSIE capture state"
+    activity["description"] = "Latest CSIE capture state. Payload EPS power states are shown in the subsystem-power section above."
+
+    configure_existing_series_colors(by_title["Payload power"], [
+        ("CSIE power", "watt", "CSIE", BLUE),
+        ("Dual-SPS power", "watt", "Dual-SPS", PURPLE),
+    ])
+
+    radio_state = by_title["Radio state & data source"]
+    radio_state["targets"] = [target([("xband_data_source", "xband_data_source")])]
+    radio_state["fieldConfig"]["overrides"] = [
+        override for override in radio_state["fieldConfig"]["overrides"]
+        if override["matcher"]["options"] == "xband_data_source"
+    ]
+    for override in radio_state["fieldConfig"]["overrides"]:
+        next(prop for prop in override["properties"] if prop["id"] == "displayName")["value"] = "X-band data source"
+    radio_state["description"] = "Latest X-band data-source selection. UHF health is shown in the health-and-status section above."
+    configure_existing_series_colors(by_title["Radio power"], [
+        ("UHF power", "watt", "UHF radio", BLUE),
+        ("X-band electronics power", "watt", "X-band electronics", PURPLE),
+        ("X-band PA power", "watt", "X-band PA", ORANGE),
+    ])
+    configure_direct_series(
+        by_title["Radio voltages"], "Radio voltage", [
+            ("uhf_voltage", "UHF radio", "UHF radio", BLUE),
+            ("xband_voltage", "X-band radio", "X-band radio", PURPLE),
+        ], "volt", "Radio supply voltages; blue is UHF and purple is X-band.")
+    configure_direct_series(
+        by_title["Radio currents"], "Radio current", [
+            ("uhf_current", "UHF radio", "UHF radio", BLUE),
+            ("xband_current", "X-band electronics", "X-band electronics", PURPLE),
+            ("xband_pa_current", "X-band PA", "X-band PA", ORANGE),
+        ], "amp", "Radio currents; blue is UHF, purple is X-band electronics, and orange is the X-band PA.")
+
+    # Reflow from EPS onward: Battery 1, Battery 2, bus, solar; then ADCS,
+    # thermal, radio, fault protection, and payload.
+    positions = {
+        "EPS • batteries, buses & solar arrays": (0, 37, 24, 1),
+        "Battery 1 voltage gauge": (0, 38, 8, 7),
+        "Battery 2 voltage gauge": (8, 38, 8, 7),
+        "EPS bus voltage gauge": (16, 38, 8, 7),
+        "Battery 1 power": (0, 45, 8, 8), "Battery 1 voltage": (8, 45, 8, 8),
+        "Battery 1 charge current": (16, 45, 8, 8),
+        "Battery 2 power": (0, 53, 8, 8), "Battery 2 voltage": (8, 53, 8, 8),
+        "Battery 2 charge current": (16, 53, 8, 8),
+        "EPS bus power": (0, 61, 8, 8), "EPS bus voltage": (8, 61, 8, 8),
+        "EPS bus current": (16, 61, 8, 8),
+        "Solar array power": (0, 69, 8, 8), "Solar array voltage": (8, 69, 8, 8),
+        "Solar array current": (16, 69, 8, 8),
+        "ADCS • validity, pointing & motion": (0, 77, 24, 1),
+        "ADCS validity": (0, 78, 12, 8), "Sun pointing error": (12, 78, 12, 8),
+        "Spacecraft body rates": (0, 86, 12, 8), "Reaction wheel speeds": (12, 86, 12, 8),
+        "Thermal": (0, 94, 24, 1),
+        "Solar array temperatures": (0, 95, 6, 8),
+        "Spacecraft temperatures": (6, 95, 12, 8), "CSIE temperature": (18, 95, 6, 8),
+        "Radio health": (0, 103, 24, 1), "Radio state & data source": (0, 104, 24, 5),
+        "Radio power": (0, 109, 8, 8), "Radio voltage": (8, 109, 8, 8),
+        "Radio current": (16, 109, 8, 8),
+        "Fault-protection status": (0, 117, 24, 1), "Task & watchpoint states": (0, 118, 24, 6),
+        "Payload • EUV imager & Dual Sun Position Sensor": (0, 124, 24, 1),
+        "Instrument activity": (0, 125, 24, 5),
+        "Payload power": (0, 130, 8, 8), "Payload voltages": (8, 130, 8, 8),
+        "Payload currents": (16, 130, 8, 8),
+        "Dual-SPS flare threshold": (0, 138, 12, 8), "Dual-SPS flare magnitude": (12, 138, 12, 8),
+        "Dual-SPS flare phase": (0, 146, 12, 8),
+        "CSIE image histogram • default DN bins": (12, 146, 12, 8),
+    }
+    for panel in panels:
+        if panel["title"] in positions:
+            panel["gridPos"] = dict(zip(("x", "y", "w", "h"), positions[panel["title"]]))
+    panels.sort(key=lambda panel: (panel["gridPos"]["y"], panel["gridPos"]["x"]))
+
+
 def apply_operational_layout(result):
     """Enable hosted queries and add live reception and derived-power panels."""
     panels = result["panels"]
@@ -334,6 +579,7 @@ def apply_operational_layout(result):
         "Derived electrical input power. The X-band PA series uses the reported X-band voltage × PA current.")
     panels.append(radio_power)
     arrange_power_voltage_current_rows(panels)
+    apply_reviewed_series_layout(panels)
     panels.sort(key=lambda p: (p["gridPos"]["y"], p["gridPos"]["x"]))
 
     for panel in panels:

@@ -5376,7 +5376,7 @@
       "panels": []
     },
     {
-      "title": "Battery 1 voltage",
+      "title": "Battery 1 voltage gauge",
       "type": "gauge",
       "gridPos": {
         "x": 0,
@@ -5450,7 +5450,7 @@
       "id": 47
     },
     {
-      "title": "Battery 2 voltage",
+      "title": "Battery 2 voltage gauge",
       "type": "gauge",
       "gridPos": {
         "x": 8,
@@ -5524,7 +5524,7 @@
       "id": 48
     },
     {
-      "title": "EPS bus voltage",
+      "title": "EPS bus voltage gauge",
       "type": "gauge",
       "gridPos": {
         "x": 16,
@@ -5599,7 +5599,7 @@
     },
     {
       "id": 54,
-      "title": "Battery power",
+      "title": "Battery 1 power",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
@@ -5630,10 +5630,10 @@
             ]
           },
           "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
+            "drawStyle": "points",
+            "lineWidth": 0,
             "pointSize": 3,
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "insertNulls": false,
             "fillOpacity": 0,
@@ -5699,52 +5699,6 @@
                 }
               }
             ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Battery 2 charging power"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "watt"
-              },
-              {
-                "id": "displayName",
-                "value": "Battery 2 charging"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#378343"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Battery 2 discharging power"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "watt"
-              },
-              {
-                "id": "displayName",
-                "value": "Battery 2 discharging"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#C43B49"
-                }
-              }
-            ]
           }
         ]
       },
@@ -5782,35 +5736,13 @@
           "query": "SELECT -1 * \"battery_1_voltage\" * \"battery_1_charge_current\" AS \"Battery 1 discharging power\" FROM \"98244\" WHERE $timeFilter AND \"battery_1_charging_state\" = 0 ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
-        },
-        {
-          "refId": "C",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT \"battery_2_voltage\" * \"battery_2_charge_current\" AS \"Battery 2 charging power\" FROM \"98244\" WHERE $timeFilter AND \"battery_2_charging_state\" = 1 ORDER BY time ASC",
-          "resultFormat": "time_series",
-          "hide": false
-        },
-        {
-          "refId": "D",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT -1 * \"battery_2_voltage\" * \"battery_2_charge_current\" AS \"Battery 2 discharging power\" FROM \"98244\" WHERE $timeFilter AND \"battery_2_charging_state\" = 0 ORDER BY time ASC",
-          "resultFormat": "time_series",
-          "hide": false
         }
       ],
       "pluginVersion": "11.6.0"
     },
     {
       "id": 9,
-      "title": "Battery voltages",
+      "title": "Battery 1 voltage",
       "type": "timeseries",
       "gridPos": {
         "x": 8,
@@ -5818,14 +5750,14 @@
         "w": 8,
         "h": 8
       },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: battery_1_voltage, battery_2_voltage. Schema units are inferred for: battery_1_voltage, battery_2_voltage.",
+      "description": "Battery 1 terminal voltage from each public beacon packet.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "volt",
           "noValue": "No data",
           "mappings": [],
           "color": {
@@ -5868,7 +5800,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "battery_1_voltage"
+              "options": "Battery 1 voltage"
             },
             "properties": [
               {
@@ -5877,69 +5809,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Battery 1 voltage"
+                "value": "Battery 1"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "battery_2_voltage"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "volt"
-              },
-              {
-                "id": "displayName",
-                "value": "Battery 2 voltage"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           }
@@ -5965,7 +5842,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"battery_1_voltage\", \"battery_2_voltage\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"battery_1_voltage\" AS \"Battery 1 voltage\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
@@ -5974,7 +5851,7 @@
     },
     {
       "id": 10,
-      "title": "Battery charge currents",
+      "title": "Battery 1 charge current",
       "type": "timeseries",
       "gridPos": {
         "x": 16,
@@ -6005,10 +5882,10 @@
             ]
           },
           "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
+            "drawStyle": "points",
+            "lineWidth": 0,
             "pointSize": 3,
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "insertNulls": false,
             "fillOpacity": 0,
@@ -6074,7 +5951,356 @@
                 }
               }
             ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
           },
+          "rawQuery": true,
+          "query": "SELECT \"battery_1_charge_current\" AS \"Battery 1 charging\" FROM \"98244\" WHERE $timeFilter AND \"battery_1_charging_state\" = 1 ORDER BY time ASC",
+          "resultFormat": "time_series",
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"battery_1_charge_current\" AS \"Battery 1 discharging\" FROM \"98244\" WHERE $timeFilter AND \"battery_1_charging_state\" = 0 ORDER BY time ASC",
+          "resultFormat": "time_series",
+          "hide": false
+        }
+      ],
+      "pluginVersion": "11.6.0"
+    },
+    {
+      "id": 59,
+      "title": "Battery 2 power",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 53,
+        "w": 8,
+        "h": 8
+      },
+      "description": "Derived electrical power. Positive/green is charging; negative/red is discharging. Voltage, current, and charging state come from the same beacon packet.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 3,
+            "showPoints": "always",
+            "spanNulls": false,
+            "insertNulls": false,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Battery 2 charging power"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "watt"
+              },
+              {
+                "id": "displayName",
+                "value": "Battery 2 charging"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#378343"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Battery 2 discharging power"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "watt"
+              },
+              {
+                "id": "displayName",
+                "value": "Battery 2 discharging"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#C43B49"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"battery_2_voltage\" * \"battery_2_charge_current\" AS \"Battery 2 charging power\" FROM \"98244\" WHERE $timeFilter AND \"battery_2_charging_state\" = 1 ORDER BY time ASC",
+          "resultFormat": "time_series",
+          "hide": false
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT -1 * \"battery_2_voltage\" * \"battery_2_charge_current\" AS \"Battery 2 discharging power\" FROM \"98244\" WHERE $timeFilter AND \"battery_2_charging_state\" = 0 ORDER BY time ASC",
+          "resultFormat": "time_series",
+          "hide": false
+        }
+      ],
+      "pluginVersion": "11.6.0"
+    },
+    {
+      "id": 60,
+      "title": "Battery 2 voltage",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 53,
+        "w": 8,
+        "h": 8
+      },
+      "description": "Battery 2 terminal voltage from each public beacon packet.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 3,
+            "showPoints": "always",
+            "spanNulls": false,
+            "insertNulls": false,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Battery 2 voltage"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "volt"
+              },
+              {
+                "id": "displayName",
+                "value": "Battery 2"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"battery_2_voltage\" AS \"Battery 2 voltage\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "resultFormat": "time_series",
+          "hide": false
+        }
+      ],
+      "pluginVersion": "11.6.0"
+    },
+    {
+      "id": 61,
+      "title": "Battery 2 charge current",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 16,
+        "y": 53,
+        "w": 8,
+        "h": 8
+      },
+      "description": "Battery charge-current magnitude, colored by the corresponding charging-state bit. Green means charging; red means discharging. The state is evaluated from the same packet.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 3,
+            "showPoints": "always",
+            "spanNulls": false,
+            "insertNulls": false,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": [
           {
             "matcher": {
               "id": "byName",
@@ -6137,28 +6363,6 @@
       },
       "targets": [
         {
-          "refId": "A",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT \"battery_1_charge_current\" AS \"Battery 1 charging\" FROM \"98244\" WHERE $timeFilter AND \"battery_1_charging_state\" = 1 ORDER BY time ASC",
-          "resultFormat": "time_series",
-          "hide": false
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT \"battery_1_charge_current\" AS \"Battery 1 discharging\" FROM \"98244\" WHERE $timeFilter AND \"battery_1_charging_state\" = 0 ORDER BY time ASC",
-          "resultFormat": "time_series",
-          "hide": false
-        },
-        {
           "refId": "C",
           "datasource": {
             "type": "influxdb",
@@ -6189,7 +6393,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 53,
+        "y": 61,
         "w": 8,
         "h": 8
       },
@@ -6216,10 +6420,10 @@
             ]
           },
           "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
+            "drawStyle": "points",
+            "lineWidth": 0,
             "pointSize": 3,
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "insertNulls": false,
             "fillOpacity": 0,
@@ -6253,6 +6457,13 @@
               {
                 "id": "displayName",
                 "value": "EPS bus"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           }
@@ -6287,22 +6498,22 @@
     },
     {
       "id": 11,
-      "title": "Bus & 3.3 V rail voltages",
+      "title": "EPS bus voltage",
       "type": "timeseries",
       "gridPos": {
         "x": 8,
-        "y": 53,
+        "y": 61,
         "w": 8,
         "h": 8
       },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: eps_bus_voltage, rail_3v3_voltage. Schema units are inferred for: eps_bus_voltage, rail_3v3_voltage.",
+      "description": "EPS bus voltage. The 3.3 V reference rail is intentionally omitted from this operational plot.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "volt",
           "noValue": "No data",
           "mappings": [],
           "color": {
@@ -6345,7 +6556,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "eps_bus_voltage"
+              "options": "EPS bus voltage"
             },
             "properties": [
               {
@@ -6354,69 +6565,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Eps bus voltage"
+                "value": "EPS bus"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "rail_3v3_voltage"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "volt"
-              },
-              {
-                "id": "displayName",
-                "value": "Rail 3v3 voltage"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           }
@@ -6442,7 +6598,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"eps_bus_voltage\", \"rail_3v3_voltage\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"eps_bus_voltage\" AS \"EPS bus voltage\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
@@ -6451,22 +6607,22 @@
     },
     {
       "id": 12,
-      "title": "Bus & 3.3 V rail currents",
+      "title": "EPS bus current",
       "type": "timeseries",
       "gridPos": {
         "x": 16,
-        "y": 53,
+        "y": 61,
         "w": 8,
         "h": 8
       },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: eps_bus_current, rail_3v3_current. Schema units are inferred for: eps_bus_current, rail_3v3_current.",
+      "description": "EPS bus current. The 3.3 V reference-rail current is intentionally omitted from this operational plot.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "amp",
           "noValue": "No data",
           "mappings": [],
           "color": {
@@ -6509,7 +6665,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "eps_bus_current"
+              "options": "EPS bus current"
             },
             "properties": [
               {
@@ -6518,69 +6674,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Eps bus current"
+                "value": "EPS bus"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "rail_3v3_current"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "amp"
-              },
-              {
-                "id": "displayName",
-                "value": "Rail 3v3 current"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           }
@@ -6606,7 +6707,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"eps_bus_current\", \"rail_3v3_current\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"eps_bus_current\" AS \"EPS bus current\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
@@ -6619,7 +6720,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 61,
+        "y": 69,
         "w": 8,
         "h": 8
       },
@@ -6646,10 +6747,10 @@
             ]
           },
           "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
+            "drawStyle": "points",
+            "lineWidth": 0,
             "pointSize": 3,
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "insertNulls": false,
             "fillOpacity": 0,
@@ -6673,7 +6774,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "8-cell array power"
+              "options": "combined 8-cell strings"
             },
             "properties": [
               {
@@ -6682,14 +6783,21 @@
               },
               {
                 "id": "displayName",
-                "value": "8-cell string"
+                "value": "combined 8-cell strings"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "9-cell array power"
+              "options": "combined 9-cell strings"
             },
             "properties": [
               {
@@ -6698,7 +6806,14 @@
               },
               {
                 "id": "displayName",
-                "value": "9-cell string"
+                "value": "combined 9-cell strings"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8F6ED5"
+                }
               }
             ]
           }
@@ -6724,7 +6839,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"solar_array_8_cell_string_voltage\" * \"solar_array_8_cell_string_current\" AS \"8-cell array power\", \"solar_array_9_cell_string_voltage\" * \"solar_array_9_cell_string_current\" AS \"9-cell array power\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"solar_array_8_cell_string_voltage\" * \"solar_array_8_cell_string_current\" AS \"combined 8-cell strings\", \"solar_array_9_cell_string_voltage\" * \"solar_array_9_cell_string_current\" AS \"combined 9-cell strings\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
@@ -6733,22 +6848,22 @@
     },
     {
       "id": 13,
-      "title": "Solar array voltages",
+      "title": "Solar array voltage",
       "type": "timeseries",
       "gridPos": {
         "x": 8,
-        "y": 61,
+        "y": 69,
         "w": 8,
         "h": 8
       },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: solar_array_8_cell_string_voltage, solar_array_9_cell_string_voltage. Schema units are inferred for: solar_array_8_cell_string_voltage, solar_array_9_cell_string_voltage.",
+      "description": "Combined solar-array string voltages; blue is the 8-cell strings and purple is the 9-cell strings.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "volt",
           "noValue": "No data",
           "mappings": [],
           "color": {
@@ -6791,7 +6906,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "solar_array_8_cell_string_voltage"
+              "options": "combined 8-cell strings"
             },
             "properties": [
               {
@@ -6800,37 +6915,21 @@
               },
               {
                 "id": "displayName",
-                "value": "Solar array 8 cell string voltage"
+                "value": "combined 8-cell strings"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "solar_array_9_cell_string_voltage"
+              "options": "combined 9-cell strings"
             },
             "properties": [
               {
@@ -6839,30 +6938,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Solar array 9 cell string voltage"
+                "value": "combined 9-cell strings"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8F6ED5"
+                }
               }
             ]
           }
@@ -6888,7 +6971,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"solar_array_8_cell_string_voltage\", \"solar_array_9_cell_string_voltage\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"solar_array_8_cell_string_voltage\" AS \"combined 8-cell strings\", \"solar_array_9_cell_string_voltage\" AS \"combined 9-cell strings\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
@@ -6897,22 +6980,22 @@
     },
     {
       "id": 14,
-      "title": "Solar array currents",
+      "title": "Solar array current",
       "type": "timeseries",
       "gridPos": {
         "x": 16,
-        "y": 61,
+        "y": 69,
         "w": 8,
         "h": 8
       },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: solar_array_8_cell_string_current, solar_array_9_cell_string_current. Schema units are inferred for: solar_array_8_cell_string_current, solar_array_9_cell_string_current.",
+      "description": "Combined solar-array string currents; blue is the 8-cell strings and purple is the 9-cell strings.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "amp",
           "noValue": "No data",
           "mappings": [],
           "color": {
@@ -6955,7 +7038,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "solar_array_8_cell_string_current"
+              "options": "combined 8-cell strings"
             },
             "properties": [
               {
@@ -6964,37 +7047,21 @@
               },
               {
                 "id": "displayName",
-                "value": "Solar array 8 cell string current"
+                "value": "combined 8-cell strings"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "solar_array_9_cell_string_current"
+              "options": "combined 9-cell strings"
             },
             "properties": [
               {
@@ -7003,30 +7070,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Solar array 9 cell string current"
+                "value": "combined 9-cell strings"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8F6ED5"
+                }
               }
             ]
           }
@@ -7052,7 +7103,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"solar_array_8_cell_string_current\", \"solar_array_9_cell_string_current\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"solar_array_8_cell_string_current\" AS \"combined 8-cell strings\", \"solar_array_9_cell_string_current\" AS \"combined 9-cell strings\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
@@ -7065,7 +7116,7 @@
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 69,
+        "y": 77,
         "w": 24,
         "h": 1
       },
@@ -7078,7 +7129,7 @@
       "type": "table",
       "gridPos": {
         "x": 0,
-        "y": 70,
+        "y": 78,
         "w": 12,
         "h": 8
       },
@@ -7301,7 +7352,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 12,
-        "y": 70,
+        "y": 78,
         "w": 12,
         "h": 8
       },
@@ -7430,7 +7481,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 78,
+        "y": 86,
         "w": 12,
         "h": 8
       },
@@ -7633,7 +7684,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 12,
-        "y": 78,
+        "y": 86,
         "w": 12,
         "h": 8
       },
@@ -7836,7 +7887,7 @@
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 86,
+        "y": 94,
         "w": 24,
         "h": 1
       },
@@ -7845,22 +7896,22 @@
     },
     {
       "id": 22,
-      "title": "Bus, batteries & solar arrays",
+      "title": "Solar array temperatures",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 87,
-        "w": 12,
+        "y": 95,
+        "w": 6,
         "h": 8
       },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: cdh_temp, eps_temp, ifb_therm1, battery_1_temp, batt_board_temp, sa_minus_y_temp, sa_plus_y_temp. Schema units are inferred for: cdh_temp, eps_temp, ifb_therm1, battery_1_temp, batt_board_temp, sa_minus_y_temp, sa_plus_y_temp.",
+      "description": "Solar-array temperatures; blue is +Y and purple is -Y.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "celsius",
           "noValue": "No data",
           "mappings": [],
           "color": {
@@ -7903,7 +7954,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "cdh_temp"
+              "options": "+Y solar array"
             },
             "properties": [
               {
@@ -7912,37 +7963,21 @@
               },
               {
                 "id": "displayName",
-                "value": "Cdh temp"
+                "value": "+Y solar array"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "eps_temp"
+              "options": "-Y solar array"
             },
             "properties": [
               {
@@ -7951,225 +7986,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Eps temp"
+                "value": "-Y solar array"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "ifb_therm1"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "celsius"
-              },
-              {
-                "id": "displayName",
-                "value": "Ifb therm1"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "battery_1_temp"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "celsius"
-              },
-              {
-                "id": "displayName",
-                "value": "Battery 1 temp"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "batt_board_temp"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "celsius"
-              },
-              {
-                "id": "displayName",
-                "value": "Batt board temp"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "sa_minus_y_temp"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "celsius"
-              },
-              {
-                "id": "displayName",
-                "value": "Sa minus y temp"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "sa_plus_y_temp"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "celsius"
-              },
-              {
-                "id": "displayName",
-                "value": "Sa plus y temp"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8F6ED5"
+                }
               }
             ]
           }
@@ -8195,7 +8019,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"cdh_temp\", \"eps_temp\", \"ifb_therm1\", \"battery_1_temp\", \"batt_board_temp\", \"sa_minus_y_temp\", \"sa_plus_y_temp\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"sa_plus_y_temp\" AS \"+Y solar array\", \"sa_minus_y_temp\" AS \"-Y solar array\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
@@ -8204,22 +8028,22 @@
     },
     {
       "id": 23,
-      "title": "Payload, radio & reaction wheel",
+      "title": "Spacecraft temperatures",
       "type": "timeseries",
       "gridPos": {
-        "x": 12,
-        "y": 87,
+        "x": 6,
+        "y": 95,
         "w": 12,
         "h": 8
       },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: csie_temp, dsps_sensor_board_temp, uhf_temp, xband_pa_temp, adcs_ana_motor1_temp. Schema units are inferred for: csie_temp, dsps_sensor_board_temp, uhf_temp, xband_pa_temp, adcs_ana_motor1_temp.",
+      "description": "Bus, battery, radio, ADCS wheel 1, and DSPS temperatures. APID 1 has no Battery 2 temperature field.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "celsius",
           "noValue": "No data",
           "mappings": [],
           "color": {
@@ -8262,7 +8086,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "csie_temp"
+              "options": "CDH"
             },
             "properties": [
               {
@@ -8271,37 +8095,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Csie temp"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "value": "CDH"
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "dsps_sensor_board_temp"
+              "options": "EPS"
             },
             "properties": [
               {
@@ -8310,37 +8111,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Dsps sensor board temp"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "value": "EPS"
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "uhf_temp"
+              "options": "Interface Board"
             },
             "properties": [
               {
@@ -8349,37 +8127,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Uhf temp"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "value": "Interface Board"
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "xband_pa_temp"
+              "options": "Battery 1"
             },
             "properties": [
               {
@@ -8388,37 +8143,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Xband pa temp"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "value": "Battery 1"
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "adcs_ana_motor1_temp"
+              "options": "Battery board"
             },
             "properties": [
               {
@@ -8427,30 +8159,71 @@
               },
               {
                 "id": "displayName",
-                "value": "Adcs ana motor1 temp"
+                "value": "Battery board"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "UHF radio"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "celsius"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "displayName",
+                "value": "UHF radio"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "X-band radio"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "celsius"
+              },
+              {
+                "id": "displayName",
+                "value": "X-band radio"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ADCS wheel 1"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "celsius"
+              },
+              {
+                "id": "displayName",
+                "value": "ADCS wheel 1"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "DSPS"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "celsius"
+              },
+              {
+                "id": "displayName",
+                "value": "DSPS"
               }
             ]
           }
@@ -8476,7 +8249,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"csie_temp\", \"dsps_sensor_board_temp\", \"uhf_temp\", \"xband_pa_temp\", \"adcs_ana_motor1_temp\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"cdh_temp\" AS \"CDH\", \"eps_temp\" AS \"EPS\", \"ifb_therm1\" AS \"Interface Board\", \"battery_1_temp\" AS \"Battery 1\", \"batt_board_temp\" AS \"Battery board\", \"uhf_temp\" AS \"UHF radio\", \"xband_pa_temp\" AS \"X-band radio\", \"adcs_ana_motor1_temp\" AS \"ADCS wheel 1\", \"dsps_sensor_board_temp\" AS \"DSPS\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
@@ -8484,242 +8257,23 @@
       "pluginVersion": "11.6.0"
     },
     {
-      "id": 24,
-      "title": "Payload \u2022 EUV imager & Dual Sun Position Sensor",
-      "type": "row",
-      "gridPos": {
-        "x": 0,
-        "y": 95,
-        "w": 24,
-        "h": 1
-      },
-      "collapsed": false,
-      "panels": []
-    },
-    {
-      "id": 25,
-      "title": "Instrument activity & power",
-      "type": "table",
-      "gridPos": {
-        "x": 0,
-        "y": 96,
-        "w": 24,
-        "h": 5
-      },
-      "description": "CTDB 2.0.5 public engineering values. CSIE = Compact Spectral Imager Electronics, the primary EUV imager. Dual-SPS = Dual Sun Position Sensor, the secondary instrument. Capture-state codes remain numeric. Unknown state codes retain their numeric value. Fields: csie_capture_state, eps_pwr_state_csie, eps_pwr_state_dsps.",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "000000001"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "No data",
-          "mappings": [],
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "csie_capture_state"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "displayName",
-                "value": "Csie capture state"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "eps_pwr_state_csie"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "displayName",
-                "value": "Eps pwr state csie"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "OFF (0)"
-                      },
-                      "OFF": {
-                        "text": "OFF (0)"
-                      },
-                      "1": {
-                        "text": "ON (1)"
-                      },
-                      "ON": {
-                        "text": "ON (1)"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "eps_pwr_state_dsps"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "displayName",
-                "value": "Eps pwr state dsps"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "OFF (0)"
-                      },
-                      "OFF": {
-                        "text": "OFF (0)"
-                      },
-                      "1": {
-                        "text": "ON (1)"
-                      },
-                      "ON": {
-                        "text": "ON (1)"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT \"csie_capture_state\", \"eps_pwr_state_csie\", \"eps_pwr_state_dsps\" FROM \"98244\" WHERE $timeFilter ORDER BY time DESC LIMIT 1",
-          "resultFormat": "table",
-          "hide": false
-        }
-      ],
-      "pluginVersion": "11.6.0"
-    },
-    {
-      "id": 57,
-      "title": "Payload power",
+      "id": 62,
+      "title": "CSIE temperature",
       "type": "timeseries",
       "gridPos": {
-        "x": 0,
-        "y": 101,
-        "w": 8,
+        "x": 18,
+        "y": 95,
+        "w": 6,
         "h": 8
       },
-      "description": "Derived from the voltage \u00d7 current pair for each payload in each beacon packet.",
+      "description": "CSIE EUV-imager electronics temperature. Values above 100 \u00b0C are the powered-off sentinel and are omitted.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "watt",
+          "unit": "celsius",
           "noValue": "No data",
           "mappings": [],
           "color": {
@@ -8735,10 +8289,10 @@
             ]
           },
           "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
+            "drawStyle": "points",
+            "lineWidth": 0,
             "pointSize": 3,
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "insertNulls": false,
             "fillOpacity": 0,
@@ -8762,32 +8316,23 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "CSIE power"
+              "options": "CSIE"
             },
             "properties": [
               {
                 "id": "unit",
-                "value": "watt"
+                "value": "celsius"
               },
               {
                 "id": "displayName",
                 "value": "CSIE"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Dual-SPS power"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "watt"
               },
               {
-                "id": "displayName",
-                "value": "Dual-SPS"
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           }
@@ -8813,866 +8358,12 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"csie_voltage\" * \"csie_current\" AS \"CSIE power\", \"dsps_voltage\" * \"dsps_current\" AS \"Dual-SPS power\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"csie_temp\" AS \"CSIE\" FROM \"98244\" WHERE $timeFilter AND \"csie_temp\" <= 100 ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
       ],
       "pluginVersion": "11.6.0"
-    },
-    {
-      "id": 26,
-      "title": "Payload voltages",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 8,
-        "y": 101,
-        "w": 8,
-        "h": 8
-      },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: csie_voltage, dsps_voltage. Schema units are inferred for: csie_voltage, dsps_voltage.",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "000000001"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "No data",
-          "mappings": [],
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          },
-          "custom": {
-            "drawStyle": "points",
-            "lineWidth": 0,
-            "pointSize": 3,
-            "showPoints": "always",
-            "spanNulls": false,
-            "insertNulls": false,
-            "fillOpacity": 0,
-            "axisPlacement": "auto",
-            "axisLabel": "",
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "csie_voltage"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "volt"
-              },
-              {
-                "id": "displayName",
-                "value": "Csie voltage"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "dsps_voltage"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "volt"
-              },
-              {
-                "id": "displayName",
-                "value": "Dsps voltage"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true,
-          "calcs": []
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT \"csie_voltage\", \"dsps_voltage\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
-          "resultFormat": "time_series",
-          "hide": false
-        }
-      ],
-      "pluginVersion": "11.6.0"
-    },
-    {
-      "id": 27,
-      "title": "Payload currents",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 16,
-        "y": 101,
-        "w": 8,
-        "h": 8
-      },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: csie_current, dsps_current. Schema units are inferred for: csie_current, dsps_current.",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "000000001"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "No data",
-          "mappings": [],
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          },
-          "custom": {
-            "drawStyle": "points",
-            "lineWidth": 0,
-            "pointSize": 3,
-            "showPoints": "always",
-            "spanNulls": false,
-            "insertNulls": false,
-            "fillOpacity": 0,
-            "axisPlacement": "auto",
-            "axisLabel": "",
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "csie_current"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "amp"
-              },
-              {
-                "id": "displayName",
-                "value": "Csie current"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "dsps_current"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "amp"
-              },
-              {
-                "id": "displayName",
-                "value": "Dsps current"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true,
-          "calcs": []
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT \"csie_current\", \"dsps_current\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
-          "resultFormat": "time_series",
-          "hide": false
-        }
-      ],
-      "pluginVersion": "11.6.0"
-    },
-    {
-      "id": 28,
-      "title": "Dual-SPS flare threshold",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 0,
-        "y": 109,
-        "w": 12,
-        "h": 8
-      },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: dsps_flare_level.",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "000000001"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "No data",
-          "mappings": [],
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          },
-          "custom": {
-            "drawStyle": "points",
-            "lineWidth": 0,
-            "pointSize": 3,
-            "showPoints": "always",
-            "spanNulls": false,
-            "insertNulls": false,
-            "fillOpacity": 0,
-            "axisPlacement": "auto",
-            "axisLabel": "",
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "dsps_flare_level"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "suffix:log10(XRS-B flux)"
-              },
-              {
-                "id": "displayName",
-                "value": "Dsps flare level"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true,
-          "calcs": []
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT \"dsps_flare_level\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
-          "resultFormat": "time_series",
-          "hide": false
-        }
-      ],
-      "pluginVersion": "11.6.0"
-    },
-    {
-      "id": 29,
-      "title": "Dual-SPS flare magnitude",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 12,
-        "y": 109,
-        "w": 12,
-        "h": 8
-      },
-      "description": "CTDB 2.0.5 public engineering values. Unsigned raw magnitude; no approved CTDB 2.0.5 engineering conversion. Unknown state codes retain their numeric value. Fields: dsps_flare_magnitude.",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "000000001"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "No data",
-          "mappings": [],
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          },
-          "custom": {
-            "drawStyle": "points",
-            "lineWidth": 0,
-            "pointSize": 3,
-            "showPoints": "always",
-            "spanNulls": false,
-            "insertNulls": false,
-            "fillOpacity": 0,
-            "axisPlacement": "auto",
-            "axisLabel": "",
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "dsps_flare_magnitude"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "displayName",
-                "value": "Dsps flare magnitude"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true,
-          "calcs": []
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT \"dsps_flare_magnitude\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
-          "resultFormat": "time_series",
-          "hide": false
-        }
-      ],
-      "pluginVersion": "11.6.0"
-    },
-    {
-      "id": 30,
-      "title": "Dual-SPS flare phase",
-      "type": "table",
-      "gridPos": {
-        "x": 0,
-        "y": 117,
-        "w": 12,
-        "h": 8
-      },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: dsps_flare_phase.",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "000000001"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "No data",
-          "mappings": [],
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "dsps_flare_phase"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "displayName",
-                "value": "Dsps flare phase"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "NOT_IN_SUN (0)"
-                      },
-                      "NOT_IN_SUN": {
-                        "text": "NOT_IN_SUN (0)"
-                      },
-                      "1": {
-                        "text": "FILLING_HISTORY (1)"
-                      },
-                      "FILLING_HISTORY": {
-                        "text": "FILLING_HISTORY (1)"
-                      },
-                      "2": {
-                        "text": "NOT_IN_FLARE (2)"
-                      },
-                      "NOT_IN_FLARE": {
-                        "text": "NOT_IN_FLARE (2)"
-                      },
-                      "4": {
-                        "text": "FLARE_START (4)"
-                      },
-                      "FLARE_START": {
-                        "text": "FLARE_START (4)"
-                      },
-                      "24": {
-                        "text": "DECLINING_FLARE (24)"
-                      },
-                      "DECLINING_FLARE": {
-                        "text": "DECLINING_FLARE (24)"
-                      },
-                      "40": {
-                        "text": "RISING_FLARE (40)"
-                      },
-                      "RISING_FLARE": {
-                        "text": "RISING_FLARE (40)"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT \"dsps_flare_phase\" FROM \"98244\" WHERE $timeFilter ORDER BY time DESC LIMIT 1",
-          "resultFormat": "table",
-          "hide": false
-        }
-      ],
-      "pluginVersion": "11.6.0"
-    },
-    {
-      "title": "CSIE image histogram \u2022 default DN bins",
-      "type": "barchart",
-      "gridPos": {
-        "x": 12,
-        "y": 117,
-        "w": 12,
-        "h": 8
-      },
-      "pluginVersion": "11.6.0",
-      "description": "CTDB 2.0.5 public engineering values. Pixel counts from one packet, plotted directly in six transmitted bins. DN ranges assume offset 0 and width 32; update labels if configuration changes. Full image: 1504 \u00d7 2000 = 3,008,000 pixels; these six bins need not sum to that total.",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "000000001"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "No data",
-          "mappings": [],
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "#5794F2"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#5794F2",
-                "value": null
-              }
-            ]
-          },
-          "min": 0,
-          "decimals": 0,
-          "custom": {
-            "axisPlacement": "left",
-            "axisLabel": "Pixel count (3,008,000 total)",
-            "axisCenteredZero": false,
-            "fillOpacity": 90,
-            "lineWidth": 1,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Field"
-            },
-            "properties": [
-              {
-                "id": "custom.axisLabel",
-                "value": "EUV image intensity [DN]"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Last"
-            },
-            "properties": [
-              {
-                "id": "displayName",
-                "value": "Pixels"
-              }
-            ]
-          }
-        ]
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "000000001"
-          },
-          "rawQuery": true,
-          "query": "SELECT \"csie_img_hist_0\" AS \"0\u201331\", \"csie_img_hist_1\" AS \"32\u201363\", \"csie_img_hist_2\" AS \"64\u201395\", \"csie_img_hist_3\" AS \"96\u2013127\", \"csie_img_hist_4\" AS \"128\u2013159\", \"csie_img_hist_5\" AS \"160\u2013191\" FROM \"98244\" WHERE $timeFilter ORDER BY time DESC LIMIT 1",
-          "resultFormat": "table",
-          "hide": false
-        }
-      ],
-      "options": {
-        "orientation": "vertical",
-        "xField": "Field",
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0,
-        "showValue": "always",
-        "stacking": "none",
-        "groupWidth": 1,
-        "barWidth": 1,
-        "barRadius": 0,
-        "legend": {
-          "showLegend": false,
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "id": 31,
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "0\u201331",
-                "32\u201363",
-                "64\u201395",
-                "96\u2013127",
-                "128\u2013159",
-                "160\u2013191"
-              ]
-            }
-          }
-        },
-        {
-          "id": "reduce",
-          "options": {
-            "mode": "seriesToRows",
-            "reducers": [
-              "last"
-            ],
-            "labelsToFields": false
-          }
-        }
-      ]
     },
     {
       "id": 32,
@@ -9680,7 +8371,7 @@
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 125,
+        "y": 103,
         "w": 24,
         "h": 1
       },
@@ -9693,11 +8384,11 @@
       "type": "table",
       "gridPos": {
         "x": 0,
-        "y": 126,
+        "y": 104,
         "w": 24,
         "h": 5
       },
-      "description": "CTDB 2.0.5 public engineering values. These are spacecraft radio-health values, not measurements of RF reception quality. Unknown state codes retain their numeric value. Fields: uhf_alive, eps_pwr_state_uhf, eps_pwr_state_xband, xband_data_source.",
+      "description": "Latest X-band data-source selection. UHF health is shown in the health-and-status section above.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
@@ -9724,180 +8415,6 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "uhf_alive"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "displayName",
-                "value": "Uhf alive"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "OFF (0)"
-                      },
-                      "OFF": {
-                        "text": "OFF (0)"
-                      },
-                      "1": {
-                        "text": "ALIVE (1)"
-                      },
-                      "ALIVE": {
-                        "text": "ALIVE (1)"
-                      },
-                      "2": {
-                        "text": "DEAD (2)"
-                      },
-                      "DEAD": {
-                        "text": "DEAD (2)"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "eps_pwr_state_uhf"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "displayName",
-                "value": "Eps pwr state uhf"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "OFF (0)"
-                      },
-                      "OFF": {
-                        "text": "OFF (0)"
-                      },
-                      "1": {
-                        "text": "ON (1)"
-                      },
-                      "ON": {
-                        "text": "ON (1)"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "eps_pwr_state_xband"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "displayName",
-                "value": "Eps pwr state xband"
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "OFF (0)"
-                      },
-                      "OFF": {
-                        "text": "OFF (0)"
-                      },
-                      "1": {
-                        "text": "ON (1)"
-                      },
-                      "ON": {
-                        "text": "ON (1)"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
               "options": "xband_data_source"
             },
             "properties": [
@@ -9907,7 +8424,7 @@
               },
               {
                 "id": "displayName",
-                "value": "Xband data source"
+                "value": "X-band data source"
               },
               {
                 "id": "mappings",
@@ -9965,7 +8482,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"uhf_alive\", \"eps_pwr_state_uhf\", \"eps_pwr_state_xband\", \"xband_data_source\" FROM \"98244\" WHERE $timeFilter ORDER BY time DESC LIMIT 1",
+          "query": "SELECT \"xband_data_source\" FROM \"98244\" WHERE $timeFilter ORDER BY time DESC LIMIT 1",
           "resultFormat": "table",
           "hide": false
         }
@@ -9978,7 +8495,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 131,
+        "y": 109,
         "w": 8,
         "h": 8
       },
@@ -10005,10 +8522,10 @@
             ]
           },
           "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
+            "drawStyle": "points",
+            "lineWidth": 0,
             "pointSize": 3,
-            "showPoints": "auto",
+            "showPoints": "always",
             "spanNulls": false,
             "insertNulls": false,
             "fillOpacity": 0,
@@ -10041,7 +8558,14 @@
               },
               {
                 "id": "displayName",
-                "value": "UHF"
+                "value": "UHF radio"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           },
@@ -10058,6 +8582,13 @@
               {
                 "id": "displayName",
                 "value": "X-band electronics"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8F6ED5"
+                }
               }
             ]
           },
@@ -10074,6 +8605,13 @@
               {
                 "id": "displayName",
                 "value": "X-band PA"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
               }
             ]
           }
@@ -10108,22 +8646,22 @@
     },
     {
       "id": 34,
-      "title": "Radio voltages",
+      "title": "Radio voltage",
       "type": "timeseries",
       "gridPos": {
         "x": 8,
-        "y": 131,
+        "y": 109,
         "w": 8,
         "h": 8
       },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: uhf_voltage, xband_voltage. Schema units are inferred for: uhf_voltage, xband_voltage.",
+      "description": "Radio supply voltages; blue is UHF and purple is X-band.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "volt",
           "noValue": "No data",
           "mappings": [],
           "color": {
@@ -10166,7 +8704,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "uhf_voltage"
+              "options": "UHF radio"
             },
             "properties": [
               {
@@ -10175,37 +8713,21 @@
               },
               {
                 "id": "displayName",
-                "value": "Uhf voltage"
+                "value": "UHF radio"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "xband_voltage"
+              "options": "X-band radio"
             },
             "properties": [
               {
@@ -10214,30 +8736,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Xband voltage"
+                "value": "X-band radio"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8F6ED5"
+                }
               }
             ]
           }
@@ -10263,7 +8769,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"uhf_voltage\", \"xband_voltage\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"uhf_voltage\" AS \"UHF radio\", \"xband_voltage\" AS \"X-band radio\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
@@ -10272,22 +8778,22 @@
     },
     {
       "id": 35,
-      "title": "Radio currents",
+      "title": "Radio current",
       "type": "timeseries",
       "gridPos": {
         "x": 16,
-        "y": 131,
+        "y": 109,
         "w": 8,
         "h": 8
       },
-      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: uhf_current, xband_current, xband_pa_current. Schema units are inferred for: uhf_current, xband_current, xband_pa_current.",
+      "description": "Radio currents; blue is UHF, purple is X-band electronics, and orange is the X-band PA.",
       "datasource": {
         "type": "influxdb",
         "uid": "000000001"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "amp",
           "noValue": "No data",
           "mappings": [],
           "color": {
@@ -10330,7 +8836,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "uhf_current"
+              "options": "UHF radio"
             },
             "properties": [
               {
@@ -10339,37 +8845,21 @@
               },
               {
                 "id": "displayName",
-                "value": "Uhf current"
+                "value": "UHF radio"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "xband_current"
+              "options": "X-band electronics"
             },
             "properties": [
               {
@@ -10378,37 +8868,21 @@
               },
               {
                 "id": "displayName",
-                "value": "Xband current"
+                "value": "X-band electronics"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8F6ED5"
+                }
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "xband_pa_current"
+              "options": "X-band PA"
             },
             "properties": [
               {
@@ -10417,30 +8891,14 @@
               },
               {
                 "id": "displayName",
-                "value": "Xband pa current"
+                "value": "X-band PA"
               },
               {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "null",
-                      "result": {
-                        "text": "No data"
-                      }
-                    }
-                  },
-                  {
-                    "type": "special",
-                    "options": {
-                      "match": "nan",
-                      "result": {
-                        "text": "Non-finite"
-                      }
-                    }
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
               }
             ]
           }
@@ -10466,7 +8924,7 @@
             "uid": "000000001"
           },
           "rawQuery": true,
-          "query": "SELECT \"uhf_current\", \"xband_current\", \"xband_pa_current\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "query": "SELECT \"uhf_current\" AS \"UHF radio\", \"xband_current\" AS \"X-band electronics\", \"xband_pa_current\" AS \"X-band PA\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
           "resultFormat": "time_series",
           "hide": false
         }
@@ -10479,7 +8937,7 @@
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 139,
+        "y": 117,
         "w": 24,
         "h": 1
       },
@@ -10492,7 +8950,7 @@
       "type": "table",
       "gridPos": {
         "x": 0,
-        "y": 140,
+        "y": 118,
         "w": 24,
         "h": 6
       },
@@ -11036,6 +9494,1099 @@
         }
       ],
       "pluginVersion": "11.6.0"
+    },
+    {
+      "id": 24,
+      "title": "Payload \u2022 EUV imager & Dual Sun Position Sensor",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 124,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 25,
+      "title": "Instrument activity",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 125,
+        "w": 24,
+        "h": 5
+      },
+      "description": "Latest CSIE capture state. Payload EPS power states are shown in the subsystem-power section above.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "csie_capture_state"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "displayName",
+                "value": "CSIE capture state"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "No data"
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "Non-finite"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"csie_capture_state\" FROM \"98244\" WHERE $timeFilter ORDER BY time DESC LIMIT 1",
+          "resultFormat": "table",
+          "hide": false
+        }
+      ],
+      "pluginVersion": "11.6.0"
+    },
+    {
+      "id": 57,
+      "title": "Payload power",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 130,
+        "w": 8,
+        "h": 8
+      },
+      "description": "Derived from the voltage \u00d7 current pair for each payload in each beacon packet.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 3,
+            "showPoints": "always",
+            "spanNulls": false,
+            "insertNulls": false,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CSIE power"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "watt"
+              },
+              {
+                "id": "displayName",
+                "value": "CSIE"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dual-SPS power"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "watt"
+              },
+              {
+                "id": "displayName",
+                "value": "Dual-SPS"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8F6ED5"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"csie_voltage\" * \"csie_current\" AS \"CSIE power\", \"dsps_voltage\" * \"dsps_current\" AS \"Dual-SPS power\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "resultFormat": "time_series",
+          "hide": false
+        }
+      ],
+      "pluginVersion": "11.6.0"
+    },
+    {
+      "id": 26,
+      "title": "Payload voltages",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 130,
+        "w": 8,
+        "h": 8
+      },
+      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: csie_voltage, dsps_voltage. Schema units are inferred for: csie_voltage, dsps_voltage.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 3,
+            "showPoints": "always",
+            "spanNulls": false,
+            "insertNulls": false,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "csie_voltage"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "volt"
+              },
+              {
+                "id": "displayName",
+                "value": "Csie voltage"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "No data"
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "Non-finite"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dsps_voltage"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "volt"
+              },
+              {
+                "id": "displayName",
+                "value": "Dsps voltage"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "No data"
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "Non-finite"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"csie_voltage\", \"dsps_voltage\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "resultFormat": "time_series",
+          "hide": false
+        }
+      ],
+      "pluginVersion": "11.6.0"
+    },
+    {
+      "id": 27,
+      "title": "Payload currents",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 16,
+        "y": 130,
+        "w": 8,
+        "h": 8
+      },
+      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: csie_current, dsps_current. Schema units are inferred for: csie_current, dsps_current.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 3,
+            "showPoints": "always",
+            "spanNulls": false,
+            "insertNulls": false,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "csie_current"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "amp"
+              },
+              {
+                "id": "displayName",
+                "value": "Csie current"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "No data"
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "Non-finite"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dsps_current"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "amp"
+              },
+              {
+                "id": "displayName",
+                "value": "Dsps current"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "No data"
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "Non-finite"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"csie_current\", \"dsps_current\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "resultFormat": "time_series",
+          "hide": false
+        }
+      ],
+      "pluginVersion": "11.6.0"
+    },
+    {
+      "id": 28,
+      "title": "Dual-SPS flare threshold",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 138,
+        "w": 12,
+        "h": 8
+      },
+      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: dsps_flare_level.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 3,
+            "showPoints": "always",
+            "spanNulls": false,
+            "insertNulls": false,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dsps_flare_level"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix:log10(XRS-B flux)"
+              },
+              {
+                "id": "displayName",
+                "value": "Dsps flare level"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "No data"
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "Non-finite"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"dsps_flare_level\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "resultFormat": "time_series",
+          "hide": false
+        }
+      ],
+      "pluginVersion": "11.6.0"
+    },
+    {
+      "id": 29,
+      "title": "Dual-SPS flare magnitude",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 138,
+        "w": 12,
+        "h": 8
+      },
+      "description": "CTDB 2.0.5 public engineering values. Unsigned raw magnitude; no approved CTDB 2.0.5 engineering conversion. Unknown state codes retain their numeric value. Fields: dsps_flare_magnitude.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "points",
+            "lineWidth": 0,
+            "pointSize": 3,
+            "showPoints": "always",
+            "spanNulls": false,
+            "insertNulls": false,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dsps_flare_magnitude"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "displayName",
+                "value": "Dsps flare magnitude"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "No data"
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "Non-finite"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"dsps_flare_magnitude\" FROM \"98244\" WHERE $timeFilter ORDER BY time ASC",
+          "resultFormat": "time_series",
+          "hide": false
+        }
+      ],
+      "pluginVersion": "11.6.0"
+    },
+    {
+      "id": 30,
+      "title": "Dual-SPS flare phase",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 146,
+        "w": 12,
+        "h": 8
+      },
+      "description": "CTDB 2.0.5 public engineering values.  Unknown state codes retain their numeric value. Fields: dsps_flare_phase.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "dsps_flare_phase"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "displayName",
+                "value": "Dsps flare phase"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "NOT_IN_SUN (0)"
+                      },
+                      "NOT_IN_SUN": {
+                        "text": "NOT_IN_SUN (0)"
+                      },
+                      "1": {
+                        "text": "FILLING_HISTORY (1)"
+                      },
+                      "FILLING_HISTORY": {
+                        "text": "FILLING_HISTORY (1)"
+                      },
+                      "2": {
+                        "text": "NOT_IN_FLARE (2)"
+                      },
+                      "NOT_IN_FLARE": {
+                        "text": "NOT_IN_FLARE (2)"
+                      },
+                      "4": {
+                        "text": "FLARE_START (4)"
+                      },
+                      "FLARE_START": {
+                        "text": "FLARE_START (4)"
+                      },
+                      "24": {
+                        "text": "DECLINING_FLARE (24)"
+                      },
+                      "DECLINING_FLARE": {
+                        "text": "DECLINING_FLARE (24)"
+                      },
+                      "40": {
+                        "text": "RISING_FLARE (40)"
+                      },
+                      "RISING_FLARE": {
+                        "text": "RISING_FLARE (40)"
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "No data"
+                      }
+                    }
+                  },
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "nan",
+                      "result": {
+                        "text": "Non-finite"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"dsps_flare_phase\" FROM \"98244\" WHERE $timeFilter ORDER BY time DESC LIMIT 1",
+          "resultFormat": "table",
+          "hide": false
+        }
+      ],
+      "pluginVersion": "11.6.0"
+    },
+    {
+      "title": "CSIE image histogram \u2022 default DN bins",
+      "type": "barchart",
+      "gridPos": {
+        "x": 12,
+        "y": 146,
+        "w": 12,
+        "h": 8
+      },
+      "pluginVersion": "11.6.0",
+      "description": "CTDB 2.0.5 public engineering values. Pixel counts from one packet, plotted directly in six transmitted bins. DN ranges assume offset 0 and width 32; update labels if configuration changes. Full image: 1504 \u00d7 2000 = 3,008,000 pixels; these six bins need not sum to that total.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "000000001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No data",
+          "mappings": [],
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#5794F2"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#5794F2",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "axisPlacement": "left",
+            "axisLabel": "Pixel count (3,008,000 total)",
+            "axisCenteredZero": false,
+            "fillOpacity": 90,
+            "lineWidth": 1,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Field"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "EUV image intensity [DN]"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Pixels"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "000000001"
+          },
+          "rawQuery": true,
+          "query": "SELECT \"csie_img_hist_0\" AS \"0\u201331\", \"csie_img_hist_1\" AS \"32\u201363\", \"csie_img_hist_2\" AS \"64\u201395\", \"csie_img_hist_3\" AS \"96\u2013127\", \"csie_img_hist_4\" AS \"128\u2013159\", \"csie_img_hist_5\" AS \"160\u2013191\" FROM \"98244\" WHERE $timeFilter ORDER BY time DESC LIMIT 1",
+          "resultFormat": "table",
+          "hide": false
+        }
+      ],
+      "options": {
+        "orientation": "vertical",
+        "xField": "Field",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "showValue": "always",
+        "stacking": "none",
+        "groupWidth": 1,
+        "barWidth": 1,
+        "barRadius": 0,
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "id": 31,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "0\u201331",
+                "32\u201363",
+                "64\u201395",
+                "96\u2013127",
+                "128\u2013159",
+                "160\u2013191"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "mode": "seriesToRows",
+            "reducers": [
+              "last"
+            ],
+            "labelsToFields": false
+          }
+        }
+      ]
     }
   ]
 }
