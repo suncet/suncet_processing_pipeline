@@ -427,3 +427,10 @@ $ pytest -v
 | 2 | Images with point-spread-function deconvolution | Provisional implementation tested with synthetic/calibration fixtures |
 | 3 | Images with fine rotation, solar-north alignment, and sun-centering | Corrections await real solar data needed to measure residual recentering/rotation; benchmark pass-through only |
 | 4 | CME catalog, kinematics, plots, and movies | Provisional known-window implementation; continuous event discovery remains future work |
+
+## SunCET colormap
+
+"Use the SunCET colormap" means **Golden Hour**. The canonical 256-color RGB
+table is [suncet_colormap.csv](docs/assets/colormaps/suncet_colormap.csv).
+See [loading instructions](docs/assets/colormaps/README.md). Intensity stretching
+is a separate choice; the color table does not prescribe it.
