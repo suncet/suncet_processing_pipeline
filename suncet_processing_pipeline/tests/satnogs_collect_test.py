@@ -19,6 +19,18 @@ PACKET = bytes.fromhex((Path(c.__file__).parent / "test_data/suncet_apid1_synthe
 CHECK_STORAGE = c.check_storage
 
 
+def test_example_config_defaults_token_to_service_home_and_allows_override(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    example = Path(__file__).resolve().parents[2] / "operations/satnogs.example.ini"
+    config = c.Config.read(example)
+    assert config.token_file == tmp_path / ".config/suncet/satnogs.token"
+    custom = tmp_path / "custom.ini"
+    token = tmp_path / "custom.token"
+    custom.write_text(example.read_text().replace(
+        "[satnogs]", f"[satnogs]\ntoken_file = {token}"))
+    assert c.Config.read(custom).token_file == token
+
+
 def record(**overrides):
     return {"sat_id": c.SAT_ID, "timestamp": "2026-10-20T12:00:00Z",
             "frame": (SUNCET_AX25_HEADER + PACKET).hex(), "observer": "synthetic",

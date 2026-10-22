@@ -74,7 +74,9 @@ class Config:
         section = parser["satnogs"]
         result = cls(
             directory=Path(section["directory"]).expanduser().resolve(),
-            token_file=Path(section["token_file"]).expanduser().resolve(),
+            token_file=Path(section.get(
+                "token_file", str(Path.home() / ".config/suncet/satnogs.token")
+            )).expanduser().resolve(),
             initial_start=utc(section.get("initial_start", "2026-10-01T00:00:00Z")),
             required_mount=Path(section["required_mount"]).expanduser().resolve(),
             overlap_days=section.getint("overlap_days", 7),
