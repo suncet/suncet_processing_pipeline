@@ -1,0 +1,14 @@
+[Unit]
+Description=Collect UHF delivery files from S3 (read only)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/libexec/suncet-uhf-s3-python -m suncet_processing_pipeline.sync_s3 sync
+WorkingDirectory=%h
+Environment=suncet_data=/srv/suncet/data
+Environment=suncet_ctdb=/srv/suncet/ctdb
+Environment=AWS_RETRY_MODE=standard
+Environment=AWS_MAX_ATTEMPTS=3
+UMask=0077
+TimeoutStartSec=8h
+NoNewPrivileges=true

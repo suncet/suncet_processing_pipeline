@@ -5,21 +5,31 @@
 The SOC Jetson pulls raw X-band and UHF pass files from two LASP-owned AWS S3
 delivery buckets. AWS replication independently preserves each new object in
 deep archive, and bucket lifecycle rules expire ordinary delivery copies. The
-Jetson must never upload, alter, or delete an S3 object.
+delivery collectors must never upload, alter, or delete those S3 objects.
+The separately authorized SatNOGS collector creates private archive copies only
+under the raw archive's `satnogs/` namespace.
 
 The repository contains no AWS account number, bucket name, access key, or
 secret. The Jetson identity has no console password and is restricted to:
 
 - locate and list the two delivery buckets;
 - read objects and object versions from those buckets;
+- conditionally create SatNOGS objects in Deep Archive and verify their checksums
+  under the raw archive's `satnogs/` prefix;
 - requests originating at the approved SOC public IPv4 address.
 
-It has no access to the archive bucket, no account-wide bucket listing, and no
-write or delete action. The source-IP condition is defense in depth: if the SOC
+It has no account-wide bucket listing, no deletion rights, and no archive write
+access outside `satnogs/`. Archive uploads must use Deep Archive and cannot
+overwrite existing keys. The source-IP condition is defense in depth: if the SOC
 egress address changes, both this policy and any external network allowlist
-must be reviewed. A long-lived access key is acceptable for the initial manual
-workflow, but replace it with short-lived external-workload credentials before
-unattended production ingest.
+must be reviewed. The daily UHF collector reuses this existing restricted
+identity and its host-local credentials. Migration to short-lived
+external-workload credentials remains planned. The daily UHF collector uses
+only the delivery-read permissions; the archive permission is used solely by
+the SatNOGS collector.
+
+The [daily UHF collector](DAILY_UHF_S3_INGEST.md) adds version-aware collection
+at midnight UTC. The single-object manual procedure below remains available.
 
 ## Host-local configuration
 
@@ -130,16 +140,13 @@ cost without improving custody, so the legacy bucket must not be deleted unless
 a later reviewed migration proves a complete inventory and checksum-equivalent
 replacement. Exact resource names remain in the private AWS inventory.
 
-The remaining archive evolution task is:
-
-- Add an idempotent SatNOGS archival path after operational retrieval is
-  designed. Resolve the real source boundary first: SatNOGS DB primarily holds
-  satellite/transmitter metadata, while observation artifacts are associated
-  with SatNOGS Network. Store selected raw frames, decoded public APID 1 data,
-  observation/station metadata, and any retained RF products under a dedicated
-  `satnogs/` namespace with source IDs, decoder/public-specification revisions,
-  checksums, and transfer receipts. This archival copy must never modify or
-  delete the upstream SatNOGS record.
+The [daily SatNOGS collector](SATNOGS_INGEST.md) now implements an idempotent
+archive step immediately after each downloaded page. It preserves raw DB frames
+and reception/decoder provenance under `satnogs/`, with conditional creates and
+server-verified full-object SHA-256. It is active on the Jetson with the approved
+scoped IAM policy and `[archive]` configuration documented there. SatNOGS Network IQ and
+other observation artifacts are outside this collector. UHF delivery collection
+remains download-only; existing AWS replication provides its archive copy.
 
 Exact AWS resource names remain in the private host/account inventory and must
 not be added to this public repository.
@@ -154,6 +161,7 @@ not be added to this public repository.
 - Preserve ingest receipts with the corresponding processing run.
 - Rotate the access key after suspected exposure and on the approved operations
   schedule; never create a second key as an undocumented fallback.
-- Before scheduling ingest, define polling, duplicate/version handling,
-  backpressure, disk thresholds, alerting, credential rotation, and migration
-  to temporary credentials.
+- The daily UHF collector defines version handling, recovery, storage limits,
+  and journal/private-file diagnostics. Proactive alert delivery, credential
+  rotation procedures, and migration to temporary credentials remain operations
+  follow-ups; review service status and freshness in the meantime.

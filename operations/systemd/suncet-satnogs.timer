@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily SunCET SatNOGS archive collection
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 UTC
+RandomizedDelaySec=0
+AccuracySec=1s
+Persistent=true
+Unit=suncet-satnogs.service
+
+[Install]
+WantedBy=timers.target

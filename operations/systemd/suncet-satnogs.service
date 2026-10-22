@@ -1,0 +1,11 @@
+[Unit]
+Description=Collect SunCET SatNOGS telemetry and preserve it in private S3 Deep Archive
+
+[Service]
+Type=oneshot
+# This link must select an explicitly deployed, pinned runtime containing the collector.
+ExecStart=%h/.local/libexec/suncet-satnogs-python -m suncet_processing_pipeline.satnogs.collect sync
+WorkingDirectory=%h
+UMask=0077
+TimeoutStartSec=4h
+NoNewPrivileges=true

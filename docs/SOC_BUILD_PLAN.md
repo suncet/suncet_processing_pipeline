@@ -101,6 +101,10 @@ under its hostname.
   Do not host a public service on the Jetson.
 - Begin with manual data transfer and processing. Do not add unattended jobs
   until the manual workflow is reliable and observable.
+  The separately authorized midnight-UTC collectors are now documented in
+  [Daily UHF S3 collection](DAILY_UHF_S3_INGEST.md) and
+  [SatNOGS collection](SATNOGS_INGEST.md); processing and publication remain
+  manual. See those records for deployment and live-transfer validation status.
 - Do not expose SSH directly to the public Internet. Use the APL VPN or another
   APL-approved management path.
 
@@ -359,15 +363,13 @@ This work is independent of the Jetson NVMe installation.
   improving custody. Do not delete that bucket without a separately reviewed,
   inventory- and checksum-proven migration. Exact resource names remain in the
   private AWS inventory, not this public repository.
-- **Deferred SatNOGS custody path:** when the SOC begins retrieving SunCET
-  observations from SatNOGS, preserve an independently checksummed copy in the
-  same neutrally named raw archive under a collision-free `satnogs/` key
-  namespace. First determine which SatNOGS service/API supplies each artifact:
-  SatNOGS DB primarily stores satellite/transmitter metadata, while SatNOGS
-  Network stores observations. Define whether the archival unit includes raw
-  frames, decoded APID 1 telemetry, observation/station metadata, and available
-  RF products; record observation IDs and decoder/specification revisions. The
-  transfer must be idempotent and must not delete or alter the SatNOGS source.
+- **SatNOGS custody path:** the [daily collector](SATNOGS_INGEST.md) now includes
+  immediate private Deep Archive uploads of original DB frame bytes and separate
+  reception/provenance manifests under `satnogs/`. Verified transfer receipts,
+  conditional creates and replay of pending records make interrupted runs
+  recoverable. See the collector record for deployment status. IQ and other
+  SatNOGS Network artifacts remain separate future work. The UHF S3 collector
+  never uploads to the archive; AWS replication already handles those inputs.
 
 ### 5. Establish the permanent data layout and manual ingest — in progress
 

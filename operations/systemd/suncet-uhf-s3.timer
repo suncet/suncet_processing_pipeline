@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily UHF S3 delivery collection
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 UTC
+RandomizedDelaySec=0
+AccuracySec=1s
+Persistent=true
+Unit=suncet-uhf-s3.service
+
+[Install]
+WantedBy=timers.target

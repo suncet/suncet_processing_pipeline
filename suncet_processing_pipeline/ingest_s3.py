@@ -238,6 +238,8 @@ def ingest_object(
     *,
     version_id: str | None = None,
     state_directory: Path | None = None,
+    expected_etag: str | None = None,
+    expected_size: int | None = None,
 ) -> tuple[Path, Path, str]:
     """Download, hash, atomically finalize, and receipt one delivery object."""
 
@@ -267,6 +269,8 @@ def ingest_object(
     ]
     if version_id:
         arguments.extend(["--version-id", version_id])
+    if expected_etag:
+        arguments.extend(["--if-match", expected_etag])
     arguments.append(str(temporary))
 
     started = _utc_now()
@@ -275,6 +279,12 @@ def ingest_object(
         if not temporary.is_file():
             raise S3IngestError("AWS CLI reported success without a downloaded file")
         actual_size = temporary.stat().st_size
+        if expected_size is not None and actual_size != expected_size:
+            raise S3IngestError("Downloaded size differs from the listed object version")
+        if expected_etag is not None and metadata.get("ETag") != expected_etag:
+            raise S3IngestError("Downloaded ETag differs from the listed object version")
+        if version_id is not None and metadata.get("VersionId") != version_id:
+            raise S3IngestError("Downloaded version differs from the requested object version")
         declared_size = metadata.get("ContentLength")
         if isinstance(declared_size, int) and actual_size != declared_size:
             raise S3IngestError(

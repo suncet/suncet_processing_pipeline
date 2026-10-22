@@ -1,6 +1,11 @@
 # Local working directories
 /tmp/
 
+# Private deployment records, credentials and host-local AWS state
+*.private.*
+*.token
+/.aws/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

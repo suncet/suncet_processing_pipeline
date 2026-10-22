@@ -506,23 +506,25 @@ beacon without consulting raw bytes.
 - Confirm that network auto-scheduling, decoding, and dashboard ingestion work
   with the accepted orbital elements.
 
-### 9. Establish routine SatNOGS operations — future
+### 9. Establish routine SatNOGS operations — daily collection active
 
+- Daily DB retrieval now has a collector and timer templates; see
+  [Daily SatNOGS telemetry collection](SATNOGS_INGEST.md) for the tested boundary,
+  private receipt format, deployment prerequisites, and current status. The
+  Jetson collector is active at midnight UTC daily as of 2026-10-22; authenticated
+  empty pulls passed. A nonempty hosted test awaits Deck's guidance. The public dashboard
+  supplies timely monitoring while the SOC copy is collected once daily.
 - Monitor decoder errors, unexpected packet versions, frequency drift, data
   gaps, and stale dashboard panels.
 - Review SatNOGS observations around every relevant pass during commissioning.
 - Preserve the observation ID and decoder/public-specification revision for any
   SatNOGS data used operationally or scientifically.
-- Define and implement a checksum-verified, idempotent archival transfer for
-  every SunCET SatNOGS observation package retrieved by the SOC. Confirm the
-  source API and artifact boundary rather than assuming SatNOGS DB is the
-  binary-data endpoint: DB primarily contains satellite/transmitter metadata,
-  while Network contains observations. Record which raw frames, decoded APID 1
-  telemetry, station/observation metadata, and available RF products are
-  retained, then upload the reviewed package under the shared raw archive's
-  dedicated `satnogs/` namespace. Preserve observation IDs and decoder/public
-  specification revisions, verify content checksums, and never delete or alter
-  the SatNOGS source.
+- Immediate checksum-verified archival of DB raw frames and reception/decoder
+  metadata is active under the shared raw archive's `satnogs/` namespace.
+  An isolated synthetic Jetson test passed upload, duplicate prevention and
+  interrupted-commit recovery. Verification with a real DB reception remains
+  pending. Network observation artifacts and RF products are separate future
+  work. Neither collector modifies or deletes the SatNOGS source.
 - Update the public specification, decoder, DB record, and dashboard together
   when the beacon format or transmitter behavior changes.
 - Record the explicit CTDB/decoder version with retained packets. Current

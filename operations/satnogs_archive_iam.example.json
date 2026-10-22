@@ -1,0 +1,31 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateSatNOGSArchiveFromSOC",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::PRIVATE_RAW_ARCHIVE_BUCKET/satnogs/*",
+      "Condition": {
+        "IpAddress": {
+          "aws:SourceIp": "APPROVED_SOC_EGRESS_CIDR"
+        },
+        "StringEquals": {
+          "s3:x-amz-storage-class": "DEEP_ARCHIVE",
+          "s3:if-none-match": "*"
+        }
+      }
+    },
+    {
+      "Sid": "VerifySatNOGSArchiveFromSOC",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::PRIVATE_RAW_ARCHIVE_BUCKET/satnogs/*",
+      "Condition": {
+        "IpAddress": {
+          "aws:SourceIp": "APPROVED_SOC_EGRESS_CIDR"
+        }
+      }
+    }
+  ]
+}

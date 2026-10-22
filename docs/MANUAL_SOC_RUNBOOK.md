@@ -7,6 +7,11 @@ raw AWS ingest, CTDB integrity, processing, review, public-data copies, and
 recovery. It does not authorize unattended ingest, automatic publication, AWS
 resource changes, or deletion of upstream data.
 
+Separately authorized daily collection is documented in
+[Daily UHF S3 collection](DAILY_UHF_S3_INGEST.md) and
+[SatNOGS collection](SATNOGS_INGEST.md). Those collectors run at midnight UTC;
+processing and publication remain manual.
+
 Exit codes used by the preflight and monitoring tools are `0` for healthy, `1`
 for a warning requiring review, and `2` for a critical stop condition.
 
