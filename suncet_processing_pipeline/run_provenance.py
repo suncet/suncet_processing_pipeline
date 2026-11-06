@@ -406,12 +406,15 @@ class ProcessingRunProvenance:
         }
 
     def __enter__(self) -> "ProcessingRunProvenance":
+        from .dropbox_automation import begin_processing
+
         self.data_root.mkdir(parents=True, exist_ok=True)
         self._before_files = _tree_snapshot(self.data_root, self.manifest_dir)
         self._started_monotonic = time.monotonic()
         self._payload["status"] = "running"
         self._payload["started_utc"] = _utc_now()
         self._write()
+        self._dropbox_completion = begin_processing(self.run_id, self._payload["run_kind"])
         print(f"Processing provenance manifest: {self.manifest_path}")
         return self
 
@@ -472,10 +475,15 @@ class ProcessingRunProvenance:
         try:
             self._write()
         except Exception as manifest_error:
+            if getattr(self, "_dropbox_completion", None) is not None:
+                self._dropbox_completion.finish(False)
             if exc_type is None:
                 raise
             print(
                 f"WARNING: failed to finalize provenance manifest: {manifest_error}",
                 file=sys.stderr,
             )
+        else:
+            if getattr(self, "_dropbox_completion", None) is not None:
+                self._dropbox_completion.finish(exc_type is None)
         return False

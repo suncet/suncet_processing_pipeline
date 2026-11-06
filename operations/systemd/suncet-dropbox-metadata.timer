@@ -1,0 +1,12 @@
+[Unit]
+Description=Pull SunCET metadata at midnight UTC
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 UTC
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=true
+Unit=suncet-dropbox-metadata.service
+
+[Install]
+WantedBy=timers.target

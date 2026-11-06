@@ -1,0 +1,9 @@
+[Unit]
+Description=Upload SunCET products after processing completes
+
+[Path]
+PathChanged=%h/.local/state/suncet/rclone/automation/pending
+Unit=suncet-dropbox-products.service
+
+[Install]
+WantedBy=default.target

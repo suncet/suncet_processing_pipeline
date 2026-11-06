@@ -1,0 +1,13 @@
+[Unit]
+Description=Copy completed SunCET product snapshots to Dropbox
+
+[Service]
+Type=oneshot
+ExecStartPre=%h/.local/libexec/suncet-dropbox-python -m suncet_processing_pipeline.soc_preflight
+ExecStart=%h/.local/libexec/suncet-dropbox-python -m suncet_processing_pipeline.dropbox_automation push --execute
+WorkingDirectory=%h
+Environment=suncet_data=/srv/suncet/data
+Environment=suncet_ctdb=/srv/suncet/ctdb
+UMask=0077
+TimeoutStartSec=7h
+NoNewPrivileges=true

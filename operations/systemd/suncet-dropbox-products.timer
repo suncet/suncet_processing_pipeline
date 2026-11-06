@@ -1,0 +1,10 @@
+[Unit]
+Description=Recover pending SunCET Dropbox uploads after outages
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=15min
+Unit=suncet-dropbox-products.service
+
+[Install]
+WantedBy=timers.target

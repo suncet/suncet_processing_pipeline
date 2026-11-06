@@ -36,14 +36,88 @@ The reviewed filters are:
 
 - `operations/rclone/pull_metadata.filter`: top-level, explicitly versioned
   FITS and NetCDF/Zarr metadata CSV exports from Dropbox to the SOC;
-- `operations/rclone/push_products.filter`: finalized Levels 1–4, trends, and
+- `operations/rclone/push_products.filter`: finalized Levels 0.5–4, trends, and
   processing manifests from the SOC to Dropbox.
 
 The pull filter deliberately excludes synthetic data, test data, obsolete
 definitions, example files, workbooks, and mutable unversioned files. The push
-filter deliberately excludes raw ingest, Level 0.5, processing-run inputs,
+filter deliberately excludes raw Level 0, processing-run inputs,
 scratch, staging, transfer logs, and private definitions. Expand either filter
 only after explicit review.
+
+## Scheduled metadata and completion-triggered products
+
+The operator authorized automatic Dropbox copies, including Level 0.5, on
+2026-11-06. This replaces per-run manual approval for the installed automatic
+workflow; the manual dry-run/manifest commands below remain available.
+Dropbox copies do not publish anything to the LASP website.
+
+- `suncet-dropbox-metadata.timer` pulls eligible versioned metadata at
+  **00:00 UTC**, with `Persistent=true`. Downloading a new metadata definition
+  does not activate it in processing configuration.
+- `ProcessingRunProvenance` checks the private task configuration's
+  `[automation] enabled = true` option. On successful completion it freezes
+  changed products from the approved `level0_5/`, `level1/` through `level4/`,
+  and `trends/` roots. Failed runs and no-op runs enqueue nothing. Only files
+  under those standard product directories participate; standalone writers
+  that do not use run provenance must use `processing_completion` explicitly.
+- Snapshots are private copies under `$suncet_data/.dropbox-outbox/<id>/`.
+  A minimal completion manifest accompanies the products; full private run
+  provenance, raw input paths, invocation/configuration, and CTDB details are
+  not automatically published. The snapshot is hashed and an exact manifest
+  is frozen before a pending record is written atomically.
+- `suncet-dropbox-products.path` starts the worker when the pending directory
+  changes. A separate 15-minute recovery timer retries queued uploads after
+  a failure or reboot; an empty queue makes no Dropbox requests. Transfers
+  preserve the usual relative product paths. The worker retains the existing
+  immutable-copy, content-verification, and exact-manifest checks. Different
+  content at an existing remote path is a conflict, not an overwrite.
+- After verified delivery the pending record is archived locally and its
+  staging copy is removed. Original products remain. Interrupted/failed
+  transfers retain their snapshot for retry. Participating processing runs
+  are serialized while computing the changed-product set; a concurrent run
+  fails visibly instead of mixing output ownership.
+
+The Jetson uses an isolated Dropbox worker runtime. Its active `suncet` conda
+environment imports the manual processing checkout; that checkout received
+only the completion hook and the new automation module, with a checksum-guarded
+backup. Older separately pinned processing releases do not acquire the hook
+automatically. Deployment records remain private. Worker services run storage
+preflight before copying. Queue records, frozen manifests, and copy receipts
+are under `~/.local/state/suncet/rclone/`, outside the data tree.
+
+Level 0 is excluded: AWS replicates LASP deliveries to the raw archive, and
+the SatNOGS collector immediately archives its receipts/frames. Keep local raw
+inputs for processing and verify archival before any later local cleanup.
+The 2026-11-06 audit found all 11 UHF source objects marked `COMPLETED` and all
+60 collected SatNOGS receipts recorded as archived; this was not a Glacier
+restore test. The remaining 29-byte X-band setup fixture was preserved under
+`level0/unknown_ground_station/xband/`, and the empty legacy `telemetry/` tree
+was removed.
+
+```sh
+systemctl --user list-timers 'suncet-dropbox-*'
+systemctl --user status suncet-dropbox-products.path
+systemctl --user start suncet-dropbox-products.service  # retry pending copies
+journalctl --user -u suncet-dropbox-metadata.service -u suncet-dropbox-products.service
+```
+
+To stop automatic copies, disable the metadata and products timers and the
+products path unit. Set `[automation] enabled = false` in the private task
+configuration as well to stop new processing runs from generating snapshots.
+Do not remove pending snapshots or stale operation locks without checking
+whether a writer or transfer is still active.
+
+Deployment validation on 2026-11-06: 26 targeted tests passed in a clean source
+export. The real metadata service copied the `v1.0.3dev` and `v1.0.4dev`
+NetCDF/Zarr definition exports and passed the one-way check, without changing
+the active processing definition. A synthetic successful run created
+`level0_5/_tests/dropbox_automation_20261106/TEST_completion_trigger.json`;
+the path unit automatically uploaded it and its minimal completion manifest.
+Both copy and verification returned zero, the queued snapshot was retired,
+and independent Dropbox read-back matched the complete source bytes. This
+test contains no spacecraft telemetry and measures transfer correctness,
+not large-product throughput.
 
 ## One-time host setup
 

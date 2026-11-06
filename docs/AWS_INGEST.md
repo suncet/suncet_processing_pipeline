@@ -48,7 +48,7 @@ region = APPROVED_AWS_REGION
 [xband]
 bucket = X_BAND_DELIVERY_BUCKET
 prefix =
-destination = telemetry/incoming/xband
+destination = level0/unknown_ground_station/xband
 
 [uhf]
 bucket = UHF_DELIVERY_BUCKET
