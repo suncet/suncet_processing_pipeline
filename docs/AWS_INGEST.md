@@ -53,12 +53,20 @@ destination = telemetry/incoming/xband
 [uhf]
 bucket = UHF_DELIVERY_BUCKET
 prefix = uhf/
-destination = telemetry/incoming/uhf
+destination = level0/unknown_ground_station
 ```
 
 The UHF prefix must match the actual LASP uploader policy. An empty prefix is
 valid only when the identity is authorized to list and read the entire delivery
 bucket.
+
+The UHF destination mirrors the Mac's station-organized `level0/` tree. Until
+LASP supplies a confirmed receiving-station identifier, use
+`level0/unknown_ground_station/`; delivery through LASP alone does not establish
+the receiving station. The existing named directories are
+`fairbanks_ground_station/`, `lasp_ground_station/`, and
+`leafspace_ground_stations/`. Filename-based station routing is not yet
+implemented. SatNOGS has its own `level0/satnogs/` collector directory.
 
 ## Manual procedure
 

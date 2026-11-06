@@ -49,9 +49,22 @@ receipts without decoded values. It does not guess a framing boundary.
 
 All retrievals are private. Exact JSON response bytes, request URLs, receipt
 metadata, and original frame hex are stored in SQLite under
-`/srv/suncet/satnogs-private/telemetry.sqlite3`, outside the public data tree.
+`$suncet_data/level0/satnogs/telemetry.sqlite3`
+(`/srv/suncet/data/level0/satnogs/telemetry.sqlite3` on the Jetson).
 Raw beacon bytes can include opaque fields excluded from public decoding.
 Never publish this directory or include it in public product mirroring.
+
+On 2026-11-06 the existing private collection directory was migrated into
+Level 0 to match the Mac's layout. Its 60 reception receipts, exact API pages,
+archive records, checkpoints, and separate test database were preserved, with
+file hashes checked before and after the move. Configuration and database
+backups remain in private host state. The directory remains mode 0700; tokens
+and AWS credentials remain outside the data tree. Raw frames are retained in
+SQLite as supplied by the API, rather than as a directory of extracted binary
+files. The Dropbox product-copy filter excludes all of Level 0.
+The post-migration systemd run succeeded: three API pages, 60 duplicate
+receipts, no new receipts, and no new archive uploads. All 60 stored receipts
+were already archived; the midnight-UTC timer remains active.
 
 Tables:
 

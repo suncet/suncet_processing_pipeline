@@ -22,7 +22,10 @@ must match the listing before local finalization. The complete downloaded file
 is hashed with SHA-256. Each receipt records bucket, key, version, S3 checksum
 metadata, local digest, and local path in a private mode-0600 JSON file.
 
-Local files are stored below the configured UHF destination as
+The Jetson's UHF destination is `$suncet_data/level0/unknown_ground_station/`,
+matching the Mac's Level 0 organization while awaiting LASP's receiving-station
+identifier. No station is inferred from the delivery provider. Files are stored
+below that configured destination as
 `objects/<identity SHA-256>/<original basename>`. The identity includes bucket,
 full key, version ID, ETag, modification time, and size, so different keys with
 the same basename, new versions, and replacements of a `null` version do not
@@ -87,6 +90,26 @@ with `status`. No pager/email alert integration is currently installed.
 Disable with `systemctl --user disable --now suncet-uhf-s3.timer`. This removes
 neither local data nor S3 objects. Keep the source receipt database and backing
 files together when migrating the collector.
+
+### Level 0 storage migration — 2026-11-06
+
+The existing UHF files were moved from `telemetry/incoming/uhf/` into
+`level0/unknown_ground_station/`. The private index and JSON receipts were
+updated to the new relative paths, preserving object identities, versions,
+and checksums. All 11 files were verified before and after the move. Existing
+state and configuration were backed up privately before migration. Changing
+only the destination setting would leave cached files at their previous paths;
+an existing installation must migrate its files and receipts together.
+The post-migration systemd run succeeded with 11 already-present objects,
+zero downloads, and zero transferred bytes. The midnight-UTC timer remains active.
+
+The Jetson also has the Mac's `level0/fairbanks_ground_station/`,
+`level0/lasp_ground_station/`, `level0/leafspace_ground_stations/`, and
+`level0/satnogs/` directories. Station routing awaits an agreed identifier and
+filename convention. The identity subdirectories still prevent same-name
+objects or revisions from overwriting each other. Level 0 remains excluded
+from the existing Dropbox product-copy filter; this layout change does not
+enable raw-data replication to the Mac.
 
 ## Test-data boundary
 
