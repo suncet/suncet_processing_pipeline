@@ -133,3 +133,44 @@ CRC64NVME checksum as the source. These checks verify archive upload and
 replication, not an archive restore. The test uploads used the operator's console
 session. The daily UHF collector remains download-only; the later SatNOGS
 archive permission is restricted to the separate `satnogs/` prefix.
+
+## Hydra delivery integration test — 2026-11-06
+
+LASP delivered seven Hydra captures with `ccsds_YYYY_DDD_HH_MM_SS.uhf`
+basenames. The existing midnight-UTC collector automatically retrieved all
+seven (1,357,913 bytes). A manual rerun found all versions already present and
+transferred zero bytes. Each file matched LASP's reported size and SHA-256
+prefix, the local ingest receipt, and the full SHA-256 returned by S3.
+
+An isolated Jetson run using a snapshot of the current working tree, the
+`suncet` environment, bus CTDB 2.0.5, CSIE CTDB 1.1.10, and DSPS CTDB 6.09
+processed these files with `--input-mode uhf` and packet checksums required.
+It decoded 3,840 unique checksum-validated telemetry packets, including 3,264
+beacons, into five APID tables with no decoder failures. Processing took
+approximately 4.6 seconds. A capture-directory replay and a collector-style
+object-directory replay produced identical packet hash multisets. Repeating
+the database ingest skipped five unchanged streams and added zero rows.
+
+The test exposed a filename-ordering issue: timestamp recognition accepted
+native extensionless Hydra names but not LASP's `.uhf` suffix. In the collector's
+opaque per-object directories, the fallback could order captures by directory
+hash instead of capture time. The source now accepts both name forms. A
+regression covers chronological ordering across object directories and a year
+boundary; the Level 0.5 and incremental-ingest suites passed 78 tests in an
+isolated checkout containing only this change.
+
+The captures contain incomplete playback groups and checksum-rejected packet
+candidates. Playback reassembly recovered 41 complete groups and dropped 16
+incomplete groups. Partial image rows were recovered, but no image metadata or
+complete image product was available. A small set of checksum-valid beacons
+also carries low spacecraft-clock values; these were preserved, not assigned
+inferred observation times. Matching file checksums establish byte-for-byte
+S3 delivery integrity, not complete RF reception or valid spacecraft time.
+
+The collector remains download-only. Its scheduled service was not changed;
+the processing run and ordering fix were tested in an isolated runtime rather
+than replacing the older manual Jetson checkout. Deploying the current
+processor and connecting it to unattended post-collection processing remain
+separate operational work. Raw telemetry, cloud identifiers, per-file receipts,
+database copies, and detailed diagnostics remain private. Local audit artifacts
+are under the ignored `tmp/lasp-hydra-delivery-20261106/` task directory.

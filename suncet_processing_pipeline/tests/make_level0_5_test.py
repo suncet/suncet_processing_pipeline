@@ -67,6 +67,21 @@ def test_level0_5_defaults_to_checksums_and_duckdb():
     assert args.write_csie_jpeg2000 is False
 
 
+def test_uhf_discovery_orders_deliveries_by_capture_time_across_object_directories(tmp_path):
+    # S3 collection gives each object an opaque parent directory. Its lexical
+    # order must not override capture time when reconstructing playback streams.
+    expected = [
+        tmp_path / "objects/z-old" / "ccsds_2025_365_23_59_59.uhf",
+        tmp_path / "objects/m-native" / "ccsds_2026_001_00_00_00",
+        tmp_path / "objects/a-new" / "ccsds_2026_001_00_00_01.uhf",
+    ]
+    for path in reversed(expected):
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"capture")
+
+    assert level0_5.discover_uhf_binary_files(tmp_path, "ccsds") == expected
+
+
 def test_level0_5_checksum_bypass_is_explicit():
     args = level0_5._build_argument_parser().parse_args(
         ["--bypass-packet-checksums"]

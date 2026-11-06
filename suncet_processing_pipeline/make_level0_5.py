@@ -489,9 +489,9 @@ def resolve_uhf_search_root(folder: Path) -> Path:
 
 
 def _uhf_timestamp_sort_parts(path: Path) -> tuple[int, int, int, int, int]:
-    """Return sortable ccsds_yyyy_doy_hh_mm_ss parts when present."""
+    """Read capture time from native Hydra names and LASP's .uhf deliveries."""
     match = re.match(
-        r"^ccsds_(\d{4})_(\d{3})_(\d{2})_(\d{2})_(\d{2})$",
+        r"^ccsds_(\d{4})_(\d{3})_(\d{2})_(\d{2})_(\d{2})(?:\.uhf)?$",
         path.name,
     )
     if match is None:
